@@ -182,9 +182,43 @@ func (s *Service) DirList(_ context.Context, req *agentv1.DirListRequest) (*agen
 	}
 	response := &agentv1.DirListResponse{Entries: make([]*agentv1.FileEntry, 0, len(entries))}
 	for _, entry := range entries {
-		response.Entries = append(response.Entries, &agentv1.FileEntry{Name: entry.Name, Path: entry.Path, IsDir: entry.IsDir, Size: entry.Size, Mode: uint32(entry.Mode.Perm()), ModTime: entry.ModTime})
+		response.Entries = append(response.Entries, &agentv1.FileEntry{Name: entry.Name, Path: entry.Path, IsDir: entry.IsDir, Size: entry.Size, Mode: uint32(entry.Mode.Perm()), ModTime: entry.ModTime, Owner: entry.Owner, Group: entry.Group})
 	}
 	return response, nil
+}
+
+func (s *Service) FileRename(_ context.Context, req *agentv1.FileRenameRequest) (*agentv1.FileRenameResponse, error) {
+	if err := s.fs.Rename(req.GetOldPath(), req.GetNewPath()); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.FileRenameResponse{Success: true}, nil
+}
+func (s *Service) FileCopy(_ context.Context, req *agentv1.FileCopyRequest) (*agentv1.FileCopyResponse, error) {
+	if err := s.fs.Copy(req.GetSrcPath(), req.GetDstPath()); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.FileCopyResponse{Success: true}, nil
+}
+func (s *Service) FileChmod(_ context.Context, req *agentv1.FileChmodRequest) (*agentv1.FileChmodResponse, error) {
+	if err := s.fs.Chmod(req.GetPath(), req.GetMode()); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.FileChmodResponse{Success: true}, nil
+}
+func (s *Service) FileChown(_ context.Context, req *agentv1.FileChownRequest) (*agentv1.FileChownResponse, error) {
+	if err := s.fs.Chown(req.GetPath(), int(req.GetUid()), int(req.GetGid())); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.FileChownResponse{Success: true}, nil
+}
+func (s *Service) ArchiveCreate(_ context.Context, req *agentv1.ArchiveCreateRequest) (*agentv1.ArchiveCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "ArchiveCreate not implemented")
+}
+func (s *Service) ArchiveExtract(_ context.Context, req *agentv1.ArchiveExtractRequest) (*agentv1.ArchiveExtractResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "ArchiveExtract not implemented")
+}
+func (s *Service) FileUploadStream(stream agentv1.AgentService_FileUploadStreamServer) error {
+	return status.Error(codes.Unimplemented, "FileUploadStream not implemented")
 }
 
 func (s *Service) FirewallRule(ctx context.Context, req *agentv1.FirewallRuleRequest) (*agentv1.FirewallRuleResponse, error) {

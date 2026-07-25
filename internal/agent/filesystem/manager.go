@@ -4,10 +4,14 @@ package filesystem
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 )
 
 // AllowedRoots defines the directories where the Agent is allowed to read/write.
@@ -150,6 +154,8 @@ type FileEntry struct {
 	Size    int64
 	Mode    fs.FileMode
 	ModTime int64 // Unix seconds
+	Owner   string
+	Group   string
 }
 
 // List returns the direct children of a directory.
@@ -170,6 +176,18 @@ func (m *Manager) List(path string) ([]FileEntry, error) {
 		if err != nil {
 			continue
 		}
+		var owner, group string
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			owner = strconv.FormatUint(uint64(stat.Uid), 10)
+			group = strconv.FormatUint(uint64(stat.Gid), 10)
+			if u, err := user.LookupId(owner); err == nil {
+				owner = u.Username
+			}
+			if g, err := user.LookupGroupId(group); err == nil {
+				group = g.Name
+			}
+		}
+
 		result = append(result, FileEntry{
 			Name:    e.Name(),
 			Path:    filepath.Join(clean, e.Name()),
@@ -177,7 +195,87 @@ func (m *Manager) List(path string) ([]FileEntry, error) {
 			Size:    info.Size(),
 			Mode:    info.Mode(),
 			ModTime: info.ModTime().Unix(),
+			Owner:   owner,
+			Group:   group,
 		})
 	}
 	return result, nil
+}
+
+// Rename renames or moves a file or directory.
+func (m *Manager) Rename(oldPath, newPath string) error {
+	cleanOld, err := m.validatePath(oldPath)
+	if err != nil {
+		return err
+	}
+	cleanNew, err := m.validatePath(newPath)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(cleanOld, cleanNew); err != nil {
+		return fmt.Errorf("filesystem: rename %q to %q: %w", cleanOld, cleanNew, err)
+	}
+	return nil
+}
+
+// Copy copies a file from src to dst.
+func (m *Manager) Copy(srcPath, dstPath string) error {
+	cleanSrc, err := m.validatePath(srcPath)
+	if err != nil {
+		return err
+	}
+	cleanDst, err := m.validatePath(dstPath)
+	if err != nil {
+		return err
+	}
+
+	src, err := os.Open(cleanSrc)
+	if err != nil {
+		return fmt.Errorf("filesystem: open src %q: %w", cleanSrc, err)
+	}
+	defer src.Close()
+
+	info, err := src.Stat()
+	if err != nil {
+		return fmt.Errorf("filesystem: stat src %q: %w", cleanSrc, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cleanDst), 0o755); err != nil {
+		return fmt.Errorf("filesystem: mkdir for dst %q: %w", cleanDst, err)
+	}
+
+	dst, err := os.OpenFile(cleanDst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return fmt.Errorf("filesystem: open dst %q: %w", cleanDst, err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("filesystem: copy %q to %q: %w", cleanSrc, cleanDst, err)
+	}
+	return dst.Sync()
+}
+
+// Chmod changes the permissions of a file.
+func (m *Manager) Chmod(path string, mode uint32) error {
+	clean, err := m.validatePath(path)
+	if err != nil {
+		return err
+	}
+	if err := os.Chmod(clean, fs.FileMode(mode)); err != nil {
+		return fmt.Errorf("filesystem: chmod %q: %w", clean, err)
+	}
+	return nil
+}
+
+// Chown changes the owner and group of a file.
+func (m *Manager) Chown(path string, uid, gid int) error {
+	clean, err := m.validatePath(path)
+	if err != nil {
+		return err
+	}
+	if err := os.Chown(clean, uid, gid); err != nil {
+		return fmt.Errorf("filesystem: chown %q: %w", clean, err)
+	}
+	return nil
 }

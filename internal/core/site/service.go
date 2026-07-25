@@ -419,6 +419,59 @@ func (s *Service) DeleteFile(ctx context.Context, siteID, relativePath string) e
 	return s.agent.FileDelete(ctx, absPath)
 }
 
+func (s *Service) RenameFile(ctx context.Context, siteID, oldPath, newPath string) error {
+	absOld, err := s.resolveFilePath(ctx, siteID, oldPath)
+	if err != nil {
+		return err
+	}
+	absNew, err := s.resolveFilePath(ctx, siteID, newPath)
+	if err != nil {
+		return err
+	}
+	if s.agent == nil {
+		return fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.FileRename(ctx, absOld, absNew)
+}
+
+func (s *Service) CopyFile(ctx context.Context, siteID, srcPath, dstPath string) error {
+	absSrc, err := s.resolveFilePath(ctx, siteID, srcPath)
+	if err != nil {
+		return err
+	}
+	absDst, err := s.resolveFilePath(ctx, siteID, dstPath)
+	if err != nil {
+		return err
+	}
+	if s.agent == nil {
+		return fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.FileCopy(ctx, absSrc, absDst)
+}
+
+func (s *Service) ChmodFile(ctx context.Context, siteID, relativePath string, mode uint32) error {
+	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
+	if err != nil {
+		return err
+	}
+	if s.agent == nil {
+		return fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.FileChmod(ctx, absPath, mode)
+}
+
+func (s *Service) ChownFile(ctx context.Context, siteID, relativePath string, uid, gid int) error {
+	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
+	if err != nil {
+		return err
+	}
+	if s.agent == nil {
+		return fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.FileChown(ctx, absPath, uid, gid)
+}
+
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 func validateDomain(domain string) error {

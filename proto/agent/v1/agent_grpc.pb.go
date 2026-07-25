@@ -19,24 +19,31 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_ServiceAction_FullMethodName  = "/agent.v1.AgentService/ServiceAction"
-	AgentService_ServiceStatus_FullMethodName  = "/agent.v1.AgentService/ServiceStatus"
-	AgentService_ServiceLogs_FullMethodName    = "/agent.v1.AgentService/ServiceLogs"
-	AgentService_CommandExecute_FullMethodName = "/agent.v1.AgentService/CommandExecute"
-	AgentService_PackageInstall_FullMethodName = "/agent.v1.AgentService/PackageInstall"
-	AgentService_PackageRemove_FullMethodName  = "/agent.v1.AgentService/PackageRemove"
-	AgentService_PackageUpdate_FullMethodName  = "/agent.v1.AgentService/PackageUpdate"
-	AgentService_PackageStatus_FullMethodName  = "/agent.v1.AgentService/PackageStatus"
-	AgentService_FileRead_FullMethodName       = "/agent.v1.AgentService/FileRead"
-	AgentService_FileWrite_FullMethodName      = "/agent.v1.AgentService/FileWrite"
-	AgentService_FileDelete_FullMethodName     = "/agent.v1.AgentService/FileDelete"
-	AgentService_DirCreate_FullMethodName      = "/agent.v1.AgentService/DirCreate"
-	AgentService_DirList_FullMethodName        = "/agent.v1.AgentService/DirList"
-	AgentService_NginxSiteApply_FullMethodName = "/agent.v1.AgentService/NginxSiteApply"
-	AgentService_FirewallRule_FullMethodName   = "/agent.v1.AgentService/FirewallRule"
-	AgentService_FirewallList_FullMethodName   = "/agent.v1.AgentService/FirewallList"
-	AgentService_SystemStats_FullMethodName    = "/agent.v1.AgentService/SystemStats"
-	AgentService_Ping_FullMethodName           = "/agent.v1.AgentService/Ping"
+	AgentService_ServiceAction_FullMethodName    = "/agent.v1.AgentService/ServiceAction"
+	AgentService_ServiceStatus_FullMethodName    = "/agent.v1.AgentService/ServiceStatus"
+	AgentService_ServiceLogs_FullMethodName      = "/agent.v1.AgentService/ServiceLogs"
+	AgentService_CommandExecute_FullMethodName   = "/agent.v1.AgentService/CommandExecute"
+	AgentService_PackageInstall_FullMethodName   = "/agent.v1.AgentService/PackageInstall"
+	AgentService_PackageRemove_FullMethodName    = "/agent.v1.AgentService/PackageRemove"
+	AgentService_PackageUpdate_FullMethodName    = "/agent.v1.AgentService/PackageUpdate"
+	AgentService_PackageStatus_FullMethodName    = "/agent.v1.AgentService/PackageStatus"
+	AgentService_FileRead_FullMethodName         = "/agent.v1.AgentService/FileRead"
+	AgentService_FileWrite_FullMethodName        = "/agent.v1.AgentService/FileWrite"
+	AgentService_FileDelete_FullMethodName       = "/agent.v1.AgentService/FileDelete"
+	AgentService_DirCreate_FullMethodName        = "/agent.v1.AgentService/DirCreate"
+	AgentService_DirList_FullMethodName          = "/agent.v1.AgentService/DirList"
+	AgentService_FileRename_FullMethodName       = "/agent.v1.AgentService/FileRename"
+	AgentService_FileCopy_FullMethodName         = "/agent.v1.AgentService/FileCopy"
+	AgentService_FileChmod_FullMethodName        = "/agent.v1.AgentService/FileChmod"
+	AgentService_FileChown_FullMethodName        = "/agent.v1.AgentService/FileChown"
+	AgentService_ArchiveCreate_FullMethodName    = "/agent.v1.AgentService/ArchiveCreate"
+	AgentService_ArchiveExtract_FullMethodName   = "/agent.v1.AgentService/ArchiveExtract"
+	AgentService_FileUploadStream_FullMethodName = "/agent.v1.AgentService/FileUploadStream"
+	AgentService_NginxSiteApply_FullMethodName   = "/agent.v1.AgentService/NginxSiteApply"
+	AgentService_FirewallRule_FullMethodName     = "/agent.v1.AgentService/FirewallRule"
+	AgentService_FirewallList_FullMethodName     = "/agent.v1.AgentService/FirewallList"
+	AgentService_SystemStats_FullMethodName      = "/agent.v1.AgentService/SystemStats"
+	AgentService_Ping_FullMethodName             = "/agent.v1.AgentService/Ping"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -63,6 +70,13 @@ type AgentServiceClient interface {
 	FileDelete(ctx context.Context, in *FileDeleteRequest, opts ...grpc.CallOption) (*FileDeleteResponse, error)
 	DirCreate(ctx context.Context, in *DirCreateRequest, opts ...grpc.CallOption) (*DirCreateResponse, error)
 	DirList(ctx context.Context, in *DirListRequest, opts ...grpc.CallOption) (*DirListResponse, error)
+	FileRename(ctx context.Context, in *FileRenameRequest, opts ...grpc.CallOption) (*FileRenameResponse, error)
+	FileCopy(ctx context.Context, in *FileCopyRequest, opts ...grpc.CallOption) (*FileCopyResponse, error)
+	FileChmod(ctx context.Context, in *FileChmodRequest, opts ...grpc.CallOption) (*FileChmodResponse, error)
+	FileChown(ctx context.Context, in *FileChownRequest, opts ...grpc.CallOption) (*FileChownResponse, error)
+	ArchiveCreate(ctx context.Context, in *ArchiveCreateRequest, opts ...grpc.CallOption) (*ArchiveCreateResponse, error)
+	ArchiveExtract(ctx context.Context, in *ArchiveExtractRequest, opts ...grpc.CallOption) (*ArchiveExtractResponse, error)
+	FileUploadStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[FileUploadRequest, FileUploadResponse], error)
 	// Typed Nginx site configuration. The Agent renders, validates and applies
 	// the configuration atomically; Core cannot execute arbitrary commands.
 	NginxSiteApply(ctx context.Context, in *NginxSiteApplyRequest, opts ...grpc.CallOption) (*NginxSiteApplyResponse, error)
@@ -249,6 +263,79 @@ func (c *agentServiceClient) DirList(ctx context.Context, in *DirListRequest, op
 	return out, nil
 }
 
+func (c *agentServiceClient) FileRename(ctx context.Context, in *FileRenameRequest, opts ...grpc.CallOption) (*FileRenameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileRenameResponse)
+	err := c.cc.Invoke(ctx, AgentService_FileRename_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) FileCopy(ctx context.Context, in *FileCopyRequest, opts ...grpc.CallOption) (*FileCopyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileCopyResponse)
+	err := c.cc.Invoke(ctx, AgentService_FileCopy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) FileChmod(ctx context.Context, in *FileChmodRequest, opts ...grpc.CallOption) (*FileChmodResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileChmodResponse)
+	err := c.cc.Invoke(ctx, AgentService_FileChmod_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) FileChown(ctx context.Context, in *FileChownRequest, opts ...grpc.CallOption) (*FileChownResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileChownResponse)
+	err := c.cc.Invoke(ctx, AgentService_FileChown_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) ArchiveCreate(ctx context.Context, in *ArchiveCreateRequest, opts ...grpc.CallOption) (*ArchiveCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ArchiveCreateResponse)
+	err := c.cc.Invoke(ctx, AgentService_ArchiveCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) ArchiveExtract(ctx context.Context, in *ArchiveExtractRequest, opts ...grpc.CallOption) (*ArchiveExtractResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ArchiveExtractResponse)
+	err := c.cc.Invoke(ctx, AgentService_ArchiveExtract_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) FileUploadStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[FileUploadRequest, FileUploadResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[4], AgentService_FileUploadStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[FileUploadRequest, FileUploadResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_FileUploadStreamClient = grpc.ClientStreamingClient[FileUploadRequest, FileUploadResponse]
+
 func (c *agentServiceClient) NginxSiteApply(ctx context.Context, in *NginxSiteApplyRequest, opts ...grpc.CallOption) (*NginxSiteApplyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(NginxSiteApplyResponse)
@@ -323,6 +410,13 @@ type AgentServiceServer interface {
 	FileDelete(context.Context, *FileDeleteRequest) (*FileDeleteResponse, error)
 	DirCreate(context.Context, *DirCreateRequest) (*DirCreateResponse, error)
 	DirList(context.Context, *DirListRequest) (*DirListResponse, error)
+	FileRename(context.Context, *FileRenameRequest) (*FileRenameResponse, error)
+	FileCopy(context.Context, *FileCopyRequest) (*FileCopyResponse, error)
+	FileChmod(context.Context, *FileChmodRequest) (*FileChmodResponse, error)
+	FileChown(context.Context, *FileChownRequest) (*FileChownResponse, error)
+	ArchiveCreate(context.Context, *ArchiveCreateRequest) (*ArchiveCreateResponse, error)
+	ArchiveExtract(context.Context, *ArchiveExtractRequest) (*ArchiveExtractResponse, error)
+	FileUploadStream(grpc.ClientStreamingServer[FileUploadRequest, FileUploadResponse]) error
 	// Typed Nginx site configuration. The Agent renders, validates and applies
 	// the configuration atomically; Core cannot execute arbitrary commands.
 	NginxSiteApply(context.Context, *NginxSiteApplyRequest) (*NginxSiteApplyResponse, error)
@@ -381,6 +475,27 @@ func (UnimplementedAgentServiceServer) DirCreate(context.Context, *DirCreateRequ
 }
 func (UnimplementedAgentServiceServer) DirList(context.Context, *DirListRequest) (*DirListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DirList not implemented")
+}
+func (UnimplementedAgentServiceServer) FileRename(context.Context, *FileRenameRequest) (*FileRenameResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FileRename not implemented")
+}
+func (UnimplementedAgentServiceServer) FileCopy(context.Context, *FileCopyRequest) (*FileCopyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FileCopy not implemented")
+}
+func (UnimplementedAgentServiceServer) FileChmod(context.Context, *FileChmodRequest) (*FileChmodResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FileChmod not implemented")
+}
+func (UnimplementedAgentServiceServer) FileChown(context.Context, *FileChownRequest) (*FileChownResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FileChown not implemented")
+}
+func (UnimplementedAgentServiceServer) ArchiveCreate(context.Context, *ArchiveCreateRequest) (*ArchiveCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ArchiveCreate not implemented")
+}
+func (UnimplementedAgentServiceServer) ArchiveExtract(context.Context, *ArchiveExtractRequest) (*ArchiveExtractResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ArchiveExtract not implemented")
+}
+func (UnimplementedAgentServiceServer) FileUploadStream(grpc.ClientStreamingServer[FileUploadRequest, FileUploadResponse]) error {
+	return status.Error(codes.Unimplemented, "method FileUploadStream not implemented")
 }
 func (UnimplementedAgentServiceServer) NginxSiteApply(context.Context, *NginxSiteApplyRequest) (*NginxSiteApplyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method NginxSiteApply not implemented")
@@ -624,6 +739,121 @@ func _AgentService_DirList_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_FileRename_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FileRenameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FileRename(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FileRename_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FileRename(ctx, req.(*FileRenameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_FileCopy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FileCopyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FileCopy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FileCopy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FileCopy(ctx, req.(*FileCopyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_FileChmod_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FileChmodRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FileChmod(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FileChmod_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FileChmod(ctx, req.(*FileChmodRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_FileChown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FileChownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FileChown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FileChown_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FileChown(ctx, req.(*FileChownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ArchiveCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ArchiveCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ArchiveCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ArchiveCreate(ctx, req.(*ArchiveCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ArchiveExtract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveExtractRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ArchiveExtract(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ArchiveExtract_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ArchiveExtract(ctx, req.(*ArchiveExtractRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_FileUploadStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AgentServiceServer).FileUploadStream(&grpc.GenericServerStream[FileUploadRequest, FileUploadResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentService_FileUploadStreamServer = grpc.ClientStreamingServer[FileUploadRequest, FileUploadResponse]
+
 func _AgentService_NginxSiteApply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NginxSiteApplyRequest)
 	if err := dec(in); err != nil {
@@ -758,6 +988,30 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AgentService_DirList_Handler,
 		},
 		{
+			MethodName: "FileRename",
+			Handler:    _AgentService_FileRename_Handler,
+		},
+		{
+			MethodName: "FileCopy",
+			Handler:    _AgentService_FileCopy_Handler,
+		},
+		{
+			MethodName: "FileChmod",
+			Handler:    _AgentService_FileChmod_Handler,
+		},
+		{
+			MethodName: "FileChown",
+			Handler:    _AgentService_FileChown_Handler,
+		},
+		{
+			MethodName: "ArchiveCreate",
+			Handler:    _AgentService_ArchiveCreate_Handler,
+		},
+		{
+			MethodName: "ArchiveExtract",
+			Handler:    _AgentService_ArchiveExtract_Handler,
+		},
+		{
 			MethodName: "NginxSiteApply",
 			Handler:    _AgentService_NginxSiteApply_Handler,
 		},
@@ -798,6 +1052,11 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "PackageUpdate",
 			Handler:       _AgentService_PackageUpdate_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "FileUploadStream",
+			Handler:       _AgentService_FileUploadStream_Handler,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "proto/agent/v1/agent.proto",
