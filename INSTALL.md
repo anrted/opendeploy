@@ -19,6 +19,10 @@ make build
 sudo make install
 ```
 
+`make build` only compiles the project. `sudo make install` installs and starts
+the systemd services, then prints the panel URL and initial administrator
+credentials.
+
 `make build` checks the required commands and their supported versions first.
 On Ubuntu and Debian it uses APT (through `sudo` when needed) to install
 missing packages. Node.js older than 22.12 is upgraded to Node.js 22 from the

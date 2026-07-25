@@ -15,6 +15,12 @@ all: build
 
 ## Build all binaries
 build: check-build-deps frontend build-core build-agent build-cli
+	@echo ""
+	@echo "OpenDeploy build completed."
+	@echo "Binaries are available in ./bin."
+ifeq ($(filter install,$(MAKECMDGOALS)),)
+	@echo "To install and start the panel, run: sudo make install"
+endif
 
 check-build-deps:
 	sh deployments/check-build-deps.sh
