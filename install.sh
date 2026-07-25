@@ -252,7 +252,7 @@ Description=OpenDeploy Update Watcher
 Documentation=https://github.com/anrted/opendeploy
 
 [Path]
-PathModified=/etc/opendeploy/update-trigger
+PathModified=/var/lib/opendeploy/update.request
 Unit=opendeploy-update.service
 
 [Install]
