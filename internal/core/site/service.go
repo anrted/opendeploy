@@ -73,6 +73,10 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		CreatedBy:  &userID,
 	}
 
+	if err := s.agent.DirCreate(ctx, site.RootPath, 0o755); err != nil {
+		return nil, apperrors.Internal("failed to create site root directory", err)
+	}
+
 	needsCertbot := site.SSLEnabled && site.SSLCert != nil && strings.HasPrefix(*site.SSLCert, "/etc/letsencrypt")
 
 	if needsCertbot {
@@ -124,6 +128,11 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		rootPath, err := normalizeRootPath(*req.RootPath)
 		if err != nil {
 			return nil, err
+		}
+		if rootPath != previous.RootPath {
+			if err := s.agent.DirCreate(ctx, rootPath, 0o755); err != nil {
+				return nil, apperrors.Internal("failed to create new site root directory", err)
+			}
 		}
 		site.RootPath = rootPath
 	}
