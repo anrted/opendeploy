@@ -54,7 +54,7 @@
 - [x] Атомарная запись конфигурационных файлов на стороне Agent
 - [x] Интеграция Sites с генерацией и атомарным применением Nginx vhost
 - [x] `nginx -t`, reload и автоматический rollback через типизированный Agent RPC
-- [ ] Полный поток подтверждения критических операций
+- [x] Подтверждение критических операций в MVP frontend
 - [/] Доменные и интеграционные тесты
 
 ## Этап 7 — Первые модули 🟡
@@ -72,7 +72,7 @@
 - [x] Dashboard, Modules, Sites, Services и Settings views
 - [ ] Миграция frontend-кода с JavaScript на TypeScript
 - [ ] Полная обработка loading/error/empty states
-- [ ] Подтверждение критических действий
+- [x] Подтверждение критических действий
 - [ ] Frontend tests
 - [x] Embed production build в бинарник Core
 
@@ -80,9 +80,9 @@
 
 - [x] `README.md`, `ARCHITECTURE.md`, `API.md`, `CHANGELOG.md`
 - [x] systemd units
-- [ ] `SECURITY.md`, `ROADMAP.md`, `INSTALL.md`, `CONTRIBUTING.md`
-- [ ] Безопасный install/uninstall workflow
-- [ ] Release packaging и CI
+- [x] `SECURITY.md`, `ROADMAP.md`, `INSTALL.md`, `CONTRIBUTING.md`
+- [x] Безопасный install/uninstall workflow
+- [x] CI и Ubuntu smoke workflow
 
 ## Текущий следующий шаг
 

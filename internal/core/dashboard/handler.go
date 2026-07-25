@@ -19,6 +19,7 @@ type Handler struct {
 	hub      *wsHub.Hub
 	upgrader gorilla.Upgrader
 	logger   *slog.Logger
+	tickets  *ticketStore
 }
 
 // NewHandler constructs a dashboard Handler.
@@ -27,11 +28,31 @@ func NewHandler(service *Service, hub *wsHub.Hub, logger *slog.Logger) *Handler 
 		service: service,
 		hub:     hub,
 		logger:  logger,
+		tickets: newTicketStore(),
 		upgrader: gorilla.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 4096,
 		},
 	}
+}
+
+// IssueWebSocketTicket creates a short-lived, single-use credential for a
+// browser WebSocket upgrade. Access tokens are never placed in URLs.
+func (h *Handler) IssueWebSocketTicket(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil {
+		writeError(w, apperrors.Unauthorized("not authenticated"))
+		return
+	}
+	ticket, expiresAt, err := h.tickets.Issue(principal.ID, time.Now())
+	if err != nil {
+		writeError(w, apperrors.Internal("issue websocket ticket", err))
+		return
+	}
+	respond(w, http.StatusCreated, map[string]any{
+		"ticket":     ticket,
+		"expires_at": expiresAt.UTC(),
+	})
 }
 
 // Overview handles GET /api/v1/dashboard
@@ -57,9 +78,8 @@ func (h *Handler) Snapshots(w http.ResponseWriter, r *http.Request) {
 // WebSocket handles GET /api/v1/dashboard/ws
 // Upgrades the connection and subscribes the client to real-time stats.
 func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
-	principal := auth.PrincipalFromContext(r.Context())
-	if principal == nil {
-		writeError(w, apperrors.Unauthorized("not authenticated"))
+	if !h.tickets.Consume(r.URL.Query().Get("ticket"), time.Now()) {
+		writeError(w, apperrors.Unauthorized("invalid or expired websocket ticket"))
 		return
 	}
 

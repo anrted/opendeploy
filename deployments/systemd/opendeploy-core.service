@@ -19,6 +19,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/opendeploy /var/log/opendeploy
 PrivateTmp=yes
+ProtectHome=yes
 
 # Environment
 Environment="OD_JWT_SECRET="

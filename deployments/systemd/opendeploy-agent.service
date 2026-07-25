@@ -6,7 +6,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-Group=root
+Group=opendeploy
 ExecStart=/usr/local/bin/opendeploy-agent --config /etc/opendeploy/opendeploy.yaml
 Restart=on-failure
 RestartSec=5s
@@ -16,6 +16,9 @@ TimeoutStopSec=30s
 # It communicates only via Unix socket — no network exposure.
 RuntimeDirectory=opendeploy-agent
 RuntimeDirectoryMode=0750
+
+PrivateTmp=yes
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target

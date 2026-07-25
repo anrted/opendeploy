@@ -23,6 +23,8 @@ const (
 type Permission string
 
 const (
+	PermDashboardView Permission = "dashboard:view"
+
 	PermModuleView      Permission = "module:view"
 	PermModuleInstall   Permission = "module:install"
 	PermModuleUninstall Permission = "module:uninstall"
@@ -49,6 +51,7 @@ const (
 // rolePermissions maps each role to its allowed permissions.
 var rolePermissions = map[Role][]Permission{
 	RoleAdmin: {
+		PermDashboardView,
 		PermModuleView, PermModuleInstall, PermModuleUninstall,
 		PermModuleEnable, PermModuleDisable, PermModuleConfigure,
 		PermSiteView, PermSiteCreate, PermSiteUpdate, PermSiteDelete,
@@ -57,6 +60,7 @@ var rolePermissions = map[Role][]Permission{
 		PermAuditView, PermUserManage,
 	},
 	RoleOperator: {
+		PermDashboardView,
 		PermModuleView, PermModuleEnable, PermModuleDisable, PermModuleConfigure,
 		PermSiteView, PermSiteCreate, PermSiteUpdate, PermSiteDelete,
 		PermServiceView, PermServiceManage,
@@ -64,6 +68,7 @@ var rolePermissions = map[Role][]Permission{
 		PermAuditView,
 	},
 	RoleViewer: {
+		PermDashboardView,
 		PermModuleView,
 		PermSiteView,
 		PermServiceView,

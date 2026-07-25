@@ -24,20 +24,20 @@ make build
 sudo make install
 ```
 
-Create `/etc/opendeploy/env` readable only by root and the `opendeploy` group:
-
-```bash
-OD_JWT_SECRET=<random value of at least 32 bytes>
-OD_ADMIN_PASSWORD=<unique initial password of at least 12 characters>
-```
-
-Then start Agent before Core:
-
-```bash
-sudo systemctl enable --now opendeploy-agent
-sudo systemctl enable --now opendeploy-core
-```
+The installer creates the locked `opendeploy` service account, secures the
+Agent Unix socket through the `opendeploy` group, generates both required
+secrets, enables and starts Agent before Core, and prints the one-time initial
+administrator password. Store it securely.
 
 The initial username is `admin`. Remove `OD_ADMIN_PASSWORD` from the environment
 file after the first successful startup. Place OpenDeploy behind an HTTPS
 reverse proxy before exposing it outside a trusted network.
+
+To uninstall while preserving configuration and data:
+
+```bash
+sudo sh deployments/uninstall.sh
+```
+
+Use `--purge` only when all OpenDeploy configuration and data should be
+permanently removed.

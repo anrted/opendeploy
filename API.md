@@ -7,6 +7,20 @@ All API requests (except `/auth/login`, `/auth/refresh`, `/health`) require:
 Authorization: Bearer <access_token>
 ```
 
+Every protected endpoint also checks the authenticated role's permission. A
+valid token without the required permission receives `403 FORBIDDEN`.
+
+## Dashboard WebSocket
+
+WebSocket authentication uses a one-time ticket so JWTs are never placed in
+URLs:
+
+1. Send an authenticated `POST /dashboard/ws-ticket`.
+2. Connect to `ws://YOUR_SERVER:5888/api/v1/dashboard/ws?ticket=<ticket>`.
+
+Tickets expire after 30 seconds and are consumed by the first connection
+attempt. The WebSocket handshake is also subject to same-origin validation.
+
 ## Sites
 
 Site mutations are coordinated across Core and Agent. The Agent renders the

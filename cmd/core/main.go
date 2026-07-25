@@ -52,7 +52,7 @@ func main() {
 	// In a plugin system this would discover .so files; here it is explicit.
 	registerModules(application)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	if err := application.Bootstrap(ctx); err != nil {
@@ -80,6 +80,7 @@ func main() {
 		slog.Error("server error", "error", err)
 	}
 
+	cancel()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
