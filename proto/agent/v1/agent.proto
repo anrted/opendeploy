@@ -12,6 +12,7 @@ service AgentService {
     rpc ServiceAction (ServiceActionRequest) returns (ServiceActionResponse);
     rpc ServiceStatus (ServiceStatusRequest) returns (ServiceStatusResponse);
     rpc ServiceLogs   (ServiceLogsRequest)   returns (stream LogLine);
+    rpc CommandExecute(CommandExecuteRequest) returns (CommandExecuteResponse);
 
     // ── Package management ─────────────────────────────────────────────────
     rpc PackageInstall (PackageRequest)       returns (stream PackageOutput);
@@ -50,6 +51,7 @@ enum ServiceActionType {
     SERVICE_ACTION_RESTART     = 3;
     SERVICE_ACTION_ENABLE      = 4;
     SERVICE_ACTION_DISABLE     = 5;
+    SERVICE_ACTION_RELOAD      = 6;
 }
 
 message ServiceActionRequest {
@@ -82,6 +84,17 @@ message ServiceLogsRequest {
 message LogLine {
     string line      = 1;
     int64  timestamp = 2; // Unix nanoseconds
+}
+
+message CommandExecuteRequest {
+    string   command = 1;
+    repeated string args = 2;
+}
+
+message CommandExecuteResponse {
+    int32  exit_code = 1;
+    string stdout    = 2;
+    string stderr    = 3;
 }
 
 // ─── Package management ────────────────────────────────────────────────────

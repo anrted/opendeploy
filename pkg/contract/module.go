@@ -193,8 +193,11 @@ type AgentClient interface {
 	ServiceRestart(ctx context.Context, name string) error
 	ServiceEnable(ctx context.Context, name string) error
 	ServiceDisable(ctx context.Context, name string) error
+	ServiceReload(ctx context.Context, name string) error
 	ServiceStatus(ctx context.Context, name string) (*ServiceStatus, error)
 	ServiceLogs(ctx context.Context, name string, lines int) ([]string, error)
+
+	CommandExecute(ctx context.Context, command string, args ...string) (int, string, string, error)
 
 	// Package management
 	PackageInstall(ctx context.Context, pkg string) (<-chan string, error)
@@ -229,12 +232,18 @@ const (
 )
 
 type SiteSpec struct {
-	Domain     string
-	RootPath   string
-	PHPVersion string
-	SSLEnabled bool
-	SSLCert    string
-	SSLKey     string
+	ID            string
+	Name          string
+	PrimaryDomain string
+	Aliases       []string
+	RootPath      string
+	AppType       string // "php", "static", "proxy"
+	AppVersion    string // e.g. "8.3"
+	ProxyTarget   string
+	SSLEnabled    bool
+	SSLCert       string
+	SSLKey        string
+	ForceHTTPS    bool
 }
 
 // ServiceStatus represents the runtime state of a systemd service.

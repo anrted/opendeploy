@@ -22,6 +22,7 @@ const (
 	AgentService_ServiceAction_FullMethodName  = "/agent.v1.AgentService/ServiceAction"
 	AgentService_ServiceStatus_FullMethodName  = "/agent.v1.AgentService/ServiceStatus"
 	AgentService_ServiceLogs_FullMethodName    = "/agent.v1.AgentService/ServiceLogs"
+	AgentService_CommandExecute_FullMethodName = "/agent.v1.AgentService/CommandExecute"
 	AgentService_PackageInstall_FullMethodName = "/agent.v1.AgentService/PackageInstall"
 	AgentService_PackageRemove_FullMethodName  = "/agent.v1.AgentService/PackageRemove"
 	AgentService_PackageUpdate_FullMethodName  = "/agent.v1.AgentService/PackageUpdate"
@@ -50,6 +51,7 @@ type AgentServiceClient interface {
 	ServiceAction(ctx context.Context, in *ServiceActionRequest, opts ...grpc.CallOption) (*ServiceActionResponse, error)
 	ServiceStatus(ctx context.Context, in *ServiceStatusRequest, opts ...grpc.CallOption) (*ServiceStatusResponse, error)
 	ServiceLogs(ctx context.Context, in *ServiceLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogLine], error)
+	CommandExecute(ctx context.Context, in *CommandExecuteRequest, opts ...grpc.CallOption) (*CommandExecuteResponse, error)
 	// ── Package management ─────────────────────────────────────────────────
 	PackageInstall(ctx context.Context, in *PackageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PackageOutput], error)
 	PackageRemove(ctx context.Context, in *PackageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PackageOutput], error)
@@ -119,6 +121,16 @@ func (c *agentServiceClient) ServiceLogs(ctx context.Context, in *ServiceLogsReq
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_ServiceLogsClient = grpc.ServerStreamingClient[LogLine]
+
+func (c *agentServiceClient) CommandExecute(ctx context.Context, in *CommandExecuteRequest, opts ...grpc.CallOption) (*CommandExecuteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandExecuteResponse)
+	err := c.cc.Invoke(ctx, AgentService_CommandExecute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *agentServiceClient) PackageInstall(ctx context.Context, in *PackageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PackageOutput], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -299,6 +311,7 @@ type AgentServiceServer interface {
 	ServiceAction(context.Context, *ServiceActionRequest) (*ServiceActionResponse, error)
 	ServiceStatus(context.Context, *ServiceStatusRequest) (*ServiceStatusResponse, error)
 	ServiceLogs(*ServiceLogsRequest, grpc.ServerStreamingServer[LogLine]) error
+	CommandExecute(context.Context, *CommandExecuteRequest) (*CommandExecuteResponse, error)
 	// ── Package management ─────────────────────────────────────────────────
 	PackageInstall(*PackageRequest, grpc.ServerStreamingServer[PackageOutput]) error
 	PackageRemove(*PackageRequest, grpc.ServerStreamingServer[PackageOutput]) error
@@ -338,6 +351,9 @@ func (UnimplementedAgentServiceServer) ServiceStatus(context.Context, *ServiceSt
 }
 func (UnimplementedAgentServiceServer) ServiceLogs(*ServiceLogsRequest, grpc.ServerStreamingServer[LogLine]) error {
 	return status.Error(codes.Unimplemented, "method ServiceLogs not implemented")
+}
+func (UnimplementedAgentServiceServer) CommandExecute(context.Context, *CommandExecuteRequest) (*CommandExecuteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CommandExecute not implemented")
 }
 func (UnimplementedAgentServiceServer) PackageInstall(*PackageRequest, grpc.ServerStreamingServer[PackageOutput]) error {
 	return status.Error(codes.Unimplemented, "method PackageInstall not implemented")
@@ -448,6 +464,24 @@ func _AgentService_ServiceLogs_Handler(srv interface{}, stream grpc.ServerStream
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_ServiceLogsServer = grpc.ServerStreamingServer[LogLine]
+
+func _AgentService_CommandExecute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommandExecuteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).CommandExecute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_CommandExecute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).CommandExecute(ctx, req.(*CommandExecuteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _AgentService_PackageInstall_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(PackageRequest)
@@ -694,6 +728,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ServiceStatus",
 			Handler:    _AgentService_ServiceStatus_Handler,
+		},
+		{
+			MethodName: "CommandExecute",
+			Handler:    _AgentService_CommandExecute_Handler,
 		},
 		{
 			MethodName: "PackageStatus",

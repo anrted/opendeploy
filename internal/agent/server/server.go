@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	executor "github.com/anrted/opendeploy/internal/agent/executor"
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
 	"github.com/anrted/opendeploy/internal/agent/packages"
@@ -28,10 +29,11 @@ type Service struct {
 	fs      *filesystem.Manager
 	fw      *firewall.UFWManager
 	stats   *stats.Collector
+	shell   *executor.Shell
 }
 
-func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager *firewall.UFWManager, collector *stats.Collector) *Service {
-	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector}
+func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager *firewall.UFWManager, collector *stats.Collector, shell *executor.Shell) *Service {
+	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector, shell: shell}
 }
 
 
@@ -55,6 +57,8 @@ func (s *Service) ServiceAction(ctx context.Context, req *agentv1.ServiceActionR
 		err = s.systemd.Enable(ctx, req.ServiceName)
 	case agentv1.ServiceActionType_SERVICE_ACTION_DISABLE:
 		err = s.systemd.Disable(ctx, req.ServiceName)
+	case agentv1.ServiceActionType_SERVICE_ACTION_RELOAD:
+		err = s.systemd.Reload(ctx, req.ServiceName)
 	default:
 		return nil, status.Error(codes.InvalidArgument, "unsupported service action")
 	}
@@ -87,6 +91,21 @@ func (s *Service) ServiceLogs(req *agentv1.ServiceLogsRequest, stream grpc.Serve
 		}
 	}
 	return nil
+}
+
+func (s *Service) CommandExecute(ctx context.Context, req *agentv1.CommandExecuteRequest) (*agentv1.CommandExecuteResponse, error) {
+	if req.GetCommand() == "" {
+		return nil, status.Error(codes.InvalidArgument, "command is required")
+	}
+	res, err := s.shell.Run(ctx, req.GetCommand(), req.GetArgs()...)
+	if err != nil && res == nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.CommandExecuteResponse{
+		ExitCode: int32(res.ExitCode),
+		Stdout:   res.Stdout,
+		Stderr:   res.Stderr,
+	}, nil
 }
 
 func (s *Service) PackageInstall(req *agentv1.PackageRequest, stream grpc.ServerStreamingServer[agentv1.PackageOutput]) error {

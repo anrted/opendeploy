@@ -69,6 +69,15 @@ func (m *Manager) Restart(ctx context.Context, name string) error {
 	return nil
 }
 
+// Reload reloads a systemd service.
+func (m *Manager) Reload(ctx context.Context, name string) error {
+	_, err := m.shell.Run(ctx, "systemctl", "reload", name)
+	if err != nil {
+		return fmt.Errorf("systemd: reload %s: %w", name, err)
+	}
+	return nil
+}
+
 // Enable enables a service for automatic startup.
 func (m *Manager) Enable(ctx context.Context, name string) error {
 	_, err := m.shell.Run(ctx, "systemctl", "enable", name)
