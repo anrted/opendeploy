@@ -33,6 +33,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "systemctl", AllowedArgs: []string{
 		"start", "stop", "restart", "enable", "disable",
 		"status", "is-active", "is-enabled", "daemon-reload",
+		"show", "-p", "SubState", "--value",
 	}},
 	{Binary: "journalctl", AllowedArgs: []string{"-u", "-n", "--no-pager", "-o", "short", "short-precise"}},
 	{Binary: "ufw", AllowedArgs: []string{"allow", "deny", "delete", "status", "numbered", "enable", "disable"}},
