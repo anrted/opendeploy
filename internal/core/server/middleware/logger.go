@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"bufio"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 )
@@ -37,4 +40,30 @@ type loggingResponseWriter struct {
 func (lw *loggingResponseWriter) WriteHeader(code int) {
 	lw.statusCode = code
 	lw.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap allows net/http.ResponseController to reach the original writer.
+func (lw *loggingResponseWriter) Unwrap() http.ResponseWriter {
+	return lw.ResponseWriter
+}
+
+// Hijack preserves WebSocket and other HTTP upgrade support through the
+// logging wrapper.
+func (lw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := lw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("underlying response writer does not support hijacking")
+	}
+	conn, rw, err := hijacker.Hijack()
+	if err == nil {
+		lw.statusCode = http.StatusSwitchingProtocols
+	}
+	return conn, rw, err
+}
+
+// Flush preserves streaming response support through the logging wrapper.
+func (lw *loggingResponseWriter) Flush() {
+	if flusher, ok := lw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
