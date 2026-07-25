@@ -197,6 +197,20 @@ func (m *Module) handleDelete(wAny interface{}, rAny interface{}) {
 		return
 	}
 
+	// Fetch rules to check if the user is trying to delete protected ports
+	rules, err := m.deps.Agent.FirewallList(r.Context())
+	if err == nil {
+		for _, rule := range rules {
+			if rule.ID == req.ID {
+				if rule.Port == "443" || rule.Port == "5888" {
+					m.writeError(w, fmt.Errorf("deleting rule for port %s is forbidden", rule.Port))
+					return
+				}
+				break
+			}
+		}
+	}
+
 	if err := m.deps.Agent.FirewallDelete(r.Context(), req.ID); err != nil {
 		m.writeError(w, err)
 		return
