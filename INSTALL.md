@@ -3,13 +3,22 @@
 OpenDeploy is early alpha software. Use it on a test server, not a production
 host.
 
-## Build requirements
+## Quick Installation (Ubuntu 22.04+)
 
-- Linux
-- Go 1.25+
-- Node.js 22+ and npm
-- GCC and SQLite development support for CGO
-- systemd
+The easiest way to install OpenDeploy is using the automated installation script. It downloads the pre-compiled binaries, creates the necessary users and directories, sets up systemd services, and generates the initial JWT secret.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | sudo bash
+```
+
+To install the latest development (nightly) build instead of the stable release:
+```bash
+curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | sudo bash -s -- --dev
+```
+
+## Build from Source
+
+If you prefer to compile from source, you need Go 1.23+ and Node.js.
 
 ```bash
 git clone https://github.com/anrted/opendeploy.git
@@ -19,36 +28,27 @@ make build
 sudo make install
 ```
 
-`make build` only compiles the project. `sudo make install` installs and starts
-the systemd services, then prints the panel URL and initial administrator
-credentials.
+`make build` compiles the Go binaries and the Vue 3 frontend. `sudo make install` installs the binaries, configures the systemd services, and starts the panel.
 
-`make build` checks the required commands and their supported versions first.
-On Ubuntu and Debian it uses APT (through `sudo` when needed) to install
-missing packages. Node.js older than 22.12 is upgraded to Node.js 22 from the
-signed NodeSource APT repository. On other distributions the check reports
-what must be upgraded without modifying the system.
+## Initial Setup
 
-The installer creates the locked `opendeploy` service account, secures the
-Agent Unix socket through the `opendeploy` group, generates both required
-secrets, enables and starts Agent before Core, and prints the one-time initial
-administrator password. Store it securely.
+After installation, access the panel in your browser:
+```
+http://<YOUR_SERVER_IP>:5888
+```
 
-The initial username is `admin`. Remove `OD_ADMIN_PASSWORD` from the environment
-file after the first successful startup. Place OpenDeploy behind an HTTPS
-reverse proxy before exposing it outside a trusted network.
+You will be greeted by the initial setup wizard to create your administrator account.
 
-The installer records the canonical source checkout in
-`/etc/opendeploy/source-dir` and enables `opendeploy-update.path`. Administrators
-can then apply a clean fast-forward update from the trusted GitHub repository
-in Settings. Existing credentials, configuration, and SQLite data are
-preserved.
+## Updates
 
-To uninstall while preserving configuration and data:
+OpenDeploy includes an automated updater. You can apply stable or development updates directly from the Settings page in the web interface.
+
+## Uninstallation
+
+To uninstall OpenDeploy:
 
 ```bash
 sudo sh deployments/uninstall.sh
 ```
 
-Use `--purge` only when all OpenDeploy configuration and data should be
-permanently removed.
+Use `--purge` only when all OpenDeploy configuration and data should be permanently removed.

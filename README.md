@@ -96,9 +96,14 @@ make dev-core
 | Module | Description | Status |
 |---|---|---|
 | Nginx | Web server & transactional vhost management | Alpha |
+| Firewall | UFW-based firewall management | Alpha |
+| Certbot | SSL certificate management | Alpha |
 | PHP | PHP-FPM package lifecycle foundation | In progress |
 | Node.js | Runtime package lifecycle foundation | In progress |
-| Git | Package lifecycle foundation | In progress |
+| Git | Package lifecycle foundation | Alpha |
+| MySQL | Relational database management | Planned |
+| PostgreSQL | Relational database management | Planned |
+| Apache | Web server | Planned |
 
 ---
 

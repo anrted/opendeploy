@@ -4,11 +4,11 @@ OpenDeploy is currently an early alpha foundation.
 
 ## Alpha
 
-- Critical-action confirmation flow
-- Frontend migration to TypeScript
-- Embed the production SPA in the Core binary
-- Integration tests on supported Linux distributions
-- Secure installer and upgrade workflow
+- [ ] Critical-action confirmation flow
+- [ ] Frontend migration to TypeScript
+- [x] Embed the production SPA in the Core binary
+- [ ] Integration tests on supported Linux distributions
+- [x] Secure installer and upgrade workflow
 
 ## Beta
 
