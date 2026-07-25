@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -146,8 +145,12 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 
 func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
 	email := m.deps.Config.Get("email", "")
+
+	var emailFlag string
 	if email == "" {
-		return apperrors.InvalidInput("Let's Encrypt email must be configured in module settings before obtaining certificates")
+		emailFlag = "--register-unsafely-without-email"
+	} else {
+		emailFlag = fmt.Sprintf("-m %s", email)
 	}
 
 	svcName := fmt.Sprintf("certbot-obtain-%s.service", domain)
@@ -160,8 +163,8 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s -m %s --agree-tos -n
-`, domain, webroot, domain, email)
+ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
+`, domain, webroot, domain, emailFlag)
 
 	if err := m.deps.Agent.FileWrite(ctx, svcPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("certbot: write systemd service: %w", err)
