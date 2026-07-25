@@ -98,6 +98,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	if err := s.agent.DirCreate(ctx, site.RootPath, 0o755); err != nil {
 		return nil, apperrors.Internal("failed to create site root directory", err)
 	}
+	// Temporarily hardcode UID/GID 33 (www-data on Debian) so PHP scripts can write to the directory.
+	// In the future, this should use per-site isolated Linux users.
+	_ = s.agent.FileChown(ctx, site.RootPath, 33, 33)
 
 	needsCertbot := site.SSL != nil && site.SSL.Provider == "certbot"
 
