@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/updater"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 )
 
@@ -122,12 +123,13 @@ func (s *Service) Delete(ctx context.Context, key string) error {
 
 // Handler exposes settings over HTTP.
 type Handler struct {
-	svc *Service
+	svc     *Service
+	updates *updater.Service
 }
 
 // NewHandler constructs a settings Handler.
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, updates *updater.Service) *Handler {
+	return &Handler{svc: svc, updates: updates}
 }
 
 // List handles GET /api/v1/settings?ns=core
@@ -160,6 +162,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, map[string]string{"message": "settings updated"})
+}
+
+// UpdateStatus handles GET /api/v1/updates.
+func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.updates.Check(r.Context())
+	if err != nil {
+		writeError(w, apperrors.Internal("check for updates", err))
+		return
+	}
+	respond(w, http.StatusOK, status)
 }
 
 // ─── helpers ───────────────────────────────────────────────────────────────

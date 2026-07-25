@@ -64,13 +64,16 @@ func (s *Service) List(ctx context.Context) ([]ModuleView, error) {
 		if !ok {
 			rec = Record{ID: m.ID(), Name: m.Name(), State: StateAvailable}
 		}
+		state, installedVersion, status := s.runtimeState(ctx, m, rec.State)
 		views = append(views, ModuleView{
-			ID:          m.ID(),
-			Name:        m.Name(),
-			Version:     m.Version(),
-			Description: m.Description(),
-			State:       rec.State,
-			InstalledAt: rec.InstalledAt,
+			ID:               m.ID(),
+			Name:             m.Name(),
+			Version:          m.Version(),
+			InstalledVersion: installedVersion,
+			Description:      m.Description(),
+			State:            state,
+			InstalledAt:      rec.InstalledAt,
+			Status:           status,
 		})
 	}
 	return views, nil
@@ -87,19 +90,17 @@ func (s *Service) Get(ctx context.Context, id string) (*ModuleView, error) {
 		rec = &Record{ID: id, Name: m.Name(), State: StateAvailable}
 	}
 
-	var status *contract.ModuleStatus
-	if rec.State == StateEnabled {
-		status, _ = m.Status(ctx)
-	}
+	state, installedVersion, status := s.runtimeState(ctx, m, rec.State)
 
 	return &ModuleView{
-		ID:          m.ID(),
-		Name:        m.Name(),
-		Version:     m.Version(),
-		Description: m.Description(),
-		State:       rec.State,
-		InstalledAt: rec.InstalledAt,
-		Status:      status,
+		ID:               m.ID(),
+		Name:             m.Name(),
+		Version:          m.Version(),
+		InstalledVersion: installedVersion,
+		Description:      m.Description(),
+		State:            state,
+		InstalledAt:      rec.InstalledAt,
+		Status:           status,
 	}, nil
 }
 
@@ -223,13 +224,35 @@ func (s *Service) GetJob(ctx context.Context, jobID string) (*Job, error) {
 
 // ModuleView is the API response DTO for a module.
 type ModuleView struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Version     string                 `json:"version"`
-	Description string                 `json:"description"`
-	State       State                  `json:"state"`
-	InstalledAt *time.Time             `json:"installed_at,omitempty"`
-	Status      *contract.ModuleStatus `json:"status,omitempty"`
+	ID               string                 `json:"id"`
+	Name             string                 `json:"name"`
+	Version          string                 `json:"version"`
+	InstalledVersion string                 `json:"installed_version,omitempty"`
+	Description      string                 `json:"description"`
+	State            State                  `json:"state"`
+	InstalledAt      *time.Time             `json:"installed_at,omitempty"`
+	Status           *contract.ModuleStatus `json:"status,omitempty"`
+}
+
+func (s *Service) runtimeState(ctx context.Context, m contract.Module, stored State) (State, string, *contract.ModuleStatus) {
+	if stored == StateInstalling || stored == StateRemoving {
+		return stored, "", nil
+	}
+	status, err := m.Status(ctx)
+	if err != nil {
+		s.logger.Warn("module service: runtime status failed", "module", m.ID(), "error", err)
+		return stored, "", nil
+	}
+	if status == nil {
+		return stored, "", nil
+	}
+	state := State(status.State)
+	switch state {
+	case StateAvailable, StateInstalled, StateEnabled, StateDisabled, StateError:
+		return state, status.InstalledVersion, status
+	default:
+		return stored, status.InstalledVersion, status
+	}
 }
 
 // ─── internal helpers ──────────────────────────────────────────────────────

@@ -63,7 +63,7 @@ func (reg *Registry) IDs() []string {
 
 // ─── Loader ────────────────────────────────────────────────────────────────
 
-// Loader bootstraps registered modules based on their database state.
+// Loader initializes registered modules and their persisted metadata.
 type Loader struct {
 	registry *Registry
 	repo     Repository
@@ -75,8 +75,9 @@ func NewLoader(registry *Registry, repo Repository, logger *slog.Logger) *Loader
 	return &Loader{registry: registry, repo: repo, logger: logger}
 }
 
-// Bootstrap seeds the database with records for all registered modules
-// and calls Module.Bootstrap for each module that is in "enabled" state.
+// Bootstrap seeds the database and injects dependencies into every module.
+// Available modules also need Agent access to detect externally installed
+// software.
 func (l *Loader) Bootstrap(ctx context.Context, deps contract.ModuleDeps) error {
 	for _, m := range l.registry.All() {
 		// Ensure a database record exists for every registered module.
@@ -98,16 +99,27 @@ func (l *Loader) Bootstrap(ctx context.Context, deps contract.ModuleDeps) error 
 			existing = rec
 		}
 
-		// Bootstrap only enabled modules.
-		if existing.State != StateEnabled {
-			l.logger.Info("module loader: skipping bootstrap (not enabled)", "module", m.ID(), "state", existing.State)
-			continue
-		}
-
-		l.logger.Info("module loader: bootstrapping enabled module", "module", m.ID())
+		l.logger.Info("module loader: bootstrapping module", "module", m.ID(), "state", existing.State)
 		if err := m.Bootstrap(deps); err != nil {
 			l.logger.Error("module loader: bootstrap failed", "module", m.ID(), "error", err)
 			_ = l.repo.UpdateState(ctx, m.ID(), StateError)
+			continue
+		}
+		if existing.State == StateAvailable {
+			status, err := m.Status(ctx)
+			if err != nil {
+				l.logger.Warn("module loader: detect runtime state", "module", m.ID(), "error", err)
+				continue
+			}
+			if status != nil {
+				detected := State(status.State)
+				switch detected {
+				case StateInstalled, StateEnabled, StateDisabled:
+					if err := l.repo.UpdateState(ctx, m.ID(), detected); err != nil {
+						l.logger.Warn("module loader: persist detected state", "module", m.ID(), "error", err)
+					}
+				}
+			}
 		}
 	}
 	return nil
