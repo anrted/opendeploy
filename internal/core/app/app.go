@@ -31,6 +31,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/service"
 	"github.com/anrted/opendeploy/internal/core/settings"
 	"github.com/anrted/opendeploy/internal/core/site"
+	"github.com/anrted/opendeploy/internal/core/updater"
 	"github.com/anrted/opendeploy/internal/platform/config"
 	"github.com/anrted/opendeploy/internal/platform/database"
 	"github.com/anrted/opendeploy/internal/platform/database/sqlite"
@@ -38,6 +39,7 @@ import (
 	"github.com/anrted/opendeploy/internal/platform/logger"
 	"github.com/anrted/opendeploy/internal/platform/websocket"
 	"github.com/anrted/opendeploy/pkg/contract"
+	"github.com/anrted/opendeploy/pkg/version"
 )
 
 // App is the fully wired OpenDeploy Core application.
@@ -187,6 +189,7 @@ func (a *App) Bootstrap(ctx context.Context) error {
 
 	// ── Settings ──────────────────────────────────────────────────────────
 	settingsSvc := settings.NewService(db.DB, a.logger)
+	updateSvc := updater.NewService(version.Version)
 
 	// ── HTTP Server ───────────────────────────────────────────────────────
 	authHandler := auth.NewHandler(authSvc)
@@ -194,7 +197,7 @@ func (a *App) Bootstrap(ctx context.Context) error {
 	dashboardHandler := dashboard.NewHandler(dashboardSvc, a.hub, a.logger)
 	siteHandler := site.NewHandler(siteSvc)
 	svcHandler := service.NewHandler(svcSvc)
-	settingsHandler := settings.NewHandler(settingsSvc)
+	settingsHandler := settings.NewHandler(settingsSvc, updateSvc)
 
 	srv := server.New(server.Dependencies{
 		Config:           a.cfg,

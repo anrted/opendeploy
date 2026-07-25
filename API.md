@@ -145,6 +145,28 @@ Unauthenticated health check for load balancer probes.
 
 ---
 
+## Project Updates
+
+### GET /updates
+
+Checks the latest published release from `anrted/opendeploy` on GitHub and
+compares it with the running Core version.
+
+```json
+{
+  "current_version": "v0.1.0-alpha-7-gccb2ac8",
+  "latest_version": "v0.1.0-alpha",
+  "update_available": false,
+  "release_url": "https://github.com/anrted/opendeploy/releases/tag/v0.1.0-alpha"
+}
+```
+
+The endpoint is read-only. Installing an update is deliberately not performed
+by Core; privileged self-update will require signed release artifacts and a
+typed Agent operation.
+
+---
+
 ## Error Format
 
 All errors follow a consistent format:
