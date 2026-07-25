@@ -36,7 +36,8 @@ func (m *UFWManager) Status(ctx context.Context) (*agentv1.FirewallStatusRespons
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "Status:") {
-			status.Active = strings.Contains(line, "active")
+			val := strings.TrimSpace(strings.TrimPrefix(line, "Status:"))
+			status.Active = val == "active"
 		} else if strings.HasPrefix(line, "Logging:") {
 			parts := strings.Split(line, " ")
 			if len(parts) > 1 {
