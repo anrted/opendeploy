@@ -41,7 +41,7 @@ func TestApplyCreatesRestrictedUpdateRequest(t *testing.T) {
 	service.cached = &Status{UpdateAvailable: true}
 	service.cachedAt = time.Now()
 
-	if err := service.Apply(context.Background()); err != nil {
+	if err := service.Apply(context.Background(), "dev"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if agent.path != updateRequest {

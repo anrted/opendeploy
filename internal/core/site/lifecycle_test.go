@@ -7,19 +7,36 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/anrted/opendeploy/internal/core/module"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
-type lifecycleAgent struct {
-	contract.AgentClient
-	actions []contract.NginxSiteAction
+type mockWebServer struct {
+	actions []contract.SiteAction
 	fail    error
 }
 
-func (a *lifecycleAgent) NginxSiteApply(_ context.Context, action contract.NginxSiteAction, _ contract.NginxSiteSpec) error {
-	a.actions = append(a.actions, action)
-	err := a.fail
-	a.fail = nil
+func (m *mockWebServer) ID() string          { return "nginx" }
+func (m *mockWebServer) Name() string        { return "Mock Nginx" }
+func (m *mockWebServer) Version() string     { return "1.0" }
+func (m *mockWebServer) Description() string { return "Mock" }
+func (m *mockWebServer) Bootstrap(deps contract.ModuleDeps) error { return nil }
+func (m *mockWebServer) Shutdown(ctx context.Context) error { return nil }
+func (m *mockWebServer) RegisterRoutes(r contract.Router) {}
+func (m *mockWebServer) RegisterMenuItems() []contract.MenuItem { return nil }
+func (m *mockWebServer) RegisterSettings() []contract.SettingSpec { return nil }
+func (m *mockWebServer) Install(ctx context.Context) error { return nil }
+func (m *mockWebServer) Uninstall(ctx context.Context) error { return nil }
+func (m *mockWebServer) Enable(ctx context.Context) error { return nil }
+func (m *mockWebServer) Disable(ctx context.Context) error { return nil }
+func (m *mockWebServer) Restart(ctx context.Context) error { return nil }
+func (m *mockWebServer) Status(ctx context.Context) (*contract.ModuleStatus, error) { return nil, nil }
+func (m *mockWebServer) HealthCheck(ctx context.Context) (*contract.HealthReport, error) { return nil, nil }
+
+func (m *mockWebServer) ApplySite(_ context.Context, action contract.SiteAction, _ contract.SiteSpec) error {
+	m.actions = append(m.actions, action)
+	err := m.fail
+	m.fail = nil
 	return err
 }
 
@@ -38,10 +55,19 @@ func (r *lifecycleRepo) Create(_ context.Context, site *Site) error {
 	return nil
 }
 
+type mockAgent struct {
+	contract.AgentClient
+}
+func (m *mockAgent) DirCreate(ctx context.Context, path string, mode uint32) error { return nil }
+func (m *mockAgent) FileChown(ctx context.Context, path string, uid, gid int) error { return nil }
+
 func TestCreateCompensatesNginxWhenPersistenceFails(t *testing.T) {
 	repo := &lifecycleRepo{fail: errors.New("database unavailable")}
-	agent := &lifecycleAgent{}
-	service := NewService(repo, nil, agent, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	agent := &mockAgent{}
+	mockWeb := &mockWebServer{}
+	registry := module.NewRegistry()
+	registry.Register(mockWeb)
+	service := NewService(repo, nil, agent, registry, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	_, err := service.Create(context.Background(), CreateRequest{
 		Domain: "example.com", RootPath: "/var/www/example", ModuleID: "nginx",
@@ -49,15 +75,18 @@ func TestCreateCompensatesNginxWhenPersistenceFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("Create succeeded, want repository error")
 	}
-	if got, want := agent.actions, []contract.NginxSiteAction{contract.NginxSiteUpsert, contract.NginxSiteDelete}; !equalActions(got, want) {
+	if got, want := mockWeb.actions, []contract.SiteAction{contract.SiteUpsert, contract.SiteDelete}; !equalActions(got, want) {
 		t.Fatalf("agent actions = %v, want %v", got, want)
 	}
 }
 
 func TestCreateDoesNotPersistWhenNginxValidationFails(t *testing.T) {
 	repo := &lifecycleRepo{}
-	agent := &lifecycleAgent{fail: errors.New("nginx -t failed")}
-	service := NewService(repo, nil, agent, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	agent := &mockAgent{}
+	mockWeb := &mockWebServer{fail: errors.New("nginx -t failed")}
+	registry := module.NewRegistry()
+	registry.Register(mockWeb)
+	service := NewService(repo, nil, agent, registry, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	_, err := service.Create(context.Background(), CreateRequest{
 		Domain: "example.com", RootPath: "/var/www/example", ModuleID: "nginx",
@@ -68,12 +97,12 @@ func TestCreateDoesNotPersistWhenNginxValidationFails(t *testing.T) {
 	if repo.created != nil {
 		t.Fatal("site was persisted after nginx validation failure")
 	}
-	if got, want := agent.actions, []contract.NginxSiteAction{contract.NginxSiteUpsert}; !equalActions(got, want) {
+	if got, want := mockWeb.actions, []contract.SiteAction{contract.SiteUpsert}; !equalActions(got, want) {
 		t.Fatalf("agent actions = %v, want %v", got, want)
 	}
 }
 
-func equalActions(left, right []contract.NginxSiteAction) bool {
+func equalActions(left, right []contract.SiteAction) bool {
 	if len(left) != len(right) {
 		return false
 	}
