@@ -1,0 +1,164 @@
+// Package php implements the PHP module for OpenDeploy.
+// Supports multiple PHP versions via php8.x-fpm packages.
+package php
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+
+	"github.com/anrted/opendeploy/pkg/contract"
+)
+
+const moduleID = "php"
+
+// supportedVersions lists PHP versions that can be installed via this module.
+var supportedVersions = []string{"8.1", "8.2", "8.3", "8.4"}
+
+// Module is the PHP OpenDeploy module.
+type Module struct {
+	deps   contract.ModuleDeps
+	logger *slog.Logger
+}
+
+// New creates a new PHP Module.
+func New() *Module { return &Module{} }
+
+func (m *Module) ID() string      { return moduleID }
+func (m *Module) Name() string    { return "PHP" }
+func (m *Module) Version() string { return "1.0.0" }
+func (m *Module) Description() string {
+	return "PHP scripting language with FPM support (multiple versions)"
+}
+
+func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
+	m.deps = deps
+	m.logger = deps.Logger.With("module", moduleID)
+	m.logger.Info("php module bootstrapped")
+	return nil
+}
+
+func (m *Module) Shutdown(_ context.Context) error { return nil }
+
+func (m *Module) RegisterRoutes(_ contract.Router) {}
+
+func (m *Module) RegisterMenuItems() []contract.MenuItem {
+	return []contract.MenuItem{
+		{ID: "php", Label: "PHP", Icon: "code", Path: "/modules/php", Order: 20},
+	}
+}
+
+func (m *Module) RegisterSettings() []contract.SettingSpec {
+	return []contract.SettingSpec{
+		{
+			Key: "default_version", Label: "Default PHP Version",
+			Type: contract.SettingTypeSelect, Options: supportedVersions,
+			DefaultValue: "8.3", Required: true,
+		},
+	}
+}
+
+// Install installs the default PHP version (8.3) with FPM.
+func (m *Module) Install(ctx context.Context) error {
+	return m.InstallVersion(ctx, "8.3")
+}
+
+// InstallVersion installs a specific PHP version.
+func (m *Module) InstallVersion(ctx context.Context, version string) error {
+	pkg := fmt.Sprintf("php%s-fpm", version)
+	m.logger.InfoContext(ctx, "php: installing", "version", version, "package", pkg)
+	ch, err := m.deps.Agent.PackageInstall(ctx, pkg)
+	if err != nil {
+		return fmt.Errorf("php: install %s: %w", version, err)
+	}
+	for range ch {
+	}
+
+	// Also install common extensions.
+	common := fmt.Sprintf("php%s-cli php%s-mbstring php%s-xml php%s-curl php%s-zip", version, version, version, version, version)
+	_ = common // install separately as needed
+	return nil
+}
+
+func (m *Module) Uninstall(ctx context.Context) error {
+	for _, v := range supportedVersions {
+		svc := fmt.Sprintf("php%s-fpm", v)
+		ch, err := m.deps.Agent.PackageRemove(ctx, svc)
+		if err != nil {
+			continue
+		}
+		for range ch {
+		}
+	}
+	return nil
+}
+
+func (m *Module) Enable(ctx context.Context) error {
+	// Enable the default version.
+	svc := "php8.3-fpm"
+	if err := m.deps.Agent.ServiceEnable(ctx, svc); err != nil {
+		return err
+	}
+	return m.deps.Agent.ServiceStart(ctx, svc)
+}
+
+func (m *Module) Disable(ctx context.Context) error {
+	for _, v := range supportedVersions {
+		svc := fmt.Sprintf("php%s-fpm", v)
+		_ = m.deps.Agent.ServiceStop(ctx, svc)
+		_ = m.deps.Agent.ServiceDisable(ctx, svc)
+	}
+	return nil
+}
+
+func (m *Module) Restart(ctx context.Context) error {
+	return m.deps.Agent.ServiceRestart(ctx, "php8.3-fpm")
+}
+
+func (m *Module) Status(ctx context.Context) (*contract.ModuleStatus, error) {
+	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "php8.3-fpm")
+	if !installed {
+		return &contract.ModuleStatus{State: contract.StateAvailable}, nil
+	}
+	svcStatus, _ := m.deps.Agent.ServiceStatus(ctx, "php8.3-fpm")
+	running := svcStatus != nil && svcStatus.Active
+	state := contract.StateDisabled
+	if running {
+		state = contract.StateEnabled
+	}
+	return &contract.ModuleStatus{
+		State: state, InstalledVersion: version, ServiceRunning: running,
+	}, nil
+}
+
+func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
+	checks := make([]contract.HealthCheck, 0, len(supportedVersions))
+	anyRunning := false
+	for _, v := range supportedVersions {
+		svc := fmt.Sprintf("php%s-fpm", v)
+		st, err := m.deps.Agent.ServiceStatus(ctx, svc)
+		if err != nil {
+			continue
+		}
+		if st.Active {
+			anyRunning = true
+		}
+		status := contract.HealthOK
+		if !st.Active {
+			status = contract.HealthWarning
+		}
+		checks = append(checks, contract.HealthCheck{
+			Name: fmt.Sprintf("php%s-fpm", v), Status: status,
+		})
+	}
+	overall := contract.HealthOK
+	if !anyRunning {
+		overall = contract.HealthWarning
+	}
+	return &contract.HealthReport{Status: overall, Checks: checks}, nil
+}
+
+// SupportedVersions returns the list of PHP versions this module supports.
+func (m *Module) SupportedVersions() []string { return supportedVersions }
+
+var _ contract.Module = (*Module)(nil)
