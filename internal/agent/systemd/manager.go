@@ -37,7 +37,12 @@ func NewManager(shell *executor.Shell, logger *slog.Logger) *Manager {
 func (m *Manager) Start(ctx context.Context, name string) error {
 	_, err := m.shell.Run(ctx, "systemctl", "start", name)
 	if err != nil {
-		return fmt.Errorf("systemd: start %s: %w", name, err)
+		// If it's a newly created service, systemd might need a reload.
+		_, _ = m.shell.Run(ctx, "systemctl", "daemon-reload")
+		_, errRetry := m.shell.Run(ctx, "systemctl", "start", name)
+		if errRetry != nil {
+			return fmt.Errorf("systemd: start %s: %w", name, errRetry)
+		}
 	}
 	return nil
 }
@@ -55,7 +60,11 @@ func (m *Manager) Stop(ctx context.Context, name string) error {
 func (m *Manager) Restart(ctx context.Context, name string) error {
 	_, err := m.shell.Run(ctx, "systemctl", "restart", name)
 	if err != nil {
-		return fmt.Errorf("systemd: restart %s: %w", name, err)
+		_, _ = m.shell.Run(ctx, "systemctl", "daemon-reload")
+		_, errRetry := m.shell.Run(ctx, "systemctl", "restart", name)
+		if errRetry != nil {
+			return fmt.Errorf("systemd: restart %s: %w", name, errRetry)
+		}
 	}
 	return nil
 }
@@ -64,7 +73,11 @@ func (m *Manager) Restart(ctx context.Context, name string) error {
 func (m *Manager) Enable(ctx context.Context, name string) error {
 	_, err := m.shell.Run(ctx, "systemctl", "enable", name)
 	if err != nil {
-		return fmt.Errorf("systemd: enable %s: %w", name, err)
+		_, _ = m.shell.Run(ctx, "systemctl", "daemon-reload")
+		_, errRetry := m.shell.Run(ctx, "systemctl", "enable", name)
+		if errRetry != nil {
+			return fmt.Errorf("systemd: enable %s: %w", name, errRetry)
+		}
 	}
 	return nil
 }
