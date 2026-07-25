@@ -21,6 +21,9 @@
         </template>
       </div>
       <div class="flex items-center gap-3">
+        <button @click="createFolder" class="btn-secondary">
+          New Folder
+        </button>
         <label class="btn-primary cursor-pointer">
           <input type="file" class="hidden" @change="uploadFile" />
           {{ $t('sites.fileManager.upload') || 'Upload File' }}
@@ -165,6 +168,21 @@ async function uploadFile(event) {
     error.value = apiErrorMessage(e, 'Upload failed')
   } finally {
     event.target.value = '' // reset input
+  }
+}
+
+async function createFolder() {
+  const folderName = prompt('Enter new folder name:')
+  if (!folderName || !folderName.trim()) return
+  error.value = ''
+  
+  const createPath = currentPath.value === '/' ? '/' + folderName.trim() : currentPath.value + '/' + folderName.trim()
+  
+  try {
+    await api.post(`/sites/${props.site.id}/directory`, { path: createPath })
+    refresh()
+  } catch (e) {
+    error.value = apiErrorMessage(e, 'Failed to create directory')
   }
 }
 

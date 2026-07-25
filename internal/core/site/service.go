@@ -347,6 +347,17 @@ func (s *Service) WriteFile(ctx context.Context, siteID, relativePath string, co
 	return s.agent.FileWrite(ctx, absPath, content, 0o644)
 }
 
+func (s *Service) CreateDirectory(ctx context.Context, siteID, relativePath string) error {
+	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
+	if err != nil {
+		return err
+	}
+	if s.agent == nil {
+		return fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.DirCreate(ctx, absPath, 0o755)
+}
+
 func (s *Service) DeleteFile(ctx context.Context, siteID, relativePath string) error {
 	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
 	if err != nil {

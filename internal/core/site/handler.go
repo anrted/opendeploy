@@ -196,6 +196,31 @@ func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]string{"message": "file deleted successfully"})
 }
 
+// CreateDirectory handles POST /api/v1/sites/{id}/directory
+func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	
+	// We read path from JSON body {"path": "/foo"} or query params
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, apperrors.InvalidInput("invalid json body"))
+		return
+	}
+	
+	if req.Path == "" {
+		writeError(w, apperrors.InvalidInput("path is required"))
+		return
+	}
+	
+	if err := h.service.CreateDirectory(r.Context(), id, req.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusCreated, map[string]string{"message": "directory created successfully"})
+}
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 func principalOrEmpty(r *http.Request) *auth.Principal {

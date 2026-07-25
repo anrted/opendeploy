@@ -118,13 +118,13 @@ func (m *Manager) Write(path string, content []byte, mode fs.FileMode) error {
 	return nil
 }
 
-// Delete removes a file or empty directory.
+// Delete removes a file or directory recursively.
 func (m *Manager) Delete(path string) error {
 	clean, err := m.validatePath(path)
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(clean); err != nil {
+	if err := os.RemoveAll(clean); err != nil {
 		return fmt.Errorf("filesystem: delete %q: %w", clean, err)
 	}
 	return nil
