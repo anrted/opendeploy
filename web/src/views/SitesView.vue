@@ -70,7 +70,7 @@
           </div>
           <div>
             <label class="label">Root Path</label>
-            <input id="site-root" v-model="form.root_path" class="input" placeholder="/var/www/example" required :disabled="isEditing" />
+            <input id="site-root" v-model="form.root_path" class="input opacity-75 cursor-not-allowed" placeholder="/var/www/example" required disabled />
           </div>
           <div>
             <label class="label">Web Server</label>
