@@ -225,6 +225,73 @@ func (s *Service) applyNginx(ctx context.Context, action contract.NginxSiteActio
 	return s.agent.NginxSiteApply(ctx, action, spec)
 }
 
+// ─── File Operations ───────────────────────────────────────────────────────
+
+func (s *Service) resolveFilePath(ctx context.Context, siteID, relativePath string) (string, error) {
+	site, err := s.repo.FindByID(ctx, siteID)
+	if err != nil {
+		return "", err
+	}
+	// Prevent path traversal.
+	cleanRelative := path.Clean("/" + relativePath)
+	absPath := path.Join(site.RootPath, cleanRelative)
+	
+	if !strings.HasPrefix(absPath, site.RootPath) {
+		return "", apperrors.InvalidInput("invalid file path")
+	}
+	return absPath, nil
+}
+
+func (s *Service) ListFiles(ctx context.Context, siteID, relativePath string) ([]contract.FileInfo, error) {
+	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
+	if err != nil {
+		return nil, err
+	}
+	if s.agent == nil {
+		return nil, fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.DirList(ctx, absPath)
+}
+
+func (s *Service) ReadFile(ctx context.Context, siteID, relativePath string) ([]byte, error) {
+	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
+	if err != nil {
+		return nil, err
+	}
+	if s.agent == nil {
+		return nil, fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.FileRead(ctx, absPath)
+}
+
+func (s *Service) WriteFile(ctx context.Context, siteID, relativePath string, content []byte) error {
+	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
+	if err != nil {
+		return err
+	}
+	if s.agent == nil {
+		return fmt.Errorf("agent is unavailable")
+	}
+	// Use 0644 for files.
+	return s.agent.FileWrite(ctx, absPath, content, 0o644)
+}
+
+func (s *Service) DeleteFile(ctx context.Context, siteID, relativePath string) error {
+	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
+	if err != nil {
+		return err
+	}
+	// Protect the root directory itself.
+	site, _ := s.repo.FindByID(ctx, siteID)
+	if absPath == site.RootPath {
+		return apperrors.InvalidInput("cannot delete site root directory")
+	}
+	if s.agent == nil {
+		return fmt.Errorf("agent is unavailable")
+	}
+	return s.agent.FileDelete(ctx, absPath)
+}
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 // validateDomain checks that domain is a non-empty, syntactically valid hostname.

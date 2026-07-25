@@ -142,6 +142,10 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermSiteDelete)).Delete("/sites/{id}", deps.SiteHandler.Delete)
 				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/enable", deps.SiteHandler.Enable)
 				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/disable", deps.SiteHandler.Disable)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteView)).Get("/sites/{id}/files", deps.SiteHandler.ListFiles)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteView)).Get("/sites/{id}/file", deps.SiteHandler.ReadFile)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/file", deps.SiteHandler.WriteFile)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Delete("/sites/{id}/file", deps.SiteHandler.DeleteFile)
 			}
 
 			// Service routes

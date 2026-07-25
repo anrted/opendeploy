@@ -49,6 +49,18 @@ const messages = {
         timeout: 'Automatic update check timed out (possibly running locally without systemd). Please update manually.',
         cancel: 'Cancel',
       }
+    },
+    // Sites
+    sites: {
+      fileManager: {
+        title: 'File Manager',
+        upload: 'Upload File',
+        name: 'Name',
+        size: 'Size',
+        modified: 'Modified',
+        loading: 'Loading...',
+        empty: 'Directory is empty',
+      }
     }
   },
   ru: {
@@ -98,6 +110,18 @@ const messages = {
         started: 'Обновление запущено. Панель перезагрузится после перезапуска сервисов.',
         timeout: 'Ожидание автоматического обновления истекло (возможно, запуск локально без systemd). Обновите панель вручную.',
         cancel: 'Отмена',
+      }
+    },
+    // Sites
+    sites: {
+      fileManager: {
+        title: 'Файловый менеджер',
+        upload: 'Загрузить файл',
+        name: 'Имя',
+        size: 'Размер',
+        modified: 'Изменен',
+        loading: 'Загрузка...',
+        empty: 'Папка пуста',
       }
     }
   }
