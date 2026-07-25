@@ -4,9 +4,11 @@ set -eu
 [ "$(id -u)" -eq 0 ] || { echo "uninstall.sh must run as root" >&2; exit 1; }
 case "${1:-}" in "" ) purge=0 ;; --purge ) purge=1 ;; * ) echo "usage: $0 [--purge]" >&2; exit 2 ;; esac
 
-systemctl disable --now opendeploy-core.service opendeploy-agent.service 2>/dev/null || true
+systemctl disable --now opendeploy-update.path opendeploy-core.service opendeploy-agent.service 2>/dev/null || true
+rm -f /etc/systemd/system/opendeploy-update.path /etc/systemd/system/opendeploy-update.service
 rm -f /etc/systemd/system/opendeploy-core.service /etc/systemd/system/opendeploy-agent.service
 rm -f /usr/local/bin/opendeploy-core /usr/local/bin/opendeploy-agent /usr/local/bin/opendeploy
+rm -f /usr/local/lib/opendeploy/update.sh
 systemctl daemon-reload
 
 if [ "$purge" -eq 1 ]; then

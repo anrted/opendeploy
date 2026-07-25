@@ -189,7 +189,7 @@ func (a *App) Bootstrap(ctx context.Context) error {
 
 	// ── Settings ──────────────────────────────────────────────────────────
 	settingsSvc := settings.NewService(db.DB, a.logger)
-	updateSvc := updater.NewService(version.Version)
+	updateSvc := updater.NewService(version.Version, version.Commit, agent)
 
 	// ── HTTP Server ───────────────────────────────────────────────────────
 	authHandler := auth.NewHandler(authSvc)

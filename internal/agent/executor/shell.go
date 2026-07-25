@@ -27,7 +27,7 @@ type AllowedCommand struct {
 // Changing this list requires a code change — intentional by design.
 var allowlist = []AllowedCommand{
 	{Binary: "apt-get", AllowedArgs: []string{"install", "remove", "update", "upgrade", "autoremove", "-y", "-q", "--no-install-recommends"}},
-	{Binary: "apt", AllowedArgs: []string{"install", "remove", "update", "upgrade", "list", "search", "-y", "-q"}},
+	{Binary: "apt", AllowedArgs: []string{"install", "remove", "update", "upgrade", "list", "search", "--installed", "-y", "-q"}},
 	{Binary: "dnf", AllowedArgs: []string{"install", "remove", "update", "list", "-y", "-q"}},
 	{Binary: "yum", AllowedArgs: []string{"install", "remove", "update", "list", "-y", "-q"}},
 	{Binary: "systemctl", AllowedArgs: []string{

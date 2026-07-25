@@ -78,10 +78,15 @@
               {{ updateStatus.update_available ? 'Update available' : 'Up to date' }}
             </span>
           </div>
-          <a v-if="updateStatus.update_available" :href="updateStatus.release_url" target="_blank" rel="noopener noreferrer"
-            class="btn-primary mt-4 inline-flex">
-            Open release
-          </a>
+          <div v-if="updateStatus.update_available" class="mt-4 flex flex-wrap gap-3">
+            <button type="button" class="btn-primary" :disabled="applyingUpdate" @click="applyUpdate">
+              {{ applyingUpdate ? 'Updating…' : 'Update now' }}
+            </button>
+            <a :href="updateStatus.update_url || updateStatus.release_url" target="_blank" rel="noopener noreferrer" class="btn-secondary inline-flex">
+              View changes
+            </a>
+          </div>
+          <div v-if="updateMessage" class="mt-4 text-sm text-emerald-400">{{ updateMessage }}</div>
         </div>
       </div>
     </div>
@@ -104,6 +109,8 @@ const saveError = ref('')
 const updateStatus = ref(null)
 const checkingUpdates = ref(false)
 const updateError = ref('')
+const applyingUpdate = ref(false)
+const updateMessage = ref('')
 
 onMounted(async () => {
   checkUpdates()
@@ -128,6 +135,40 @@ async function checkUpdates() {
   } finally {
     checkingUpdates.value = false
   }
+}
+
+async function applyUpdate() {
+  if (!confirm('Update OpenDeploy from the trusted GitHub repository? Services will restart.')) return
+  applyingUpdate.value = true
+  updateError.value = ''
+  updateMessage.value = ''
+  const targetCommit = updateStatus.value?.latest_commit
+  try {
+    await api.post('/updates/apply')
+    updateMessage.value = 'Update started. The panel will reload after services restart.'
+    await waitForUpdatedCore(targetCommit)
+  } catch (e) {
+    updateError.value = apiErrorMessage(e, 'Unable to start update')
+    applyingUpdate.value = false
+  }
+}
+
+async function waitForUpdatedCore(targetCommit) {
+  const deadline = Date.now() + 20 * 60 * 1000
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    try {
+      const { data } = await api.get('/updates')
+      if (targetCommit && data.current_commit === targetCommit) {
+        location.reload()
+        return
+      }
+    } catch {
+      // A short outage is expected while Core and Agent restart.
+    }
+  }
+  applyingUpdate.value = false
+  updateError.value = 'Update did not finish within 20 minutes. Check the opendeploy-update service logs.'
 }
 
 async function saveSettings() {

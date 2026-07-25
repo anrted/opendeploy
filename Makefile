@@ -1,7 +1,8 @@
 PKG := github.com/anrted/opendeploy
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -ldflags "-X $(PKG)/pkg/version.Version=$(VERSION) -X $(PKG)/pkg/version.BuildTime=$(BUILD_TIME) -s -w"
+COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+LDFLAGS := -ldflags "-X $(PKG)/pkg/version.Version=$(VERSION) -X $(PKG)/pkg/version.Commit=$(COMMIT) -X $(PKG)/pkg/version.BuildTime=$(BUILD_TIME) -s -w"
 
 CORE_BIN   := bin/opendeploy-core
 AGENT_BIN  := bin/opendeploy-agent

@@ -19,11 +19,18 @@ id opendeploy >/dev/null 2>&1 || useradd --system --gid opendeploy \
 install -d -m 0750 -o root -g opendeploy "$CONFIG_DIR"
 install -d -m 0750 -o opendeploy -g opendeploy "$STATE_DIR" "$LOG_DIR"
 install -d -m 0755 "$PREFIX/bin"
+install -d -m 0755 "$PREFIX/lib/opendeploy"
 install -m 0755 "$PROJECT_DIR/bin/opendeploy-core" "$PREFIX/bin/opendeploy-core"
 install -m 0755 "$PROJECT_DIR/bin/opendeploy-agent" "$PREFIX/bin/opendeploy-agent"
 install -m 0755 "$PROJECT_DIR/bin/opendeploy-cli" "$PREFIX/bin/opendeploy"
 install -m 0644 "$PROJECT_DIR/deployments/systemd/opendeploy-core.service" "$SYSTEMD_DIR/opendeploy-core.service"
 install -m 0644 "$PROJECT_DIR/deployments/systemd/opendeploy-agent.service" "$SYSTEMD_DIR/opendeploy-agent.service"
+install -m 0644 "$PROJECT_DIR/deployments/systemd/opendeploy-update.service" "$SYSTEMD_DIR/opendeploy-update.service"
+install -m 0644 "$PROJECT_DIR/deployments/systemd/opendeploy-update.path" "$SYSTEMD_DIR/opendeploy-update.path"
+install -m 0755 "$PROJECT_DIR/deployments/update.sh" "$PREFIX/lib/opendeploy/update.sh"
+printf '%s\n' "$PROJECT_DIR" >"$CONFIG_DIR/source-dir"
+chown root:opendeploy "$CONFIG_DIR/source-dir"
+chmod 0640 "$CONFIG_DIR/source-dir"
 
 if [ ! -f "$CONFIG_DIR/opendeploy.yaml" ]; then
     install -m 0640 -o root -g opendeploy "$PROJECT_DIR/configs/opendeploy.yaml" "$CONFIG_DIR/opendeploy.yaml"
@@ -41,10 +48,13 @@ if [ ! -f "$CONFIG_DIR/env" ]; then
 fi
 
 systemctl daemon-reload
-systemctl enable --now opendeploy-agent.service
-systemctl enable --now opendeploy-core.service
+systemctl enable opendeploy-agent.service opendeploy-core.service
+systemctl enable --now opendeploy-update.path
+systemctl restart opendeploy-agent.service
+systemctl restart opendeploy-core.service
 systemctl is-active --quiet opendeploy-agent.service
 systemctl is-active --quiet opendeploy-core.service
+systemctl is-active --quiet opendeploy-update.path
 
 panel_host=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [ -z "$panel_host" ]; then
