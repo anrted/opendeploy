@@ -45,6 +45,19 @@ type Module interface {
 	HealthCheck(ctx context.Context) (*HealthReport, error)
 }
 
+// WebServerPlugin extends Module to provide web server configurations (Nginx, Apache).
+type WebServerPlugin interface {
+	Module
+	ApplySite(ctx context.Context, action SiteAction, spec SiteSpec) error
+}
+
+// DatabasePlugin extends Module to provide database management (MySQL, PostgreSQL).
+type DatabasePlugin interface {
+	Module
+	CreateDatabase(ctx context.Context, dbName, user, password string) error
+	DeleteDatabase(ctx context.Context, dbName, user string) error
+}
+
 // ModuleDeps carries the infrastructure dependencies injected into every module
 // by the core at Bootstrap time.
 type ModuleDeps struct {
@@ -190,9 +203,6 @@ type AgentClient interface {
 	DirCreate(ctx context.Context, path string, mode uint32) error
 	DirList(ctx context.Context, path string) ([]FileInfo, error)
 
-	// Typed Nginx site configuration.
-	NginxSiteApply(ctx context.Context, action NginxSiteAction, site NginxSiteSpec) error
-
 	// Firewall
 	FirewallAllow(ctx context.Context, port int, proto string) error
 	FirewallDeny(ctx context.Context, port int, proto string) error
@@ -202,16 +212,16 @@ type AgentClient interface {
 	SystemStats(ctx context.Context) (*SystemStats, error)
 }
 
-type NginxSiteAction string
+type SiteAction string
 
 const (
-	NginxSiteUpsert  NginxSiteAction = "upsert"
-	NginxSiteDelete  NginxSiteAction = "delete"
-	NginxSiteEnable  NginxSiteAction = "enable"
-	NginxSiteDisable NginxSiteAction = "disable"
+	SiteUpsert  SiteAction = "upsert"
+	SiteDelete  SiteAction = "delete"
+	SiteEnable  SiteAction = "enable"
+	SiteDisable SiteAction = "disable"
 )
 
-type NginxSiteSpec struct {
+type SiteSpec struct {
 	Domain     string
 	RootPath   string
 	PHPVersion string

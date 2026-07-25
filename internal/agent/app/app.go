@@ -14,7 +14,6 @@ import (
 	"github.com/anrted/opendeploy/internal/agent/executor"
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
-	agentNginx "github.com/anrted/opendeploy/internal/agent/nginx"
 	"github.com/anrted/opendeploy/internal/agent/packages"
 	agentServer "github.com/anrted/opendeploy/internal/agent/server"
 	"github.com/anrted/opendeploy/internal/agent/stats"
@@ -86,8 +85,7 @@ func (a *Agent) Start() error {
 	}
 
 	a.grpcServer = grpc.NewServer()
-	nginxManager := agentNginx.NewManager(a.fs, a.shell)
-	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector(), nginxManager).Register(a.grpcServer)
+	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector()).Register(a.grpcServer)
 
 	a.logger.Info("agent: gRPC server started", "socket", socketPath)
 	return a.grpcServer.Serve(lis)

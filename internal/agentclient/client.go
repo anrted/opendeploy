@@ -166,31 +166,6 @@ func (c *Client) DirList(ctx context.Context, path string) ([]contract.FileInfo,
 	return entries, nil
 }
 
-func (c *Client) NginxSiteApply(ctx context.Context, action contract.NginxSiteAction, site contract.NginxSiteSpec) error {
-	protoAction := agentv1.NginxSiteAction_NGINX_SITE_ACTION_UNSPECIFIED
-	switch action {
-	case contract.NginxSiteUpsert:
-		protoAction = agentv1.NginxSiteAction_NGINX_SITE_ACTION_UPSERT
-	case contract.NginxSiteDelete:
-		protoAction = agentv1.NginxSiteAction_NGINX_SITE_ACTION_DELETE
-	case contract.NginxSiteEnable:
-		protoAction = agentv1.NginxSiteAction_NGINX_SITE_ACTION_ENABLE
-	case contract.NginxSiteDisable:
-		protoAction = agentv1.NginxSiteAction_NGINX_SITE_ACTION_DISABLE
-	default:
-		return fmt.Errorf("agent client: unsupported nginx site action %q", action)
-	}
-	_, err := c.stub.NginxSiteApply(ctx, &agentv1.NginxSiteApplyRequest{
-		Action:     protoAction,
-		Domain:     site.Domain,
-		RootPath:   site.RootPath,
-		PhpVersion: site.PHPVersion,
-		SslEnabled: site.SSLEnabled,
-		SslCert:    site.SSLCert,
-		SslKey:     site.SSLKey,
-	})
-	return err
-}
 
 func (c *Client) FirewallAllow(ctx context.Context, port int, protocol string) error {
 	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{Port: int32(port), Protocol: protocol, Action: agentv1.FirewallAction_FIREWALL_ACTION_ALLOW})

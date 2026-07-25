@@ -21,8 +21,10 @@ import (
 
 	"github.com/anrted/opendeploy/internal/core/app"
 	"github.com/anrted/opendeploy/internal/platform/config"
+	moduleApache "github.com/anrted/opendeploy/modules/apache"
 	moduleCertbot "github.com/anrted/opendeploy/modules/certbot"
 	moduleGit "github.com/anrted/opendeploy/modules/git"
+	moduleMySQL "github.com/anrted/opendeploy/modules/mysql"
 	moduleNginx "github.com/anrted/opendeploy/modules/nginx"
 	moduleNodejs "github.com/anrted/opendeploy/modules/nodejs"
 	modulePHP "github.com/anrted/opendeploy/modules/php"
@@ -97,8 +99,10 @@ func main() {
 // To add a new module: implement contract.Module, then add it here.
 func registerModules(a *app.App) {
 	a.RegisterModule(moduleNginx.New())
+	a.RegisterModule(moduleApache.New())
 	a.RegisterModule(modulePHP.New())
 	a.RegisterModule(moduleNodejs.New())
 	a.RegisterModule(moduleGit.New())
 	a.RegisterModule(moduleCertbot.New())
+	a.RegisterModule(moduleMySQL.New())
 }
