@@ -209,6 +209,7 @@ func (a *App) Bootstrap(ctx context.Context) error {
 		SiteHandler:      siteHandler,
 		ServiceHandler:   svcHandler,
 		SettingsHandler:  settingsHandler,
+		ModuleRegistry:   a.registry,
 	}, a.logger)
 	a.srv = srv
 
