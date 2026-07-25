@@ -124,6 +124,9 @@ async function deleteRule(rule) {
     if (!confirm('WARNING: You are about to delete an SSH rule. Make sure you have another way to access the server. Proceed?')) {
       return
     }
+  } else if (rule.port === '443' || rule.port === '5888') {
+    alert(`Deleting rule for port ${rule.port} is forbidden by system policy.`)
+    return
   } else {
     if (!confirm(`Delete rule ${rule.id}?`)) return
   }
