@@ -56,8 +56,36 @@
       {{ error }}
     </div>
 
+    <!-- Editor Mode -->
+    <div v-if="editingFile" class="flex-1 overflow-hidden p-6 flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-white font-mono text-sm truncate flex-1">{{ editingFile.name }}</h3>
+        <div class="flex items-center gap-3">
+          <button class="btn-secondary text-sm py-1.5" @click="closeEditor" :disabled="savingFile">Cancel</button>
+          <button class="btn-primary text-sm py-1.5 flex items-center gap-2" @click="saveFile" :disabled="savingFile || loadingFile">
+            <svg v-if="savingFile" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ savingFile ? 'Saving...' : 'Save' }}
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 bg-[#1e293b]/50 border border-slate-700/50 rounded-xl overflow-hidden backdrop-blur-sm relative flex flex-col">
+        <div v-if="loadingFile" class="absolute inset-0 z-10 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center">
+          <svg class="animate-spin text-indigo-500 w-8 h-8" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        </div>
+        <textarea 
+          v-model="editingContent" 
+          class="flex-1 w-full bg-transparent text-slate-300 font-mono text-sm p-4 resize-none outline-none focus:ring-0 border-none"
+          spellcheck="false"
+          placeholder="File content..."
+        ></textarea>
+      </div>
+    </div>
+
     <!-- Main Content Area -->
-    <div class="flex-1 overflow-hidden p-6 flex gap-6">
+    <div v-else class="flex-1 overflow-hidden p-6 flex gap-6">
       
       <!-- File List -->
       <div class="flex-1 bg-[#1e293b]/50 border border-slate-700/50 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm flex flex-col relative" @drop.prevent="handleDrop" @dragover.prevent>
@@ -111,6 +139,10 @@
                           @click="navigateTo(currentPath === '/' ? '/' + file.name : currentPath + '/' + file.name)">
                     {{ file.name }}
                   </button>
+                  <button v-else-if="isEditable(file.name)" class="text-slate-200 hover:text-indigo-300 truncate max-w-[200px] sm:max-w-xs text-left transition-colors"
+                          @click="openEditor(file)">
+                    {{ file.name }}
+                  </button>
                   <span v-else class="text-slate-200 truncate max-w-[200px] sm:max-w-xs">{{ file.name }}</span>
                 </div>
               </td>
@@ -135,6 +167,9 @@
       </div>
       <button v-if="!contextMenu.file?.is_dir" @click="downloadFile(contextMenu.file)" class="w-full text-left px-4 py-2 hover:bg-slate-700 hover:text-white transition-colors flex items-center">
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> Download
+      </button>
+      <button v-if="!contextMenu.file?.is_dir && isEditable(contextMenu.file?.name)" @click="openEditor(contextMenu.file); closeContextMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-700 hover:text-white transition-colors flex items-center">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg> Edit
       </button>
       <button @click="renameFile(contextMenu.file)" class="w-full text-left px-4 py-2 hover:bg-slate-700 hover:text-white transition-colors flex items-center">
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg> Rename
@@ -168,6 +203,12 @@ const selectedFiles = ref([])
 const sortConfig = ref({ key: 'name', dir: 'asc' })
 
 const contextMenu = ref({ show: false, x: 0, y: 0, file: null })
+
+const editableExtensions = ['.json', '.php', '.txt', '.js', '.vue', '.html', '.css', '.md', '.env', '.sh', '.yml', '.yaml', '.xml']
+const editingFile = ref(null)
+const editingContent = ref('')
+const loadingFile = ref(false)
+const savingFile = ref(false)
 
 const pathParts = computed(() => {
   return currentPath.value.split('/').filter(Boolean)
@@ -253,6 +294,58 @@ function navigateUp() {
   parts.pop()
   currentPath.value = '/' + parts.join('/')
   refresh()
+}
+
+function isEditable(filename) {
+  if (!filename) return false
+  const ext = filename.slice((Math.max(0, filename.lastIndexOf(".")) || Infinity)).toLowerCase()
+  return editableExtensions.includes(ext) || filename.startsWith('.')
+}
+
+async function openEditor(file) {
+  if (!isEditable(file.name)) return
+  editingFile.value = file
+  loadingFile.value = true
+  editingContent.value = ''
+  error.value = ''
+  try {
+    const { data } = await api.get(`/sites/${props.site.id}/file`, { 
+      params: { path: getFilePath(file.name) },
+      transformResponse: [(data) => data] // Prevent axios from parsing JSON
+    })
+    editingContent.value = data
+  } catch (e) {
+    error.value = apiErrorMessage(e, `Failed to load ${file.name}`)
+    editingFile.value = null
+  } finally {
+    loadingFile.value = false
+  }
+}
+
+async function saveFile() {
+  if (!editingFile.value) return
+  savingFile.value = true
+  error.value = ''
+  try {
+    const blob = new Blob([editingContent.value], { type: 'text/plain' })
+    const formData = new FormData()
+    formData.append('file', new File([blob], editingFile.value.name, { type: 'text/plain' }))
+    
+    await api.post(`/sites/${props.site.id}/file`, formData, { 
+      params: { path: getFilePath(editingFile.value.name) }
+    })
+    refresh()
+    closeEditor()
+  } catch (e) {
+    error.value = apiErrorMessage(e, `Failed to save ${editingFile.value.name}`)
+  } finally {
+    savingFile.value = false
+  }
+}
+
+function closeEditor() {
+  editingFile.value = null
+  editingContent.value = ''
 }
 
 function getFilePath(name) {
