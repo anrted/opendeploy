@@ -29,6 +29,10 @@ func Dial(addr string, timeout time.Duration, logger *slog.Logger) (*Client, err
 	conn, err := grpc.DialContext(ctx, addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 30 * time.Second, Timeout: 10 * time.Second, PermitWithoutStream: true}),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(50<<20),
+			grpc.MaxCallSendMsgSize(50<<20),
+		),
 		grpc.WithBlock(),
 	)
 	if err != nil {

@@ -281,8 +281,7 @@ async function processUploads(fileList) {
     
     try {
       await api.post(`/sites/${props.site.id}/file`, formData, { 
-        params: { path: uploadPath },
-        headers: { 'Content-Type': 'multipart/form-data' }
+        params: { path: uploadPath }
       })
     } catch (e) {
       error.value = apiErrorMessage(e, `Upload failed for ${file.name}`)
