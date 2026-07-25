@@ -73,6 +73,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		CreatedBy:  &userID,
 	}
 
+	needsCertbot := site.SSLEnabled && site.SSLCert != nil && strings.HasPrefix(*site.SSLCert, "/etc/letsencrypt")
+
+	if needsCertbot {
+		// Temporary HTTP configuration for Certbot challenge
+		tmpSpec := *site
+		tmpSpec.SSLEnabled = false
+		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
+			return nil, fmt.Errorf("site service: provision temp web server for certbot: %w", err)
+		}
+		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
+			_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
+			return nil, err
+		}
+	}
+
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
 		s.recordAudit(ctx, userID, "site.create", site.Domain, ip, audit.StatusError)
 		return nil, fmt.Errorf("site service: provision web server: %w", err)
@@ -125,6 +140,20 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 	}
 	if err := validateSSL(site.SSLEnabled, site.SSLCert, site.SSLKey); err != nil {
 		return nil, err
+	}
+
+	needsCertbot := site.SSLEnabled && !previous.SSLEnabled && site.SSLCert != nil && strings.HasPrefix(*site.SSLCert, "/etc/letsencrypt")
+
+	if needsCertbot {
+		tmpSpec := *site
+		tmpSpec.SSLEnabled = false
+		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
+			return nil, fmt.Errorf("site service: provision temp web server for certbot: %w", err)
+		}
+		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
+			_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
+			return nil, err
+		}
 	}
 
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
@@ -231,6 +260,21 @@ func (s *Service) applySiteConfig(ctx context.Context, moduleID string, action c
 		spec.SSLKey = *site.SSLKey
 	}
 	return plugin.ApplySite(ctx, action, spec)
+}
+
+func (s *Service) obtainCertbotSSL(ctx context.Context, domain, rootPath string) error {
+	if s.registry == nil {
+		return fmt.Errorf("module registry is unavailable")
+	}
+	mod := s.registry.Find("certbot")
+	if mod == nil {
+		return fmt.Errorf("certbot module is not installed")
+	}
+	plugin, ok := mod.(contract.CertbotPlugin)
+	if !ok {
+		return fmt.Errorf("certbot module is invalid")
+	}
+	return plugin.ObtainCert(ctx, domain, rootPath)
 }
 
 // ─── File Operations ───────────────────────────────────────────────────────

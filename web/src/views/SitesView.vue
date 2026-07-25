@@ -73,6 +73,13 @@
             <input id="site-root" v-model="form.root_path" class="input" placeholder="/var/www/example" required :disabled="isEditing" />
           </div>
           <div>
+            <label class="label">Web Server</label>
+            <select v-model="form.module_id" class="input" required :disabled="isEditing">
+              <option value="nginx">Nginx</option>
+              <option value="apache">Apache</option>
+            </select>
+          </div>
+          <div>
             <label class="label">PHP Version (optional)</label>
             <select v-model="form.php_version" class="input">
               <option value="">None</option>
@@ -123,7 +130,7 @@ const showFiles = ref(false)
 const selectedSite = ref(null)
 
 const form = reactive({
-  domain: '', root_path: '', php_version: '', ssl_enabled: false, ssl_cert: '', ssl_key: '',
+  domain: '', root_path: '', module_id: 'nginx', php_version: '', ssl_enabled: false, ssl_cert: '', ssl_key: '',
 })
 
 watch(() => form.domain, (newDomain) => {
@@ -172,6 +179,7 @@ function openCreateModal() {
   selectedSite.value = null
   form.domain = ''
   form.root_path = ''
+  form.module_id = 'nginx'
   form.php_version = ''
   form.ssl_enabled = false
   form.ssl_cert = ''
@@ -185,6 +193,7 @@ function openEditModal(site) {
   selectedSite.value = site
   form.domain = site.domain
   form.root_path = site.root_path
+  form.module_id = site.module_id || 'nginx'
   form.php_version = site.php_version || ''
   form.ssl_enabled = site.ssl_enabled
   form.ssl_cert = site.ssl_cert || ''
@@ -209,7 +218,6 @@ async function submitSite() {
     if (isEditing.value) {
       await api.put(`/sites/${selectedSite.value.id}`, payload)
     } else {
-      payload.module_id = 'nginx'
       await api.post('/sites', payload)
     }
     showModal.value = false

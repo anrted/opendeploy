@@ -58,6 +58,12 @@ type DatabasePlugin interface {
 	DeleteDatabase(ctx context.Context, dbName, user string) error
 }
 
+// CertbotPlugin extends Module to provide SSL certificate provisioning.
+type CertbotPlugin interface {
+	Module
+	ObtainCert(ctx context.Context, domain, webroot string) error
+}
+
 // ModuleDeps carries the infrastructure dependencies injected into every module
 // by the core at Bootstrap time.
 type ModuleDeps struct {
