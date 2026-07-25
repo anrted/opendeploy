@@ -82,12 +82,17 @@ func (s *Service) Check(ctx context.Context) (*Status, error) {
 	if err := s.getGitHub(ctx, mainCommitURL, &commit); err != nil {
 		return nil, err
 	}
+	updateAvailable := compareVersions(latest.TagName, s.currentVersion) > 0
+	if strings.Contains(s.currentVersion, "nightly") || strings.Contains(s.currentVersion, "dev") {
+		updateAvailable = s.currentCommit != "" && commit.SHA != "" && !strings.HasPrefix(commit.SHA, s.currentCommit)
+	}
+
 	result := &Status{
 		CurrentVersion:  s.currentVersion,
 		CurrentCommit:   s.currentCommit,
 		LatestVersion:   latest.TagName,
 		LatestCommit:    commit.SHA,
-		UpdateAvailable: compareVersions(latest.TagName, s.currentVersion) > 0,
+		UpdateAvailable: updateAvailable,
 		ReleaseURL:      latest.HTMLURL,
 		UpdateURL:       commit.HTMLURL,
 		PublishedAt:     &latest.PublishedAt,
