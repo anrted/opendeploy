@@ -146,6 +146,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermSiteView)).Get("/sites/{id}/file", deps.SiteHandler.ReadFile)
 				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/file", deps.SiteHandler.WriteFile)
 				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Delete("/sites/{id}/file", deps.SiteHandler.DeleteFile)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/directory", deps.SiteHandler.CreateDirectory)
 			}
 
 			// Service routes
