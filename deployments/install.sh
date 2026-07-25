@@ -7,6 +7,7 @@ STATE_DIR="${STATE_DIR:-/var/lib/opendeploy}"
 LOG_DIR="${LOG_DIR:-/var/log/opendeploy}"
 SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+initial_password=""
 
 [ "$(id -u)" -eq 0 ] || { echo "install.sh must run as root" >&2; exit 1; }
 command -v systemctl >/dev/null 2>&1 || { echo "systemd is required" >&2; exit 1; }
@@ -32,15 +33,31 @@ chmod 0640 "$CONFIG_DIR/opendeploy.yaml"
 if [ ! -f "$CONFIG_DIR/env" ]; then
     jwt_secret=$(od -An -N48 -tx1 /dev/urandom | tr -d ' \n')
     admin_password=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
+    initial_password=$admin_password
     umask 0077
     printf 'OD_JWT_SECRET=%s\nOD_ADMIN_PASSWORD=%s\n' "$jwt_secret" "$admin_password" >"$CONFIG_DIR/env"
     chown root:opendeploy "$CONFIG_DIR/env"
     chmod 0640 "$CONFIG_DIR/env"
-    printf 'Initial admin username: admin\nInitial admin password: %s\n' "$admin_password"
-    echo "Store this password securely. It is not printed again."
 fi
 
 systemctl daemon-reload
 systemctl enable --now opendeploy-agent.service
 systemctl enable --now opendeploy-core.service
-echo "OpenDeploy installed and started on port 5888."
+systemctl is-active --quiet opendeploy-agent.service
+systemctl is-active --quiet opendeploy-core.service
+
+panel_host=$(hostname -I 2>/dev/null | awk '{print $1}')
+if [ -z "$panel_host" ]; then
+    panel_host="SERVER_IP"
+fi
+
+echo ""
+echo "OpenDeploy installed and started successfully."
+printf 'Web panel: http://%s:5888\n' "$panel_host"
+echo "Username: admin"
+if [ -n "$initial_password" ]; then
+    printf 'Password: %s\n' "$initial_password"
+    echo "Store this password securely. It is shown only during initial installation."
+else
+    echo "Password: existing administrator password (not displayed again)"
+fi
