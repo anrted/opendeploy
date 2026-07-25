@@ -4,5 +4,6 @@
 /bin/
 /coverage.out
 /web/dist/
+/internal/core/webui/dist/
 /web/node_modules/
 /task.md
