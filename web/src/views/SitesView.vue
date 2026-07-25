@@ -6,7 +6,7 @@
         <h1 class="page-title">Sites</h1>
         <p class="page-subtitle">Manage virtual hosts</p>
       </div>
-      <button id="create-site-btn" class="btn-primary" @click="showCreate = true">
+      <button id="create-site-btn" class="btn-primary" @click="openCreateModal">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
@@ -49,6 +49,8 @@
               <div class="flex gap-2">
                 <button v-if="site.state === 'disabled'" @click="enableSite(site.id)" class="btn-success text-xs px-2 py-1">Enable</button>
                 <button v-if="site.state === 'active'" @click="disableSite(site.id)" class="btn-danger text-xs px-2 py-1">Disable</button>
+                <button @click="openEditModal(site)" class="btn-secondary text-xs px-2 py-1">Edit</button>
+                <button @click="openFileManager(site)" class="btn-primary text-xs px-2 py-1">Files</button>
                 <button @click="deleteSite(site.id)" class="btn-danger text-xs px-2 py-1">Delete</button>
               </div>
             </td>
@@ -57,18 +59,18 @@
       </table>
     </div>
 
-    <!-- Create site modal -->
-    <div v-if="showCreate" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <!-- Create/Edit site modal -->
+    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div class="card w-full max-w-md mx-4">
-        <h2 class="text-lg font-semibold text-white mb-4">Add Site</h2>
-        <form @submit.prevent="createSite" class="space-y-4">
+        <h2 class="text-lg font-semibold text-white mb-4">{{ isEditing ? 'Edit Site' : 'Add Site' }}</h2>
+        <form @submit.prevent="submitSite" class="space-y-4">
           <div>
             <label class="label">Domain</label>
-            <input id="site-domain" v-model="form.domain" class="input" placeholder="example.com" required />
+            <input id="site-domain" v-model="form.domain" class="input" placeholder="example.com" required :disabled="isEditing" />
           </div>
           <div>
             <label class="label">Root Path</label>
-            <input id="site-root" v-model="form.root_path" class="input" placeholder="/var/www/example" required />
+            <input id="site-root" v-model="form.root_path" class="input" placeholder="/var/www/example" required :disabled="isEditing" />
           </div>
           <div>
             <label class="label">PHP Version (optional)</label>
@@ -89,29 +91,36 @@
             <label class="label">Private key path</label>
             <input v-model="form.ssl_key" class="input" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" required />
           </div>
-          <div v-if="createError" class="text-sm text-red-400">{{ createError }}</div>
+          <div v-if="submitError" class="text-sm text-red-400">{{ submitError }}</div>
           <div class="flex gap-3 justify-end">
-            <button type="button" class="btn-secondary" @click="showCreate = false">Cancel</button>
-            <button id="create-site-submit" type="submit" class="btn-primary" :disabled="creating">
-              {{ creating ? 'Creating…' : 'Create' }}
+            <button type="button" class="btn-secondary" @click="showModal = false">Cancel</button>
+            <button id="create-site-submit" type="submit" class="btn-primary" :disabled="submitting">
+              {{ submitting ? 'Saving…' : 'Save' }}
             </button>
           </div>
         </form>
       </div>
     </div>
+
+    <!-- File Manager -->
+    <FileManager v-if="showFiles" :site="selectedSite" @close="showFiles = false" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, reactive, watch } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import FileManager from '@/components/FileManager.vue'
 
 const sites = ref([])
 const loading = ref(true)
-const showCreate = ref(false)
-const creating = ref(false)
-const createError = ref('')
+const showModal = ref(false)
+const isEditing = ref(false)
+const submitting = ref(false)
+const submitError = ref('')
 const errorMessage = ref('')
+const showFiles = ref(false)
+const selectedSite = ref(null)
 
 const form = reactive({
   domain: '', root_path: '', php_version: '', ssl_enabled: false, ssl_cert: '', ssl_key: '',
@@ -158,23 +167,59 @@ function siteBadge(state) {
   return { active: 'badge-success', disabled: 'badge-muted', error: 'badge-danger' }[state] || 'badge-muted'
 }
 
-async function createSite() {
-  createError.value = ''
-  creating.value = true
+function openCreateModal() {
+  isEditing.value = false
+  selectedSite.value = null
+  form.domain = ''
+  form.root_path = ''
+  form.php_version = ''
+  form.ssl_enabled = false
+  form.ssl_cert = ''
+  form.ssl_key = ''
+  submitError.value = ''
+  showModal.value = true
+}
+
+function openEditModal(site) {
+  isEditing.value = true
+  selectedSite.value = site
+  form.domain = site.domain
+  form.root_path = site.root_path
+  form.php_version = site.php_version || ''
+  form.ssl_enabled = site.ssl_enabled
+  form.ssl_cert = site.ssl_cert || ''
+  form.ssl_key = site.ssl_key || ''
+  submitError.value = ''
+  showModal.value = true
+}
+
+function openFileManager(site) {
+  selectedSite.value = site
+  showFiles.value = true
+}
+
+async function submitSite() {
+  submitError.value = ''
+  submitting.value = true
   try {
-    await api.post('/sites', {
+    const payload = {
       ...form,
       php_version: form.php_version || null,
-      module_id: 'nginx',
-    })
-    showCreate.value = false
+    }
+    if (isEditing.value) {
+      await api.put(`/sites/${selectedSite.value.id}`, payload)
+    } else {
+      payload.module_id = 'nginx'
+      await api.post('/sites', payload)
+    }
+    showModal.value = false
     form.domain = form.root_path = form.php_version = form.ssl_cert = form.ssl_key = ''
     form.ssl_enabled = false
     await loadSites()
   } catch (e) {
-    createError.value = apiErrorMessage(e, 'Error creating site')
+    submitError.value = apiErrorMessage(e, isEditing.value ? 'Error updating site' : 'Error creating site')
   } finally {
-    creating.value = false
+    submitting.value = false
   }
 }
 
