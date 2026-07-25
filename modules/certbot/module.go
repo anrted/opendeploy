@@ -205,7 +205,18 @@ ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
 				}
 				// It failed
 				logs, _ := m.deps.Agent.ServiceLogs(ctx, svcName, 30)
-				return apperrors.InvalidInput(fmt.Sprintf("Certbot failed to obtain certificate:\n%s", strings.Join(logs, "\n")))
+				logStr := strings.Join(logs, "\n")
+				
+				errMsg := "Certbot failed to obtain certificate"
+				if strings.Contains(logStr, "Connection refused") {
+					errMsg = "Certbot failed: Connection refused. This usually means the domain has an incorrect A record in DNS, multiple conflicting A records, or the domain is pointing to the wrong IP address."
+				} else if strings.Contains(logStr, "NXDOMAIN") {
+					errMsg = "Certbot failed: Domain does not exist (NXDOMAIN). Please check your DNS settings."
+				} else if strings.Contains(logStr, "Timeout") {
+					errMsg = "Certbot failed: Connection timeout. Ensure port 80 is open in your firewall and the domain points to this server."
+				}
+
+				return apperrors.InvalidInput(fmt.Sprintf("%s\n\nLogs:\n%s", errMsg, logStr))
 			}
 		}
 	}
