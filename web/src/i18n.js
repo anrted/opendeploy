@@ -17,6 +17,7 @@ const messages = {
       services: 'Services',
       settings: 'Settings',
       modules: 'Modules',
+      firewall: 'Firewall',
       signOut: 'Sign out',
     },
     // Settings & Updater
@@ -79,6 +80,7 @@ const messages = {
       services: 'Сервисы',
       settings: 'Настройки',
       modules: 'Модули',
+      firewall: 'Файрвол',
       signOut: 'Выйти',
     },
     // Settings & Updater
