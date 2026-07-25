@@ -31,4 +31,4 @@ fi
 git -C "$source_dir" fetch --tags origin main
 git -C "$source_dir" merge --ff-only origin/main
 make -C "$source_dir" build
-sh "$source_dir/deployments/install.sh"
+sh "$source_dir/deployments/install-dev.sh"
