@@ -7,12 +7,17 @@ CORE_BIN   := bin/opendeploy-core
 AGENT_BIN  := bin/opendeploy-agent
 CLI_BIN    := bin/opendeploy-cli
 
-.PHONY: all build frontend build-core build-agent build-cli clean test lint proto dev-core dev-agent install uninstall
+.PHONY: all build check-build-deps frontend build-core build-agent build-cli clean test lint proto dev-core dev-agent install uninstall
+
+.NOTPARALLEL: build install
 
 all: build
 
 ## Build all binaries
-build: frontend build-core build-agent build-cli
+build: check-build-deps frontend build-core build-agent build-cli
+
+check-build-deps:
+	sh deployments/check-build-deps.sh
 
 frontend:
 	cd web && npm ci && npm run build
@@ -95,6 +100,7 @@ help:
 	@echo ""
 	@echo "Usage:"
 	@echo "  make build        Build all binaries"
+	@echo "                    Missing Ubuntu/Debian build packages are installed automatically"
 	@echo "  make dev-core     Run Core in development mode"
 	@echo "  make dev-agent    Run Agent in development mode"
 	@echo "  make test         Run all tests"

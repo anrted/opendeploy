@@ -4,7 +4,8 @@ OpenDeploy welcomes focused issues and pull requests.
 
 ## Development
 
-Requirements: Go 1.23+, Node.js 22+, npm, and CGO with a C compiler for SQLite.
+Requirements: Go 1.25+, Node.js 22+, npm, and CGO with a C compiler for SQLite.
+On Ubuntu and Debian, `make build` installs missing system packages through APT.
 
 ```bash
 go test ./...
