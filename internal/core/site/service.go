@@ -8,21 +8,23 @@ import (
 	"strings"
 
 	"github.com/anrted/opendeploy/internal/core/audit"
+	"github.com/anrted/opendeploy/internal/core/module"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
 // Service implements site management business logic.
 type Service struct {
-	repo   Repository
-	audit  *audit.Service
-	agent  contract.AgentClient
-	logger *slog.Logger
+	repo     Repository
+	audit    *audit.Service
+	agent    contract.AgentClient
+	registry *module.Registry
+	logger   *slog.Logger
 }
 
 // NewService constructs a site Service.
-func NewService(repo Repository, auditSvc *audit.Service, agent contract.AgentClient, logger *slog.Logger) *Service {
-	return &Service{repo: repo, audit: auditSvc, agent: agent, logger: logger}
+func NewService(repo Repository, auditSvc *audit.Service, agent contract.AgentClient, registry *module.Registry, logger *slog.Logger) *Service {
+	return &Service{repo: repo, audit: auditSvc, agent: agent, registry: registry, logger: logger}
 }
 
 // List returns all sites.
@@ -53,10 +55,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		return nil, err
 	}
 	if req.ModuleID == "" {
-		req.ModuleID = "nginx"
-	}
-	if req.ModuleID != "nginx" {
-		return nil, apperrors.InvalidInput("module_id must be nginx")
+		return nil, apperrors.InvalidInput("module_id is required")
 	}
 	if err := validateSSL(req.SSLEnabled, req.SSLCert, req.SSLKey); err != nil {
 		return nil, err
@@ -74,12 +73,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		CreatedBy:  &userID,
 	}
 
-	if err := s.applyNginx(ctx, contract.NginxSiteUpsert, site); err != nil {
+	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
 		s.recordAudit(ctx, userID, "site.create", site.Domain, ip, audit.StatusError)
-		return nil, fmt.Errorf("site service: provision nginx: %w", err)
+		return nil, fmt.Errorf("site service: provision web server: %w", err)
 	}
 	if err := s.repo.Create(ctx, site); err != nil {
-		_ = s.applyNginx(ctx, contract.NginxSiteDelete, site)
+		_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
 		return nil, err
 	}
 
@@ -128,21 +127,21 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		return nil, err
 	}
 
-	if err := s.applyNginx(ctx, contract.NginxSiteUpsert, site); err != nil {
+	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
 		s.recordAudit(ctx, userID, "site.update", site.Domain, ip, audit.StatusError)
-		return nil, fmt.Errorf("site service: apply nginx update: %w", err)
+		return nil, fmt.Errorf("site service: apply config update: %w", err)
 	}
 	if err := s.repo.Update(ctx, site); err != nil {
-		_ = s.applyNginx(ctx, contract.NginxSiteUpsert, &previous)
+		_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
 		if previous.Domain != site.Domain {
-			_ = s.applyNginx(ctx, contract.NginxSiteDelete, site)
+			_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
 		}
 		return nil, err
 	}
 	if previous.Domain != site.Domain {
-		if err := s.applyNginx(ctx, contract.NginxSiteDelete, &previous); err != nil {
-			s.logger.ErrorContext(ctx, "site: old nginx vhost cleanup failed", "domain", previous.Domain, "error", err)
-			return nil, fmt.Errorf("site service: remove previous nginx vhost: %w", err)
+		if err := s.applySiteConfig(ctx, previous.ModuleID, contract.SiteDelete, &previous); err != nil {
+			s.logger.ErrorContext(ctx, "site: old vhost cleanup failed", "domain", previous.Domain, "error", err)
+			return nil, fmt.Errorf("site service: remove previous vhost: %w", err)
 		}
 	}
 
@@ -157,12 +156,12 @@ func (s *Service) Delete(ctx context.Context, id, userID, ip string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.applyNginx(ctx, contract.NginxSiteDelete, site); err != nil {
+	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site); err != nil {
 		s.recordAudit(ctx, userID, "site.delete", site.Domain, ip, audit.StatusError)
-		return fmt.Errorf("site service: remove nginx vhost: %w", err)
+		return fmt.Errorf("site service: remove vhost: %w", err)
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
-		_ = s.applyNginx(ctx, contract.NginxSiteUpsert, site)
+		_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site)
 		return fmt.Errorf("site service: delete: %w", err)
 	}
 	s.recordAudit(ctx, userID, "site.delete", site.Domain, ip, audit.StatusSuccess)
@@ -185,30 +184,39 @@ func (s *Service) setState(ctx context.Context, id string, state State, userID, 
 	if err != nil {
 		return err
 	}
-	agentAction := contract.NginxSiteDisable
-	rollbackAction := contract.NginxSiteEnable
+	agentAction := contract.SiteDisable
+	rollbackAction := contract.SiteEnable
 	if state == StateActive {
-		agentAction = contract.NginxSiteEnable
-		rollbackAction = contract.NginxSiteDisable
+		agentAction = contract.SiteEnable
+		rollbackAction = contract.SiteDisable
 	}
-	if err := s.applyNginx(ctx, agentAction, site); err != nil {
+	if err := s.applySiteConfig(ctx, site.ModuleID, agentAction, site); err != nil {
 		s.recordAudit(ctx, userID, action, site.Domain, ip, audit.StatusError)
-		return fmt.Errorf("site service: change nginx state: %w", err)
+		return fmt.Errorf("site service: change state: %w", err)
 	}
 	site.State = state
 	if err := s.repo.Update(ctx, site); err != nil {
-		_ = s.applyNginx(ctx, rollbackAction, site)
+		_ = s.applySiteConfig(ctx, site.ModuleID, rollbackAction, site)
 		return err
 	}
 	s.recordAudit(ctx, userID, action, site.Domain, ip, audit.StatusSuccess)
 	return nil
 }
 
-func (s *Service) applyNginx(ctx context.Context, action contract.NginxSiteAction, site *Site) error {
-	if s.agent == nil {
-		return fmt.Errorf("nginx agent is unavailable")
+func (s *Service) applySiteConfig(ctx context.Context, moduleID string, action contract.SiteAction, site *Site) error {
+	if s.registry == nil {
+		return fmt.Errorf("module registry is unavailable")
 	}
-	spec := contract.NginxSiteSpec{
+	mod := s.registry.Find(moduleID)
+	if mod == nil {
+		return fmt.Errorf("web server module %q not found", moduleID)
+	}
+	plugin, ok := mod.(contract.WebServerPlugin)
+	if !ok {
+		return fmt.Errorf("module %q is not a web server plugin", moduleID)
+	}
+
+	spec := contract.SiteSpec{
 		Domain:     site.Domain,
 		RootPath:   site.RootPath,
 		SSLEnabled: site.SSLEnabled,
@@ -222,7 +230,7 @@ func (s *Service) applyNginx(ctx context.Context, action contract.NginxSiteActio
 	if site.SSLKey != nil {
 		spec.SSLKey = *site.SSLKey
 	}
-	return s.agent.NginxSiteApply(ctx, action, spec)
+	return plugin.ApplySite(ctx, action, spec)
 }
 
 // ─── File Operations ───────────────────────────────────────────────────────

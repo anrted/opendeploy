@@ -181,7 +181,7 @@ func (a *App) Bootstrap(ctx context.Context) error {
 
 	// ── Sites ─────────────────────────────────────────────────────────────
 	siteRepo := site.NewSQLiteRepository(db.DB)
-	siteSvc := site.NewService(siteRepo, auditSvc, agent, a.logger)
+	siteSvc := site.NewService(siteRepo, auditSvc, agent, a.registry, a.logger)
 
 	// ── Services ──────────────────────────────────────────────────────────
 	svcRepo := service.NewSQLiteRepository(db.DB)

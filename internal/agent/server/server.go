@@ -12,7 +12,6 @@ import (
 
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
-	agentNginx "github.com/anrted/opendeploy/internal/agent/nginx"
 	"github.com/anrted/opendeploy/internal/agent/packages"
 	"github.com/anrted/opendeploy/internal/agent/stats"
 	"github.com/anrted/opendeploy/internal/agent/systemd"
@@ -29,40 +28,12 @@ type Service struct {
 	fs      *filesystem.Manager
 	fw      *firewall.UFWManager
 	stats   *stats.Collector
-	nginx   *agentNginx.Manager
 }
 
-func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager *firewall.UFWManager, collector *stats.Collector, nginxManager *agentNginx.Manager) *Service {
-	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector, nginx: nginxManager}
+func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager *firewall.UFWManager, collector *stats.Collector) *Service {
+	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector}
 }
 
-func (s *Service) NginxSiteApply(ctx context.Context, req *agentv1.NginxSiteApplyRequest) (*agentv1.NginxSiteApplyResponse, error) {
-	action := agentNginx.Action("")
-	switch req.GetAction() {
-	case agentv1.NginxSiteAction_NGINX_SITE_ACTION_UPSERT:
-		action = agentNginx.ActionUpsert
-	case agentv1.NginxSiteAction_NGINX_SITE_ACTION_DELETE:
-		action = agentNginx.ActionDelete
-	case agentv1.NginxSiteAction_NGINX_SITE_ACTION_ENABLE:
-		action = agentNginx.ActionEnable
-	case agentv1.NginxSiteAction_NGINX_SITE_ACTION_DISABLE:
-		action = agentNginx.ActionDisable
-	default:
-		return nil, status.Error(codes.InvalidArgument, "unsupported nginx site action")
-	}
-	err := s.nginx.Apply(ctx, action, agentNginx.Site{
-		Domain:     req.GetDomain(),
-		RootPath:   req.GetRootPath(),
-		PHPVersion: req.GetPhpVersion(),
-		SSLEnabled: req.GetSslEnabled(),
-		SSLCert:    req.GetSslCert(),
-		SSLKey:     req.GetSslKey(),
-	})
-	if err != nil {
-		return nil, internalError(err)
-	}
-	return &agentv1.NginxSiteApplyResponse{Success: true, Message: "nginx site configuration applied"}, nil
-}
 
 func (s *Service) Register(registrar grpc.ServiceRegistrar) {
 	agentv1.RegisterAgentServiceServer(registrar, s)
