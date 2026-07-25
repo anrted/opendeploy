@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -146,7 +147,7 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
 	email := m.deps.Config.Get("email", "")
 	if email == "" {
-		return fmt.Errorf("certbot: email must be configured in module settings before obtaining certificates")
+		return apperrors.InvalidInput("Let's Encrypt email must be configured in module settings before obtaining certificates")
 	}
 
 	svcName := fmt.Sprintf("certbot-obtain-%s.service", domain)

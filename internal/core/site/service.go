@@ -80,11 +80,15 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		tmpSpec := *site
 		tmpSpec.SSLEnabled = false
 		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
-			return nil, fmt.Errorf("site service: provision temp web server for certbot: %w", err)
+			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
 		}
 		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
 			_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
-			return nil, err
+			// Return the error directly if it's already an AppError
+			if _, ok := err.(*apperrors.AppError); ok {
+				return nil, err
+			}
+			return nil, apperrors.Internal("failed to obtain SSL certificate", err)
 		}
 	}
 
@@ -148,11 +152,14 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		tmpSpec := *site
 		tmpSpec.SSLEnabled = false
 		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
-			return nil, fmt.Errorf("site service: provision temp web server for certbot: %w", err)
+			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
 		}
 		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
 			_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
-			return nil, err
+			if _, ok := err.(*apperrors.AppError); ok {
+				return nil, err
+			}
+			return nil, apperrors.Internal("failed to obtain SSL certificate", err)
 		}
 	}
 
@@ -264,15 +271,15 @@ func (s *Service) applySiteConfig(ctx context.Context, moduleID string, action c
 
 func (s *Service) obtainCertbotSSL(ctx context.Context, domain, rootPath string) error {
 	if s.registry == nil {
-		return fmt.Errorf("module registry is unavailable")
+		return apperrors.Internal("module registry is unavailable", nil)
 	}
 	mod := s.registry.Find("certbot")
 	if mod == nil {
-		return fmt.Errorf("certbot module is not installed")
+		return apperrors.InvalidInput("certbot module is not installed")
 	}
 	plugin, ok := mod.(contract.CertbotPlugin)
 	if !ok {
-		return fmt.Errorf("certbot module is invalid")
+		return apperrors.Internal("certbot module is invalid", nil)
 	}
 	return plugin.ObtainCert(ctx, domain, rootPath)
 }
