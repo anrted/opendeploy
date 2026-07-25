@@ -23,7 +23,7 @@ case "$remote" in
     *) echo "Refusing update from untrusted remote: $remote" >&2; exit 1 ;;
 esac
 
-if [ -n "$(git -C "$source_dir" status --porcelain)" ]; then
+if [ -n "$(git -C "$source_dir" status --porcelain -uno)" ]; then
     echo "Refusing update because the source repository has local changes" >&2
     exit 1
 fi
