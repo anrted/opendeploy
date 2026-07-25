@@ -51,6 +51,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "timedatectl", AllowedArgs: []string{"set-timezone", "status"}},
 	{Binary: "useradd", AllowedArgs: []string{"-m", "-s", "-r", "-d"}},
 	{Binary: "userdel", AllowedArgs: []string{"-r", "-f"}},
+	{Binary: "certbot", AllowedArgs: []string{"certonly", "--webroot", "-w", "-d", "-n", "--agree-tos", "-m", "--expand", "--register-unsafely-without-email"}},
 }
 
 // Validator checks whether a requested command is permitted.

@@ -101,6 +101,8 @@ func NewManager(files fileStore, runner commandRunner) *Manager {
 
 // Apply mutates one managed vhost, validates the complete Nginx configuration,
 // reloads Nginx, and restores the previous state if either step fails.
+// If SSLEnabled is true and certificates do not exist, it automatically provisions
+// them via Certbot before applying the SSL configuration.
 func (m *Manager) Apply(ctx context.Context, action Action, site Site) error {
 	if err := validate(action, site); err != nil {
 		return err
@@ -112,6 +114,41 @@ func (m *Manager) Apply(ctx context.Context, action Action, site Site) error {
 		return fmt.Errorf("nginx: capture current configuration: %w", err)
 	}
 
+	needCertbot := false
+	if action == ActionUpsert && site.SSLEnabled {
+		_, err1 := os.Stat(site.SSLCert)
+		_, err2 := os.Stat(site.SSLKey)
+		if err1 != nil || err2 != nil {
+			needCertbot = true
+		}
+	}
+
+	if needCertbot {
+		// Step 1: Apply HTTP-only configuration to serve the ACME challenge.
+		httpSite := site
+		httpSite.SSLEnabled = false
+		if err := m.mutate(action, httpSite, configPath, enabledPath); err != nil {
+			_ = m.restore(configPath, enabledPath, before)
+			return fmt.Errorf("nginx: apply http config for certbot: %w", err)
+		}
+		if _, err := m.runner.Run(ctx, "nginx", "-t"); err != nil {
+			_ = m.rollback(ctx, configPath, enabledPath, before)
+			return fmt.Errorf("nginx: validation failed for http config: %w", err)
+		}
+		if _, err := m.runner.Run(ctx, "nginx", "-s", "reload"); err != nil {
+			_ = m.rollback(ctx, configPath, enabledPath, before)
+			return fmt.Errorf("nginx: reload failed for http config: %w", err)
+		}
+
+		// Step 2: Run Certbot to acquire the certificate.
+		res, err := m.runner.Run(ctx, "certbot", "certonly", "--webroot", "-w", site.RootPath, "-d", site.Domain, "-n", "--agree-tos", "--register-unsafely-without-email", "--expand")
+		if err != nil {
+			_ = m.rollback(ctx, configPath, enabledPath, before)
+			return fmt.Errorf("nginx: certbot failed: %s: %w", res.Stderr, err)
+		}
+	}
+
+	// Step 3: Apply target configuration (HTTPS if requested).
 	if err := m.mutate(action, site, configPath, enabledPath); err != nil {
 		_ = m.restore(configPath, enabledPath, before)
 		return fmt.Errorf("nginx: apply file changes: %w", err)
