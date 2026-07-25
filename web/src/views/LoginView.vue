@@ -1,5 +1,11 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center p-4" style="background: radial-gradient(ellipse at top, #1a1040 0%, #0f1117 70%);">
+  <div class="min-h-screen flex flex-col items-center justify-center p-4" style="background: radial-gradient(ellipse at top, #1a1040 0%, #0f1117 70%);">
+    
+    <!-- Top Right Language Switcher -->
+    <div class="absolute top-4 right-4">
+      <LanguageSwitcher />
+    </div>
+
     <div class="w-full max-w-md">
       <!-- Logo -->
       <div class="text-center mb-8">
@@ -17,11 +23,11 @@
 
       <!-- Login form -->
       <div class="card">
-        <h2 class="text-lg font-semibold text-white mb-6">Sign in to your account</h2>
+        <h2 class="text-lg font-semibold text-white mb-6">{{ $t('login.title') }}</h2>
 
         <form @submit.prevent="handleLogin" class="space-y-4">
           <div>
-            <label class="label">Username</label>
+            <label class="label">{{ $t('login.username') }}</label>
             <input
               id="username"
               v-model="form.username"
@@ -34,7 +40,7 @@
           </div>
 
           <div>
-            <label class="label">Password</label>
+            <label class="label">{{ $t('login.password') }}</label>
             <input
               id="password"
               v-model="form.password"
@@ -55,7 +61,7 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
             </svg>
-            {{ loading ? 'Signing in…' : 'Sign in' }}
+            {{ loading ? $t('login.signingIn') : $t('login.signIn') }}
           </button>
         </form>
       </div>
@@ -71,6 +77,7 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
