@@ -82,15 +82,12 @@ func (s *Service) Check(ctx context.Context) (*Status, error) {
 	if err := s.getGitHub(ctx, mainCommitURL, &commit); err != nil {
 		return nil, err
 	}
-	commitUpdate := s.currentCommit != "" && s.currentCommit != "unknown" &&
-		!strings.HasPrefix(commit.SHA, s.currentCommit) &&
-		!strings.HasPrefix(s.currentCommit, commit.SHA)
 	result := &Status{
 		CurrentVersion:  s.currentVersion,
 		CurrentCommit:   s.currentCommit,
 		LatestVersion:   latest.TagName,
 		LatestCommit:    commit.SHA,
-		UpdateAvailable: commitUpdate || compareVersions(latest.TagName, s.currentVersion) > 0,
+		UpdateAvailable: compareVersions(latest.TagName, s.currentVersion) > 0,
 		ReleaseURL:      latest.HTMLURL,
 		UpdateURL:       commit.HTMLURL,
 		PublishedAt:     &latest.PublishedAt,
