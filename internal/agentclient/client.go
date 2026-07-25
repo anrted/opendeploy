@@ -215,28 +215,117 @@ func (c *Client) ArchiveExtract(ctx context.Context, srcPath, dstDir string) err
 }
 
 
-func (c *Client) FirewallAllow(ctx context.Context, port int, protocol string) error {
-	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{Port: int32(port), Protocol: protocol, Action: agentv1.FirewallAction_FIREWALL_ACTION_ALLOW})
+func (c *Client) FirewallStatus(ctx context.Context) (*contract.FirewallStatus, error) {
+	result, err := c.stub.FirewallStatus(ctx, &agentv1.FirewallStatusRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return &contract.FirewallStatus{
+		Active:          result.Active,
+		DefaultIncoming: result.DefaultIncoming,
+		DefaultOutgoing: result.DefaultOutgoing,
+		DefaultRouted:   result.DefaultRouted,
+		IPv6Enabled:     result.Ipv6Enabled,
+		Logging:         result.Logging,
+		RuleCount:       int(result.RuleCount),
+		ProfileName:     result.ProfileName,
+	}, nil
+}
+
+func (c *Client) FirewallRule(ctx context.Context, req *contract.FirewallRuleRequest) error {
+	action := agentv1.FirewallAction_FIREWALL_ACTION_ALLOW
+	if req.Action == "deny" {
+		action = agentv1.FirewallAction_FIREWALL_ACTION_DENY
+	} else if req.Action == "reject" {
+		action = agentv1.FirewallAction_FIREWALL_ACTION_REJECT
+	}
+
+	direction := agentv1.FirewallDirection_FIREWALL_DIRECTION_IN
+	if req.Direction == "out" {
+		direction = agentv1.FirewallDirection_FIREWALL_DIRECTION_OUT
+	} else if req.Direction == "routed" {
+		direction = agentv1.FirewallDirection_FIREWALL_DIRECTION_ROUTED
+	}
+
+	ipVersion := agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_UNSPECIFIED
+	if req.IPVersion == "ipv4" {
+		ipVersion = agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V4
+	} else if req.IPVersion == "ipv6" {
+		ipVersion = agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V6
+	} else if req.IPVersion == "both" {
+		ipVersion = agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_BOTH
+	}
+
+	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{
+		Id:          req.ID,
+		Port:        req.Port,
+		Protocol:    req.Protocol,
+		Action:      action,
+		Direction:   direction,
+		Source:      req.Source,
+		Destination: req.Destination,
+		Comment:     req.Comment,
+		IpVersion:   ipVersion,
+	})
 	return err
 }
-func (c *Client) FirewallDeny(ctx context.Context, port int, protocol string) error {
-	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{Port: int32(port), Protocol: protocol, Action: agentv1.FirewallAction_FIREWALL_ACTION_DENY})
+
+func (c *Client) FirewallDelete(ctx context.Context, id string) error {
+	_, err := c.stub.FirewallDelete(ctx, &agentv1.FirewallDeleteRequest{Id: id})
 	return err
 }
-func (c *Client) FirewallDelete(ctx context.Context, port int, protocol string) error {
-	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{Port: int32(port), Protocol: protocol, Action: agentv1.FirewallAction_FIREWALL_ACTION_DELETE})
-	return err
-}
-func (c *Client) FirewallList(ctx context.Context) ([]contract.FirewallRule, error) {
+
+func (c *Client) FirewallList(ctx context.Context) ([]*contract.FirewallRule, error) {
 	result, err := c.stub.FirewallList(ctx, &agentv1.FirewallListRequest{})
 	if err != nil {
 		return nil, err
 	}
-	rules := make([]contract.FirewallRule, 0, len(result.Rules))
+	rules := make([]*contract.FirewallRule, 0, len(result.Rules))
 	for _, rule := range result.Rules {
-		rules = append(rules, contract.FirewallRule{Port: int(rule.Port), Protocol: rule.Protocol, Action: rule.Action})
+		action := "allow"
+		if rule.Action == agentv1.FirewallAction_FIREWALL_ACTION_DENY {
+			action = "deny"
+		} else if rule.Action == agentv1.FirewallAction_FIREWALL_ACTION_REJECT {
+			action = "reject"
+		}
+
+		direction := "in"
+		if rule.Direction == agentv1.FirewallDirection_FIREWALL_DIRECTION_OUT {
+			direction = "out"
+		} else if rule.Direction == agentv1.FirewallDirection_FIREWALL_DIRECTION_ROUTED {
+			direction = "routed"
+		}
+
+		ipVersion := "both"
+		if rule.IpVersion == agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V4 {
+			ipVersion = "ipv4"
+		} else if rule.IpVersion == agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V6 {
+			ipVersion = "ipv6"
+		}
+
+		rules = append(rules, &contract.FirewallRule{
+			ID:          rule.Id,
+			Port:        rule.Port,
+			Protocol:    rule.Protocol,
+			Action:      action,
+			Direction:   direction,
+			Source:      rule.Source,
+			Destination: rule.Destination,
+			Comment:     rule.Comment,
+			IPVersion:   ipVersion,
+		})
 	}
 	return rules, nil
+}
+
+func (c *Client) FirewallToggle(ctx context.Context, enable bool) error {
+	_, err := c.stub.FirewallToggle(ctx, &agentv1.FirewallToggleRequest{Enable: enable})
+	return err
+}
+
+func (c *Client) FirewallReset(ctx context.Context) error {
+	_, err := c.stub.FirewallReset(ctx, &agentv1.FirewallResetRequest{})
+	return err
 }
 
 func (c *Client) SystemStats(ctx context.Context) (*contract.SystemStats, error) {

@@ -219,10 +219,12 @@ type AgentClient interface {
 	ArchiveExtract(ctx context.Context, srcPath, dstDir string) error
 
 	// Firewall
-	FirewallAllow(ctx context.Context, port int, proto string) error
-	FirewallDeny(ctx context.Context, port int, proto string) error
-	FirewallDelete(ctx context.Context, port int, proto string) error
-	FirewallList(ctx context.Context) ([]FirewallRule, error)
+	FirewallStatus(ctx context.Context) (*FirewallStatus, error)
+	FirewallRule(ctx context.Context, req *FirewallRuleRequest) error
+	FirewallDelete(ctx context.Context, id string) error
+	FirewallList(ctx context.Context) ([]*FirewallRule, error)
+	FirewallToggle(ctx context.Context, enable bool) error
+	FirewallReset(ctx context.Context) error
 
 	// System information
 	SystemStats(ctx context.Context) (*SystemStats, error)
@@ -273,11 +275,42 @@ type FileInfo struct {
 	Group   string    `json:"group"`
 }
 
+// FirewallStatus represents the state of the firewall.
+type FirewallStatus struct {
+	Active          bool   `json:"active"`
+	DefaultIncoming string `json:"default_incoming"`
+	DefaultOutgoing string `json:"default_outgoing"`
+	DefaultRouted   string `json:"default_routed"`
+	IPv6Enabled     bool   `json:"ipv6_enabled"`
+	Logging         string `json:"logging"`
+	RuleCount       int    `json:"rule_count"`
+	ProfileName     string `json:"profile_name"`
+}
+
+// FirewallRuleRequest is used to add a new rule.
+type FirewallRuleRequest struct {
+	ID          string `json:"id,omitempty"`
+	Port        string `json:"port"`
+	Protocol    string `json:"protocol"`
+	Action      string `json:"action"`
+	Direction   string `json:"direction,omitempty"`
+	Source      string `json:"source,omitempty"`
+	Destination string `json:"destination,omitempty"`
+	Comment     string `json:"comment,omitempty"`
+	IPVersion   string `json:"ip_version,omitempty"`
+}
+
 // FirewallRule represents a single firewall rule.
 type FirewallRule struct {
-	Port     int    `json:"port"`
-	Protocol string `json:"protocol"` // "tcp" | "udp"
-	Action   string `json:"action"`   // "allow" | "deny"
+	ID          string `json:"id"`
+	Port        string `json:"port"`
+	Protocol    string `json:"protocol"` // "tcp" | "udp" | "any"
+	Action      string `json:"action"`   // "allow" | "deny" | "reject"
+	Direction   string `json:"direction"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+	Comment     string `json:"comment"`
+	IPVersion   string `json:"ip_version"`
 }
 
 // SystemStats contains a snapshot of system resource utilisation.

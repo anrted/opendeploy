@@ -1,24 +1,16 @@
-// Package firewall provides UFW firewall management for the Agent.
 package firewall
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 
 	"github.com/anrted/opendeploy/internal/agent/executor"
+	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
 )
 
-// Rule represents a single firewall rule.
-type Rule struct {
-	Port     int
-	Protocol string
-	Action   string
-}
-
-// UFWManager manages firewall rules via UFW.
+// UFWManager implements Provider using UFW.
 type UFWManager struct {
 	shell  *executor.Shell
 	logger *slog.Logger
@@ -29,83 +21,228 @@ func NewUFWManager(shell *executor.Shell, logger *slog.Logger) *UFWManager {
 	return &UFWManager{shell: shell, logger: logger}
 }
 
-// Allow opens a port through the firewall.
-func (m *UFWManager) Allow(ctx context.Context, port int, protocol string) error {
-	spec := fmt.Sprintf("%d/%s", port, protocol)
-	_, err := m.shell.Run(ctx, "ufw", "allow", spec)
+// Status returns the current UFW status and default policies.
+func (m *UFWManager) Status(ctx context.Context) (*agentv1.FirewallStatusResponse, error) {
+	res, err := m.shell.Run(ctx, "ufw", "status", "verbose")
 	if err != nil {
-		return fmt.Errorf("ufw: allow %s: %w", spec, err)
+		return &agentv1.FirewallStatusResponse{Active: false, ProfileName: "ufw"}, nil
 	}
-	m.logger.InfoContext(ctx, "firewall: allowed port", "port", port, "proto", protocol)
-	return nil
-}
-
-// Deny closes a port through the firewall.
-func (m *UFWManager) Deny(ctx context.Context, port int, protocol string) error {
-	spec := fmt.Sprintf("%d/%s", port, protocol)
-	_, err := m.shell.Run(ctx, "ufw", "deny", spec)
-	if err != nil {
-		return fmt.Errorf("ufw: deny %s: %w", spec, err)
-	}
-	m.logger.InfoContext(ctx, "firewall: denied port", "port", port, "proto", protocol)
-	return nil
-}
-
-// Delete removes a rule from the firewall.
-func (m *UFWManager) Delete(ctx context.Context, port int, protocol string) error {
-	spec := fmt.Sprintf("%d/%s", port, protocol)
 	
-	// First, try to delete allow rule
-	_, err1 := m.shell.Run(ctx, "ufw", "delete", "allow", spec)
-	// Also try to delete deny rule
-	_, err2 := m.shell.Run(ctx, "ufw", "delete", "deny", spec)
-
-	if err1 != nil && err2 != nil {
-		return fmt.Errorf("ufw: delete %s failed", spec)
+	status := &agentv1.FirewallStatusResponse{
+		ProfileName: "ufw",
 	}
 
-	m.logger.InfoContext(ctx, "firewall: deleted rule", "port", port, "proto", protocol)
-	return nil
+	lines := strings.Split(res.Stdout, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Status:") {
+			status.Active = strings.Contains(line, "active")
+		} else if strings.HasPrefix(line, "Logging:") {
+			parts := strings.Split(line, " ")
+			if len(parts) > 1 {
+				status.Logging = parts[1]
+			}
+		} else if strings.HasPrefix(line, "Default:") {
+			if strings.Contains(line, "(incoming)") {
+				status.DefaultIncoming = extractPolicy(line, "incoming")
+			}
+			if strings.Contains(line, "(outgoing)") {
+				status.DefaultOutgoing = extractPolicy(line, "outgoing")
+			}
+			if strings.Contains(line, "(routed)") {
+				status.DefaultRouted = extractPolicy(line, "routed")
+			}
+		}
+	}
+	
+	rules, err := m.List(ctx)
+	if err == nil {
+		status.RuleCount = int32(len(rules))
+	}
+	
+	status.Ipv6Enabled = true
+
+	return status, nil
+}
+
+func extractPolicy(line, direction string) string {
+	parts := strings.Split(line, ",")
+	for _, p := range parts {
+		if strings.Contains(p, "("+direction+")") {
+			policy := strings.TrimSpace(strings.Split(p, "(")[0])
+			if strings.HasPrefix(policy, "Default: ") {
+			    policy = strings.TrimPrefix(policy, "Default: ")
+			}
+			return policy
+		}
+	}
+	return ""
 }
 
 // List returns the current firewall rules.
-func (m *UFWManager) List(ctx context.Context) ([]Rule, error) {
+func (m *UFWManager) List(ctx context.Context) ([]*agentv1.FirewallEntry, error) {
 	result, err := m.shell.Run(ctx, "ufw", "status", "numbered")
 	if err != nil {
 		return nil, fmt.Errorf("ufw: list: %w", err)
 	}
-	return parseUFWStatus(result.Stdout), nil
+	return m.parseUFWStatus(result.Stdout), nil
 }
 
-// parseUFWStatus parses the output of `ufw status numbered` into Rule structs.
-func parseUFWStatus(output string) []Rule {
-	var rules []Rule
+// AddRule adds a firewall rule.
+func (m *UFWManager) AddRule(ctx context.Context, req *agentv1.FirewallRuleRequest) error {
+    args := []string{}
+    
+    switch req.Action {
+	case agentv1.FirewallAction_FIREWALL_ACTION_ALLOW:
+		args = append([]string{"allow"}, args...)
+	case agentv1.FirewallAction_FIREWALL_ACTION_DENY:
+		args = append([]string{"deny"}, args...)
+	case agentv1.FirewallAction_FIREWALL_ACTION_REJECT:
+		args = append([]string{"reject"}, args...)
+	default:
+		return fmt.Errorf("unsupported action")
+	}
+
+    if req.Direction == agentv1.FirewallDirection_FIREWALL_DIRECTION_IN {
+        args = append(args, "in")
+    } else if req.Direction == agentv1.FirewallDirection_FIREWALL_DIRECTION_OUT {
+        args = append(args, "out")
+    }
+    
+	if req.Source == "" && req.Destination == "" {
+	    spec := req.Port
+	    if req.Protocol != "" && req.Protocol != "any" {
+	        spec = fmt.Sprintf("%s/%s", req.Port, req.Protocol)
+	    }
+	    args = append(args, spec)
+	} else {
+	    if req.Protocol != "" && req.Protocol != "any" {
+	        args = append(args, "proto", req.Protocol)
+	    }
+	    if req.Source != "" {
+	        args = append(args, "from", req.Source)
+	    } else {
+	        args = append(args, "from", "any")
+	    }
+	    if req.Destination != "" {
+	        args = append(args, "to", req.Destination)
+	    } else {
+	        args = append(args, "to", "any")
+	    }
+	    if req.Port != "" {
+	        args = append(args, "port", req.Port)
+	    }
+	}
+	
+	if req.Comment != "" {
+	    args = append(args, "comment", req.Comment)
+	}
+	
+	_, err := m.shell.Run(ctx, "ufw", args...)
+	if err != nil {
+		return fmt.Errorf("ufw: rule %v: %w", args, err)
+	}
+	m.logger.InfoContext(ctx, "firewall: added rule", "args", args)
+	return nil
+}
+
+// DeleteRule removes a rule from the firewall by ID.
+func (m *UFWManager) DeleteRule(ctx context.Context, id string) error {
+	_, err := m.shell.Run(ctx, "ufw", "--force", "delete", id)
+	if err != nil {
+		return fmt.Errorf("ufw: delete %s failed: %w", id, err)
+	}
+	m.logger.InfoContext(ctx, "firewall: deleted rule", "id", id)
+	return nil
+}
+
+// Toggle enables or disables UFW.
+func (m *UFWManager) Toggle(ctx context.Context, enable bool) error {
+    action := "disable"
+    if enable {
+        action = "enable"
+    }
+    _, err := m.shell.Run(ctx, "ufw", "--force", action)
+    if err != nil {
+        return fmt.Errorf("ufw: %s failed: %w", action, err)
+    }
+    return nil
+}
+
+// Reset resets UFW.
+func (m *UFWManager) Reset(ctx context.Context) error {
+    _, err := m.shell.Run(ctx, "ufw", "--force", "reset")
+    if err != nil {
+        return fmt.Errorf("ufw: reset failed: %w", err)
+    }
+    return nil
+}
+
+func (m *UFWManager) parseUFWStatus(output string) []*agentv1.FirewallEntry {
+	var rules []*agentv1.FirewallEntry
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "[") {
 			continue
 		}
-		// Example: [ 1] 80/tcp                     ALLOW IN    Anywhere
-		parts := strings.Fields(line)
+		
+		bracketIdx := strings.Index(line, "]")
+		if bracketIdx == -1 {
+		    continue
+		}
+		idStr := strings.TrimSpace(line[1:bracketIdx])
+		rest := strings.TrimSpace(line[bracketIdx+1:])
+		
+		parts := strings.Fields(rest)
 		if len(parts) < 3 {
 			continue
 		}
-		portProto := parts[1]
-		action := strings.ToLower(parts[2])
+		
+		entry := &agentv1.FirewallEntry{
+		    Id: idStr,
+		}
+		
+		entry.Destination = parts[0]
+		
+		actionStr := ""
+		for _, p := range parts[1:] {
+		    p = strings.ToUpper(p)
+		    if p == "ALLOW" || p == "DENY" || p == "REJECT" {
+		        actionStr = p
+		        break
+		    }
+		}
+		
+		if actionStr == "ALLOW" {
+		    entry.Action = agentv1.FirewallAction_FIREWALL_ACTION_ALLOW
+		} else if actionStr == "DENY" {
+		    entry.Action = agentv1.FirewallAction_FIREWALL_ACTION_DENY
+		} else if actionStr == "REJECT" {
+		    entry.Action = agentv1.FirewallAction_FIREWALL_ACTION_REJECT
+		}
+		
+		if strings.Contains(rest, " IN ") {
+		    entry.Direction = agentv1.FirewallDirection_FIREWALL_DIRECTION_IN
+		} else if strings.Contains(rest, " OUT ") {
+		    entry.Direction = agentv1.FirewallDirection_FIREWALL_DIRECTION_OUT
+		} else {
+		    entry.Direction = agentv1.FirewallDirection_FIREWALL_DIRECTION_IN
+		}
+		
+		if strings.Contains(entry.Destination, "/") {
+		    pp := strings.SplitN(entry.Destination, "/", 2)
+		    entry.Port = pp[0]
+		    entry.Protocol = pp[1]
+		    entry.Destination = "Anywhere"
+		}
+		
+		if strings.Contains(rest, "(v6)") {
+		    entry.IpVersion = agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V6
+		} else {
+		    entry.IpVersion = agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V4
+		}
 
-		pp := strings.SplitN(portProto, "/", 2)
-		if len(pp) != 2 {
-			continue
-		}
-		port, err := strconv.Atoi(pp[0])
-		if err != nil {
-			continue
-		}
-		rules = append(rules, Rule{
-			Port:     port,
-			Protocol: pp[1],
-			Action:   action,
-		})
+		rules = append(rules, entry)
 	}
 	return rules
 }
