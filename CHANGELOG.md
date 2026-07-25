@@ -29,5 +29,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Argon2id password hashing, rate limiting, audit records, and confirmation flows
   for destructive UI actions.
 - WebSocket bearer tokens are no longer exposed in URLs.
+- Updated chi, gRPC, and Go cryptography/network dependencies to patched
+  releases after reviewing GitHub security advisories.
 
 [0.1.0-alpha]: https://github.com/anrted/opendeploy/releases/tag/v0.1.0-alpha

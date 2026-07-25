@@ -6,7 +6,7 @@ host.
 ## Build requirements
 
 - Linux
-- Go 1.23+
+- Go 1.25+
 - Node.js 22+ and npm
 - GCC and SQLite development support for CGO
 - systemd
