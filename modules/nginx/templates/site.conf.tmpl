@@ -1,0 +1,49 @@
+# Managed by OpenDeploy Nginx Module.
+# You can customize this template.
+
+server {
+{{- if .SSLEnabled }}
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    ssl_certificate {{ .SSLCert }};
+    ssl_certificate_key {{ .SSLKey }};
+    listen 80;
+    listen [::]:80;
+{{- if .ForceHTTPS }}
+    if ($scheme = http) {
+        return 301 https://$host$request_uri;
+    }
+{{- end }}
+{{- else }}
+    listen 80;
+    listen [::]:80;
+{{- end }}
+
+    server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
+    root {{ .RootPath }};
+    index index.html index.htm index.php;
+
+{{- if eq .AppType "php" }}
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php{{ .AppVersion }}-fpm.sock;
+    }
+{{- else if eq .AppType "proxy" }}
+    location / {
+        proxy_pass {{ .ProxyTarget }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+{{- else }}
+    location / {
+        try_files $uri $uri/ =404;
+    }
+{{- end }}
+}

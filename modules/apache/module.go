@@ -153,8 +153,8 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 // ─── WebServerPlugin ────────────────────────────────────────────────────────
 
 func (m *Module) ApplySite(ctx context.Context, action contract.SiteAction, site contract.SiteSpec) error {
-	configPath := fmt.Sprintf("/etc/apache2/sites-available/opendeploy-%s.conf", site.Domain)
-	enabledPath := fmt.Sprintf("/etc/apache2/sites-enabled/opendeploy-%s.conf", site.Domain)
+	configPath := fmt.Sprintf("/etc/apache2/sites-available/opendeploy-%s.conf", site.PrimaryDomain)
+	enabledPath := fmt.Sprintf("/etc/apache2/sites-enabled/opendeploy-%s.conf", site.PrimaryDomain)
 
 	switch action {
 	case contract.SiteUpsert, contract.SiteEnable:
@@ -183,21 +183,21 @@ func renderApache(site contract.SiteSpec) []byte {
 	
 	if !site.SSLEnabled {
 		b.WriteString("<VirtualHost *:80>\n")
-		fmt.Fprintf(&b, "    ServerName %s\n", site.Domain)
+		fmt.Fprintf(&b, "    ServerName %s\n", site.PrimaryDomain)
 		fmt.Fprintf(&b, "    DocumentRoot %s\n", site.RootPath)
 		b.WriteString("\n    <Directory " + site.RootPath + ">\n")
 		b.WriteString("        AllowOverride All\n")
 		b.WriteString("        Require all granted\n")
 		b.WriteString("    </Directory>\n")
-		if site.PHPVersion != "" {
+		if site.AppVersion != "" {
 			b.WriteString("\n    <FilesMatch \\.php$>\n")
-			fmt.Fprintf(&b, "        SetHandler \"proxy:unix:/run/php/php%s-fpm.sock|fcgi://localhost\"\n", site.PHPVersion)
+			fmt.Fprintf(&b, "        SetHandler \"proxy:unix:/run/php/php%s-fpm.sock|fcgi://localhost\"\n", site.AppVersion)
 			b.WriteString("    </FilesMatch>\n")
 		}
 		b.WriteString("</VirtualHost>\n")
 	} else {
 		b.WriteString("<VirtualHost *:443>\n")
-		fmt.Fprintf(&b, "    ServerName %s\n", site.Domain)
+		fmt.Fprintf(&b, "    ServerName %s\n", site.PrimaryDomain)
 		fmt.Fprintf(&b, "    DocumentRoot %s\n", site.RootPath)
 		b.WriteString("    SSLEngine on\n")
 		fmt.Fprintf(&b, "    SSLCertificateFile %s\n", site.SSLCert)
@@ -206,9 +206,9 @@ func renderApache(site contract.SiteSpec) []byte {
 		b.WriteString("        AllowOverride All\n")
 		b.WriteString("        Require all granted\n")
 		b.WriteString("    </Directory>\n")
-		if site.PHPVersion != "" {
+		if site.AppVersion != "" {
 			b.WriteString("\n    <FilesMatch \\.php$>\n")
-			fmt.Fprintf(&b, "        SetHandler \"proxy:unix:/run/php/php%s-fpm.sock|fcgi://localhost\"\n", site.PHPVersion)
+			fmt.Fprintf(&b, "        SetHandler \"proxy:unix:/run/php/php%s-fpm.sock|fcgi://localhost\"\n", site.AppVersion)
 			b.WriteString("    </FilesMatch>\n")
 		}
 		b.WriteString("</VirtualHost>\n")

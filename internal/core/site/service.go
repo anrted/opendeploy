@@ -52,7 +52,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePHPVersion(req.PHPVersion); err != nil {
+	if err := validatePHPVersion(req.AppVersion); req.AppType == "php" && err != nil {
 		return nil, err
 	}
 	if req.ModuleID == "" {
@@ -63,32 +63,53 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	}
 
 	site := &Site{
-		Domain:     strings.ToLower(strings.TrimSpace(req.Domain)),
-		RootPath:   rootPath,
-		PHPVersion: req.PHPVersion,
-		SSLEnabled: req.SSLEnabled,
-		SSLCert:    req.SSLCert,
-		SSLKey:     req.SSLKey,
-		ModuleID:   req.ModuleID,
-		State:      StateActive,
-		CreatedBy:  &userID,
+		Name:      req.Name,
+		ModuleID:  req.ModuleID,
+		RootPath:  rootPath,
+		State:     StateActive,
+		OwnerID:   &userID,
+		Domains: []Domain{
+			{Domain: strings.ToLower(strings.TrimSpace(req.Domain)), Type: DomainPrimary},
+		},
+		App: App{
+			AppType:     req.AppType,
+			AppVersion:  req.AppVersion,
+			ProxyTarget: req.ProxyTarget,
+		},
+	}
+
+	if req.SSLEnabled {
+		provider := "custom"
+		if req.SSLProvider != nil && *req.SSLProvider != "" {
+			provider = *req.SSLProvider
+		} else if req.SSLCert != nil && strings.HasPrefix(*req.SSLCert, "/etc/letsencrypt") {
+			provider = "certbot"
+		}
+		
+		site.SSL = &SSL{
+			Provider:   provider,
+			CertPath:   req.SSLCert,
+			KeyPath:    req.SSLKey,
+			ForceHTTPS: false,
+			AutoRenew:  true,
+		}
 	}
 
 	if err := s.agent.DirCreate(ctx, site.RootPath, 0o755); err != nil {
 		return nil, apperrors.Internal("failed to create site root directory", err)
 	}
 
-	needsCertbot := site.SSLEnabled && site.SSLCert != nil && strings.HasPrefix(*site.SSLCert, "/etc/letsencrypt")
+	needsCertbot := site.SSL != nil && site.SSL.Provider == "certbot"
 
 	if needsCertbot {
 		// Temporary HTTP configuration for Certbot challenge
 		tmpSpec := *site
-		tmpSpec.SSLEnabled = false
+		tmpSpec.SSL = nil // Disable SSL temporarily
 		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
 			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
 		}
 		time.Sleep(2 * time.Second) // wait for web server to restart
-		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
+		if err := s.obtainCertbotSSL(ctx, req.Domain, site.RootPath); err != nil {
 			_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
 			// Return the error directly if it's already an AppError
 			if _, ok := err.(*apperrors.AppError); ok {
@@ -99,7 +120,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	}
 
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
-		s.recordAudit(ctx, userID, "site.create", site.Domain, ip, audit.StatusError)
+		s.recordAudit(ctx, userID, "site.create", req.Domain, ip, audit.StatusError)
 		return nil, fmt.Errorf("site service: provision web server: %w", err)
 	}
 	if err := s.repo.Create(ctx, site); err != nil {
@@ -107,8 +128,8 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		return nil, err
 	}
 
-	s.recordAudit(ctx, userID, "site.create", site.Domain, ip, audit.StatusSuccess)
-	s.logger.InfoContext(ctx, "site: created", "id", site.ID, "domain", site.Domain)
+	s.recordAudit(ctx, userID, "site.create", req.Domain, ip, audit.StatusSuccess)
+	s.logger.InfoContext(ctx, "site: created", "id", site.ID, "domain", req.Domain)
 	return site, nil
 }
 
@@ -120,11 +141,8 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 	}
 	previous := *site
 
-	if req.Domain != nil {
-		if err := validateDomain(*req.Domain); err != nil {
-			return nil, err
-		}
-		site.Domain = strings.ToLower(strings.TrimSpace(*req.Domain))
+	if req.Name != nil {
+		site.Name = *req.Name
 	}
 	if req.RootPath != nil {
 		rootPath, err := normalizeRootPath(*req.RootPath)
@@ -138,175 +156,202 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		}
 		site.RootPath = rootPath
 	}
-	if req.PHPVersion != nil {
-		if err := validatePHPVersion(req.PHPVersion); err != nil {
-			return nil, err
-		}
-		site.PHPVersion = req.PHPVersion
+	if req.AppType != nil {
+		site.App.AppType = *req.AppType
 	}
-	if req.SSLEnabled != nil {
-		site.SSLEnabled = *req.SSLEnabled
-	}
-	if req.SSLCert != nil {
-		site.SSLCert = req.SSLCert
-	}
-	if req.SSLKey != nil {
-		site.SSLKey = req.SSLKey
-	}
-	if err := validateSSL(site.SSLEnabled, site.SSLCert, site.SSLKey); err != nil {
-		return nil, err
-	}
-
-	needsCertbot := site.SSLEnabled && !previous.SSLEnabled && site.SSLCert != nil && strings.HasPrefix(*site.SSLCert, "/etc/letsencrypt")
-
-	if needsCertbot {
-		tmpSpec := *site
-		tmpSpec.SSLEnabled = false
-		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
-			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
-		}
-		time.Sleep(2 * time.Second) // wait for web server to restart
-		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
-			_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
-			if _, ok := err.(*apperrors.AppError); ok {
+	if req.AppVersion != nil {
+		if req.AppType != nil && *req.AppType == "php" {
+			if err := validatePHPVersion(req.AppVersion); err != nil {
 				return nil, err
 			}
-			return nil, apperrors.Internal("failed to obtain SSL certificate", err)
+		}
+		site.App.AppVersion = req.AppVersion
+	}
+	if req.ProxyTarget != nil {
+		site.App.ProxyTarget = req.ProxyTarget
+	}
+
+	if req.SSLEnabled != nil {
+		if *req.SSLEnabled {
+			if site.SSL == nil {
+				site.SSL = &SSL{
+					Provider:  "custom",
+					AutoRenew: true,
+				}
+			}
+		} else {
+			site.SSL = nil
+		}
+	}
+	if site.SSL != nil {
+		if req.SSLProvider != nil {
+			site.SSL.Provider = *req.SSLProvider
+		}
+		if req.SSLCert != nil {
+			clean, err := normalizeCertificatePath(*req.SSLCert)
+			if err != nil {
+				return nil, apperrors.InvalidInput("ssl_cert must be an absolute path below /etc/letsencrypt or /var/lib/opendeploy")
+			}
+			site.SSL.CertPath = &clean
+		}
+		if req.SSLKey != nil {
+			clean, err := normalizeCertificatePath(*req.SSLKey)
+			if err != nil {
+				return nil, apperrors.InvalidInput("ssl_key must be an absolute path below /etc/letsencrypt or /var/lib/opendeploy")
+			}
+			site.SSL.KeyPath = &clean
+		}
+		if req.ForceHTTPS != nil {
+			site.SSL.ForceHTTPS = *req.ForceHTTPS
 		}
 	}
 
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
-		s.recordAudit(ctx, userID, "site.update", site.Domain, ip, audit.StatusError)
-		return nil, fmt.Errorf("site service: apply config update: %w", err)
-	}
-	if err := s.repo.Update(ctx, site); err != nil {
-		_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
-		if previous.Domain != site.Domain {
-			_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
-		}
-		return nil, err
-	}
-	if previous.Domain != site.Domain {
-		if err := s.applySiteConfig(ctx, previous.ModuleID, contract.SiteDelete, &previous); err != nil {
-			s.logger.ErrorContext(ctx, "site: old vhost cleanup failed", "domain", previous.Domain, "error", err)
-			return nil, fmt.Errorf("site service: remove previous vhost: %w", err)
-		}
+		return nil, fmt.Errorf("site service: re-provision web server: %w", err)
 	}
 
-	s.recordAudit(ctx, userID, "site.update", site.Domain, ip, audit.StatusSuccess)
+	if err := s.repo.Update(ctx, site); err != nil {
+		// Rollback web config on DB failure
+		_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
+		return nil, err
+	}
+
+	s.recordAudit(ctx, userID, "site.update", site.ID, ip, audit.StatusSuccess)
 	return site, nil
 }
 
-// Delete removes a site record (does NOT remove the vhost config on disk —
-// that is done by the nginx module handler).
-func (s *Service) Delete(ctx context.Context, id, userID, ip string) error {
+// Delete removes a site entirely.
+func (s *Service) Delete(ctx context.Context, id string, userID, ip string) error {
 	site, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site); err != nil {
-		s.recordAudit(ctx, userID, "site.delete", site.Domain, ip, audit.StatusError)
-		return fmt.Errorf("site service: remove vhost: %w", err)
+		s.logger.ErrorContext(ctx, "failed to remove web server config during site deletion", "error", err, "site_id", id)
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
-		_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site)
-		return fmt.Errorf("site service: delete: %w", err)
+		return err
 	}
-	s.recordAudit(ctx, userID, "site.delete", site.Domain, ip, audit.StatusSuccess)
-	s.logger.InfoContext(ctx, "site: deleted", "id", id, "domain", site.Domain)
+	s.recordAudit(ctx, userID, "site.delete", site.ID, ip, audit.StatusSuccess)
 	return nil
 }
 
-// Enable re-activates a disabled site.
-func (s *Service) Enable(ctx context.Context, id, userID, ip string) error {
-	return s.setState(ctx, id, StateActive, userID, ip, "site.enable")
-}
-
-// Disable disables an active site.
-func (s *Service) Disable(ctx context.Context, id, userID, ip string) error {
-	return s.setState(ctx, id, StateDisabled, userID, ip, "site.disable")
-}
-
-func (s *Service) setState(ctx context.Context, id string, state State, userID, ip, action string) error {
+func (s *Service) Enable(ctx context.Context, id string, userID, ip string) error {
 	site, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	agentAction := contract.SiteDisable
-	rollbackAction := contract.SiteEnable
-	if state == StateActive {
-		agentAction = contract.SiteEnable
-		rollbackAction = contract.SiteDisable
-	}
-	if err := s.applySiteConfig(ctx, site.ModuleID, agentAction, site); err != nil {
-		s.recordAudit(ctx, userID, action, site.Domain, ip, audit.StatusError)
-		return fmt.Errorf("site service: change state: %w", err)
-	}
-	site.State = state
+	site.State = StateActive
 	if err := s.repo.Update(ctx, site); err != nil {
-		_ = s.applySiteConfig(ctx, site.ModuleID, rollbackAction, site)
 		return err
 	}
-	s.recordAudit(ctx, userID, action, site.Domain, ip, audit.StatusSuccess)
+	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteEnable, site); err != nil {
+		s.logger.ErrorContext(ctx, "failed to enable web server config", "error", err, "site_id", id)
+	}
+	s.recordAudit(ctx, userID, "site.enable", site.ID, ip, audit.StatusSuccess)
 	return nil
 }
 
+func (s *Service) Disable(ctx context.Context, id string, userID, ip string) error {
+	site, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	site.State = StateDisabled
+	if err := s.repo.Update(ctx, site); err != nil {
+		return err
+	}
+	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteDisable, site); err != nil {
+		s.logger.ErrorContext(ctx, "failed to disable web server config", "error", err, "site_id", id)
+	}
+	s.recordAudit(ctx, userID, "site.disable", site.ID, ip, audit.StatusSuccess)
+	return nil
+}
+
+// applySiteConfig passes the current domain model state to the web server module.
 func (s *Service) applySiteConfig(ctx context.Context, moduleID string, action contract.SiteAction, site *Site) error {
-	if s.registry == nil {
-		return fmt.Errorf("module registry is unavailable")
+	m := s.registry.Find(moduleID)
+	if m == nil {
+		return fmt.Errorf("module not found: %s", moduleID)
 	}
-	mod := s.registry.Find(moduleID)
-	if mod == nil {
-		return fmt.Errorf("web server module %q not found", moduleID)
-	}
-	plugin, ok := mod.(contract.WebServerPlugin)
+	plug, ok := m.(contract.WebServerPlugin)
 	if !ok {
-		return fmt.Errorf("module %q is not a web server plugin", moduleID)
+		return fmt.Errorf("module %s does not implement WebServerPlugin", moduleID)
+	}
+
+	var primary string
+	var aliases []string
+	for _, d := range site.Domains {
+		if d.Type == DomainPrimary {
+			primary = d.Domain
+		} else {
+			aliases = append(aliases, d.Domain)
+		}
+	}
+
+	var appVer, proxy string
+	if site.App.AppVersion != nil {
+		appVer = *site.App.AppVersion
+	}
+	if site.App.ProxyTarget != nil {
+		proxy = *site.App.ProxyTarget
+	}
+
+	sslEnabled := site.SSL != nil
+	var cert, key string
+	var force bool
+	if sslEnabled {
+		if site.SSL.CertPath != nil {
+			cert = *site.SSL.CertPath
+		}
+		if site.SSL.KeyPath != nil {
+			key = *site.SSL.KeyPath
+		}
+		force = site.SSL.ForceHTTPS
 	}
 
 	spec := contract.SiteSpec{
-		Domain:     site.Domain,
-		RootPath:   site.RootPath,
-		SSLEnabled: site.SSLEnabled,
+		ID:            site.ID,
+		Name:          site.Name,
+		PrimaryDomain: primary,
+		Aliases:       aliases,
+		RootPath:      site.RootPath,
+		AppType:       site.App.AppType,
+		AppVersion:    appVer,
+		ProxyTarget:   proxy,
+		SSLEnabled:    sslEnabled,
+		SSLCert:       cert,
+		SSLKey:        key,
+		ForceHTTPS:    force,
 	}
-	if site.PHPVersion != nil {
-		spec.PHPVersion = *site.PHPVersion
-	}
-	if site.SSLCert != nil {
-		spec.SSLCert = *site.SSLCert
-	}
-	if site.SSLKey != nil {
-		spec.SSLKey = *site.SSLKey
-	}
-	return plugin.ApplySite(ctx, action, spec)
+
+	return plug.ApplySite(ctx, action, spec)
 }
 
 func (s *Service) obtainCertbotSSL(ctx context.Context, domain, rootPath string) error {
-	if s.registry == nil {
-		return apperrors.Internal("module registry is unavailable", nil)
+	m := s.registry.Find("certbot")
+	if m == nil {
+		return apperrors.Internal("certbot module is not installed", nil)
 	}
-	mod := s.registry.Find("certbot")
-	if mod == nil {
-		return apperrors.InvalidInput("certbot module is not installed")
-	}
-	plugin, ok := mod.(contract.CertbotPlugin)
+	plug, ok := m.(contract.CertbotPlugin)
 	if !ok {
-		return apperrors.Internal("certbot module is invalid", nil)
+		return apperrors.Internal("certbot module does not implement CertbotPlugin", nil)
 	}
-	return plugin.ObtainCert(ctx, domain, rootPath)
+
+	// Wait, certbot needs domains. In Phase 1 we just pass the primary domain to CertbotPlugin.Obtain
+	return plug.ObtainCert(ctx, domain, rootPath)
 }
 
-// ─── File Operations ───────────────────────────────────────────────────────
+// ─── File Management Methods ───────────────────────────────────────────────
 
 func (s *Service) resolveFilePath(ctx context.Context, siteID, relativePath string) (string, error) {
 	site, err := s.repo.FindByID(ctx, siteID)
 	if err != nil {
 		return "", err
 	}
-	// Prevent path traversal.
 	cleanRelative := path.Clean("/" + relativePath)
 	absPath := path.Join(site.RootPath, cleanRelative)
-	
+
 	if !strings.HasPrefix(absPath, site.RootPath) {
 		return "", apperrors.InvalidInput("invalid file path")
 	}
@@ -376,7 +421,6 @@ func (s *Service) DeleteFile(ctx context.Context, siteID, relativePath string) e
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
-// validateDomain checks that domain is a non-empty, syntactically valid hostname.
 func validateDomain(domain string) error {
 	domain = strings.TrimSpace(domain)
 	if domain == "" {

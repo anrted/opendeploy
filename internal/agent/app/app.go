@@ -85,7 +85,7 @@ func (a *Agent) Start() error {
 	}
 
 	a.grpcServer = grpc.NewServer()
-	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector()).Register(a.grpcServer)
+	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector(), a.shell).Register(a.grpcServer)
 
 	a.logger.Info("agent: gRPC server started", "socket", socketPath)
 	return a.grpcServer.Serve(lis)

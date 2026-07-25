@@ -213,7 +213,9 @@ async function submitSite() {
   try {
     const payload = {
       ...form,
-      php_version: form.php_version || null,
+      name: form.domain,
+      app_type: form.php_version ? 'php' : 'static',
+      app_version: form.php_version || null,
     }
     if (isEditing.value) {
       await api.put(`/sites/${selectedSite.value.id}`, payload)

@@ -60,6 +60,9 @@ func (c *Client) ServiceEnable(ctx context.Context, name string) error {
 func (c *Client) ServiceDisable(ctx context.Context, name string) error {
 	return c.serviceAction(ctx, name, agentv1.ServiceActionType_SERVICE_ACTION_DISABLE)
 }
+func (c *Client) ServiceReload(ctx context.Context, name string) error {
+	return c.serviceAction(ctx, name, agentv1.ServiceActionType_SERVICE_ACTION_RELOAD)
+}
 
 func (c *Client) serviceAction(ctx context.Context, name string, action agentv1.ServiceActionType) error {
 	_, err := c.stub.ServiceAction(ctx, &agentv1.ServiceActionRequest{ServiceName: name, Action: action})
@@ -90,6 +93,17 @@ func (c *Client) ServiceLogs(ctx context.Context, name string, lines int) ([]str
 		}
 		result = append(result, line.Line)
 	}
+}
+
+func (c *Client) CommandExecute(ctx context.Context, command string, args ...string) (int, string, string, error) {
+	resp, err := c.stub.CommandExecute(ctx, &agentv1.CommandExecuteRequest{
+		Command: command,
+		Args:    args,
+	})
+	if err != nil {
+		return 0, "", "", err
+	}
+	return int(resp.ExitCode), resp.Stdout, resp.Stderr, nil
 }
 
 func (c *Client) PackageInstall(ctx context.Context, pkg string) (<-chan string, error) {

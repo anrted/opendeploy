@@ -31,7 +31,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "dnf", AllowedArgs: []string{"install", "remove", "update", "list", "-y", "-q"}},
 	{Binary: "yum", AllowedArgs: []string{"install", "remove", "update", "list", "-y", "-q"}},
 	{Binary: "systemctl", AllowedArgs: []string{
-		"start", "stop", "restart", "enable", "disable",
+		"start", "stop", "restart", "reload", "enable", "disable",
 		"status", "is-active", "is-enabled", "daemon-reload",
 		"show", "-p", "SubState", "--value",
 	}},
