@@ -110,7 +110,7 @@ func defaults() Config {
 			Format: "json",
 		},
 		Modules: ModulesConfig{
-			Enabled: []string{"nginx", "php", "nodejs", "git"},
+			Enabled: []string{"nginx", "php", "nodejs", "git", "certbot"},
 		},
 	}
 }
