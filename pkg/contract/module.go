@@ -212,6 +212,7 @@ type AgentClient interface {
 	// Firewall
 	FirewallAllow(ctx context.Context, port int, proto string) error
 	FirewallDeny(ctx context.Context, port int, proto string) error
+	FirewallDelete(ctx context.Context, port int, proto string) error
 	FirewallList(ctx context.Context) ([]FirewallRule, error)
 
 	// System information

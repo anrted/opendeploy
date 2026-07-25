@@ -175,6 +175,8 @@ func (s *Service) FirewallRule(ctx context.Context, req *agentv1.FirewallRuleReq
 		err = s.fw.Allow(ctx, int(req.GetPort()), req.GetProtocol())
 	case agentv1.FirewallAction_FIREWALL_ACTION_DENY:
 		err = s.fw.Deny(ctx, int(req.GetPort()), req.GetProtocol())
+	case agentv1.FirewallAction_FIREWALL_ACTION_DELETE:
+		err = s.fw.Delete(ctx, int(req.GetPort()), req.GetProtocol())
 	default:
 		return nil, status.Error(codes.InvalidArgument, "unsupported firewall action")
 	}

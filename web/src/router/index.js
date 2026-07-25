@@ -24,6 +24,11 @@ const routes = [
         component: () => import('@/views/ModulesView.vue'),
       },
       {
+        path: 'modules/ufw',
+        name: 'module_ufw',
+        component: () => import('@/views/modules/UFWView.vue'),
+      },
+      {
         path: 'sites',
         name: 'sites',
         component: () => import('@/views/SitesView.vue'),

@@ -183,6 +183,7 @@ enum FirewallAction {
     FIREWALL_ACTION_UNSPECIFIED = 0;
     FIREWALL_ACTION_ALLOW       = 1;
     FIREWALL_ACTION_DENY        = 2;
+    FIREWALL_ACTION_DELETE      = 3;
 }
 
 message FirewallRuleRequest {
