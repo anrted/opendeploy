@@ -53,31 +53,31 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design decisions.
 - Linux (Debian/Ubuntu or RHEL/CentOS/Fedora)
 - Go 1.23+ (for building from source)
 
-### Install (from source)
+### Install
+
+OpenDeploy can be installed on Ubuntu 22.04+ with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | sudo bash
+```
+
+After installation, open `http://YOUR_SERVER_IP:5888` in your browser. You will be greeted by the initial setup wizard to create your administrator account and configure the server.
+
+> ⚠️ OpenDeploy is early alpha software. Use it on a test server and place it
+> behind HTTPS before exposing it outside a trusted network.
+
+### Install (from source / for developers)
 
 ```bash
 git clone https://github.com/anrted/opendeploy.git
 cd opendeploy
 
-# Build all binaries
+# Build binaries
 make build
 
-# Install to system
+# Install to system using local binaries
 sudo make install
-
-# Configure required first-start secrets in /etc/opendeploy/env
-# OD_JWT_SECRET=<at least 32 random bytes>
-# OD_ADMIN_PASSWORD=<at least 12 characters>
-
-# Start services
-sudo systemctl start opendeploy-agent opendeploy-core
 ```
-
-Open `http://YOUR_SERVER_IP:5888`. The initial username is `admin`; there is no
-default password. Remove `OD_ADMIN_PASSWORD` after the first successful start.
-
-> ⚠️ OpenDeploy is early alpha software. Use it on a test server and place it
-> behind HTTPS before exposing it outside a trusted network.
 
 ### Development mode
 

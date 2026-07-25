@@ -96,7 +96,7 @@ clean:
 
 ## Install to system (Linux)
 install: build
-	sh deployments/install.sh
+	sh deployments/install-dev.sh
 
 uninstall:
 	sh deployments/uninstall.sh
