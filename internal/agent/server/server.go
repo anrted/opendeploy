@@ -27,12 +27,12 @@ type Service struct {
 	systemd *systemd.Manager
 	pkgs    packages.Manager
 	fs      *filesystem.Manager
-	fw      *firewall.UFWManager
+	fw      firewall.Provider
 	stats   *stats.Collector
 	shell   *executor.Shell
 }
 
-func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager *firewall.UFWManager, collector *stats.Collector, shell *executor.Shell) *Service {
+func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager firewall.Provider, collector *stats.Collector, shell *executor.Shell) *Service {
 	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector, shell: shell}
 }
 
@@ -222,32 +222,47 @@ func (s *Service) FileUploadStream(stream agentv1.AgentService_FileUploadStreamS
 }
 
 func (s *Service) FirewallRule(ctx context.Context, req *agentv1.FirewallRuleRequest) (*agentv1.FirewallRuleResponse, error) {
-	var err error
-	switch req.GetAction() {
-	case agentv1.FirewallAction_FIREWALL_ACTION_ALLOW:
-		err = s.fw.Allow(ctx, int(req.GetPort()), req.GetProtocol())
-	case agentv1.FirewallAction_FIREWALL_ACTION_DENY:
-		err = s.fw.Deny(ctx, int(req.GetPort()), req.GetProtocol())
-	case agentv1.FirewallAction_FIREWALL_ACTION_DELETE:
-		err = s.fw.Delete(ctx, int(req.GetPort()), req.GetProtocol())
-	default:
-		return nil, status.Error(codes.InvalidArgument, "unsupported firewall action")
-	}
-	if err != nil {
+	if err := s.fw.AddRule(ctx, req); err != nil {
 		return nil, internalError(err)
 	}
 	return &agentv1.FirewallRuleResponse{Success: true}, nil
 }
+
+func (s *Service) FirewallDelete(ctx context.Context, req *agentv1.FirewallDeleteRequest) (*agentv1.FirewallDeleteResponse, error) {
+	if err := s.fw.DeleteRule(ctx, req.GetId()); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.FirewallDeleteResponse{Success: true}, nil
+}
+
 func (s *Service) FirewallList(ctx context.Context, _ *agentv1.FirewallListRequest) (*agentv1.FirewallListResponse, error) {
 	rules, err := s.fw.List(ctx)
 	if err != nil {
 		return nil, internalError(err)
 	}
-	response := &agentv1.FirewallListResponse{Rules: make([]*agentv1.FirewallEntry, 0, len(rules))}
-	for _, rule := range rules {
-		response.Rules = append(response.Rules, &agentv1.FirewallEntry{Port: int32(rule.Port), Protocol: rule.Protocol, Action: rule.Action})
+	return &agentv1.FirewallListResponse{Rules: rules}, nil
+}
+
+func (s *Service) FirewallStatus(ctx context.Context, _ *agentv1.FirewallStatusRequest) (*agentv1.FirewallStatusResponse, error) {
+	res, err := s.fw.Status(ctx)
+	if err != nil {
+		return nil, internalError(err)
 	}
-	return response, nil
+	return res, nil
+}
+
+func (s *Service) FirewallToggle(ctx context.Context, req *agentv1.FirewallToggleRequest) (*agentv1.FirewallToggleResponse, error) {
+	if err := s.fw.Toggle(ctx, req.GetEnable()); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.FirewallToggleResponse{Success: true}, nil
+}
+
+func (s *Service) FirewallReset(ctx context.Context, _ *agentv1.FirewallResetRequest) (*agentv1.FirewallResetResponse, error) {
+	if err := s.fw.Reset(ctx); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.FirewallResetResponse{Success: true}, nil
 }
 
 func (s *Service) SystemStats(_ context.Context, _ *agentv1.SystemStatsRequest) (*agentv1.SystemStatsResponse, error) {

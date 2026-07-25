@@ -41,7 +41,11 @@ const (
 	AgentService_FileUploadStream_FullMethodName = "/agent.v1.AgentService/FileUploadStream"
 	AgentService_NginxSiteApply_FullMethodName   = "/agent.v1.AgentService/NginxSiteApply"
 	AgentService_FirewallRule_FullMethodName     = "/agent.v1.AgentService/FirewallRule"
+	AgentService_FirewallDelete_FullMethodName   = "/agent.v1.AgentService/FirewallDelete"
 	AgentService_FirewallList_FullMethodName     = "/agent.v1.AgentService/FirewallList"
+	AgentService_FirewallStatus_FullMethodName   = "/agent.v1.AgentService/FirewallStatus"
+	AgentService_FirewallToggle_FullMethodName   = "/agent.v1.AgentService/FirewallToggle"
+	AgentService_FirewallReset_FullMethodName    = "/agent.v1.AgentService/FirewallReset"
 	AgentService_SystemStats_FullMethodName      = "/agent.v1.AgentService/SystemStats"
 	AgentService_Ping_FullMethodName             = "/agent.v1.AgentService/Ping"
 )
@@ -82,7 +86,11 @@ type AgentServiceClient interface {
 	NginxSiteApply(ctx context.Context, in *NginxSiteApplyRequest, opts ...grpc.CallOption) (*NginxSiteApplyResponse, error)
 	// ── Firewall ───────────────────────────────────────────────────────────
 	FirewallRule(ctx context.Context, in *FirewallRuleRequest, opts ...grpc.CallOption) (*FirewallRuleResponse, error)
+	FirewallDelete(ctx context.Context, in *FirewallDeleteRequest, opts ...grpc.CallOption) (*FirewallDeleteResponse, error)
 	FirewallList(ctx context.Context, in *FirewallListRequest, opts ...grpc.CallOption) (*FirewallListResponse, error)
+	FirewallStatus(ctx context.Context, in *FirewallStatusRequest, opts ...grpc.CallOption) (*FirewallStatusResponse, error)
+	FirewallToggle(ctx context.Context, in *FirewallToggleRequest, opts ...grpc.CallOption) (*FirewallToggleResponse, error)
+	FirewallReset(ctx context.Context, in *FirewallResetRequest, opts ...grpc.CallOption) (*FirewallResetResponse, error)
 	// ── System information ─────────────────────────────────────────────────
 	SystemStats(ctx context.Context, in *SystemStatsRequest, opts ...grpc.CallOption) (*SystemStatsResponse, error)
 	// ── Health check ───────────────────────────────────────────────────────
@@ -356,10 +364,50 @@ func (c *agentServiceClient) FirewallRule(ctx context.Context, in *FirewallRuleR
 	return out, nil
 }
 
+func (c *agentServiceClient) FirewallDelete(ctx context.Context, in *FirewallDeleteRequest, opts ...grpc.CallOption) (*FirewallDeleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FirewallDeleteResponse)
+	err := c.cc.Invoke(ctx, AgentService_FirewallDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) FirewallList(ctx context.Context, in *FirewallListRequest, opts ...grpc.CallOption) (*FirewallListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FirewallListResponse)
 	err := c.cc.Invoke(ctx, AgentService_FirewallList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) FirewallStatus(ctx context.Context, in *FirewallStatusRequest, opts ...grpc.CallOption) (*FirewallStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FirewallStatusResponse)
+	err := c.cc.Invoke(ctx, AgentService_FirewallStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) FirewallToggle(ctx context.Context, in *FirewallToggleRequest, opts ...grpc.CallOption) (*FirewallToggleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FirewallToggleResponse)
+	err := c.cc.Invoke(ctx, AgentService_FirewallToggle_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) FirewallReset(ctx context.Context, in *FirewallResetRequest, opts ...grpc.CallOption) (*FirewallResetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FirewallResetResponse)
+	err := c.cc.Invoke(ctx, AgentService_FirewallReset_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +470,11 @@ type AgentServiceServer interface {
 	NginxSiteApply(context.Context, *NginxSiteApplyRequest) (*NginxSiteApplyResponse, error)
 	// ── Firewall ───────────────────────────────────────────────────────────
 	FirewallRule(context.Context, *FirewallRuleRequest) (*FirewallRuleResponse, error)
+	FirewallDelete(context.Context, *FirewallDeleteRequest) (*FirewallDeleteResponse, error)
 	FirewallList(context.Context, *FirewallListRequest) (*FirewallListResponse, error)
+	FirewallStatus(context.Context, *FirewallStatusRequest) (*FirewallStatusResponse, error)
+	FirewallToggle(context.Context, *FirewallToggleRequest) (*FirewallToggleResponse, error)
+	FirewallReset(context.Context, *FirewallResetRequest) (*FirewallResetResponse, error)
 	// ── System information ─────────────────────────────────────────────────
 	SystemStats(context.Context, *SystemStatsRequest) (*SystemStatsResponse, error)
 	// ── Health check ───────────────────────────────────────────────────────
@@ -503,8 +555,20 @@ func (UnimplementedAgentServiceServer) NginxSiteApply(context.Context, *NginxSit
 func (UnimplementedAgentServiceServer) FirewallRule(context.Context, *FirewallRuleRequest) (*FirewallRuleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FirewallRule not implemented")
 }
+func (UnimplementedAgentServiceServer) FirewallDelete(context.Context, *FirewallDeleteRequest) (*FirewallDeleteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FirewallDelete not implemented")
+}
 func (UnimplementedAgentServiceServer) FirewallList(context.Context, *FirewallListRequest) (*FirewallListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FirewallList not implemented")
+}
+func (UnimplementedAgentServiceServer) FirewallStatus(context.Context, *FirewallStatusRequest) (*FirewallStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FirewallStatus not implemented")
+}
+func (UnimplementedAgentServiceServer) FirewallToggle(context.Context, *FirewallToggleRequest) (*FirewallToggleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FirewallToggle not implemented")
+}
+func (UnimplementedAgentServiceServer) FirewallReset(context.Context, *FirewallResetRequest) (*FirewallResetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FirewallReset not implemented")
 }
 func (UnimplementedAgentServiceServer) SystemStats(context.Context, *SystemStatsRequest) (*SystemStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SystemStats not implemented")
@@ -890,6 +954,24 @@ func _AgentService_FirewallRule_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_FirewallDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FirewallDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FirewallDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FirewallDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FirewallDelete(ctx, req.(*FirewallDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_FirewallList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FirewallListRequest)
 	if err := dec(in); err != nil {
@@ -904,6 +986,60 @@ func _AgentService_FirewallList_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AgentServiceServer).FirewallList(ctx, req.(*FirewallListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_FirewallStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FirewallStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FirewallStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FirewallStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FirewallStatus(ctx, req.(*FirewallStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_FirewallToggle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FirewallToggleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FirewallToggle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FirewallToggle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FirewallToggle(ctx, req.(*FirewallToggleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_FirewallReset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FirewallResetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).FirewallReset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_FirewallReset_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).FirewallReset(ctx, req.(*FirewallResetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1020,8 +1156,24 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AgentService_FirewallRule_Handler,
 		},
 		{
+			MethodName: "FirewallDelete",
+			Handler:    _AgentService_FirewallDelete_Handler,
+		},
+		{
 			MethodName: "FirewallList",
 			Handler:    _AgentService_FirewallList_Handler,
+		},
+		{
+			MethodName: "FirewallStatus",
+			Handler:    _AgentService_FirewallStatus_Handler,
+		},
+		{
+			MethodName: "FirewallToggle",
+			Handler:    _AgentService_FirewallToggle_Handler,
+		},
+		{
+			MethodName: "FirewallReset",
+			Handler:    _AgentService_FirewallReset_Handler,
 		},
 		{
 			MethodName: "SystemStats",

@@ -40,7 +40,11 @@ service AgentService {
 
     // ── Firewall ───────────────────────────────────────────────────────────
     rpc FirewallRule (FirewallRuleRequest) returns (FirewallRuleResponse);
+    rpc FirewallDelete (FirewallDeleteRequest) returns (FirewallDeleteResponse);
     rpc FirewallList (FirewallListRequest) returns (FirewallListResponse);
+    rpc FirewallStatus (FirewallStatusRequest) returns (FirewallStatusResponse);
+    rpc FirewallToggle (FirewallToggleRequest) returns (FirewallToggleResponse);
+    rpc FirewallReset (FirewallResetRequest) returns (FirewallResetResponse);
 
     // ── System information ─────────────────────────────────────────────────
     rpc SystemStats (SystemStatsRequest) returns (SystemStatsResponse);
@@ -263,16 +267,45 @@ enum FirewallAction {
     FIREWALL_ACTION_UNSPECIFIED = 0;
     FIREWALL_ACTION_ALLOW       = 1;
     FIREWALL_ACTION_DENY        = 2;
-    FIREWALL_ACTION_DELETE      = 3;
+    FIREWALL_ACTION_REJECT      = 3;
+}
+
+enum FirewallDirection {
+    FIREWALL_DIRECTION_UNSPECIFIED = 0;
+    FIREWALL_DIRECTION_IN          = 1;
+    FIREWALL_DIRECTION_OUT         = 2;
+    FIREWALL_DIRECTION_ROUTED      = 3;
+}
+
+enum FirewallIPVersion {
+    FIREWALL_IP_VERSION_UNSPECIFIED = 0;
+    FIREWALL_IP_VERSION_V4          = 1;
+    FIREWALL_IP_VERSION_V6          = 2;
+    FIREWALL_IP_VERSION_BOTH        = 3;
 }
 
 message FirewallRuleRequest {
-    int32          port     = 1;
-    string         protocol = 2; // "tcp" | "udp"
-    FirewallAction action   = 3;
+    string            id          = 1; // Used for update
+    string            port        = 2; // e.g. "80", "8000:8100", or empty for any
+    string            protocol    = 3; // "tcp", "udp", "any"
+    FirewallAction    action      = 4;
+    FirewallDirection direction   = 5;
+    string            source      = 6; // IP or subnet, empty for any
+    string            destination = 7; // IP or subnet, empty for any
+    string            comment     = 8;
+    FirewallIPVersion ip_version  = 9;
 }
 
 message FirewallRuleResponse {
+    bool   success = 1;
+    string message = 2;
+}
+
+message FirewallDeleteRequest {
+    string id = 1;
+}
+
+message FirewallDeleteResponse {
     bool   success = 1;
     string message = 2;
 }
@@ -284,9 +317,44 @@ message FirewallListResponse {
 }
 
 message FirewallEntry {
-    int32  port     = 1;
-    string protocol = 2;
-    string action   = 3;
+    string            id          = 1;
+    string            port        = 2;
+    string            protocol    = 3;
+    FirewallAction    action      = 4;
+    FirewallDirection direction   = 5;
+    string            source      = 6;
+    string            destination = 7;
+    string            comment     = 8;
+    FirewallIPVersion ip_version  = 9;
+}
+
+message FirewallStatusRequest {}
+
+message FirewallStatusResponse {
+    bool   active           = 1;
+    string default_incoming = 2;
+    string default_outgoing = 3;
+    string default_routed   = 4;
+    bool   ipv6_enabled     = 5;
+    string logging          = 6;
+    int32  rule_count       = 7;
+    string profile_name     = 8; // e.g., "ufw"
+}
+
+message FirewallToggleRequest {
+    bool enable = 1;
+}
+
+message FirewallToggleResponse {
+    bool   success = 1;
+    string message = 2;
+}
+
+message FirewallResetRequest {}
+
+message FirewallResetResponse {
+    bool   success = 1;
+    string message = 2;
 }
 
 // ─── System information ────────────────────────────────────────────────────
