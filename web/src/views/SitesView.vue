@@ -92,11 +92,13 @@
           </div>
           <div v-if="form.ssl_enabled">
             <label class="label">Certificate path</label>
-            <input v-model="form.ssl_cert" class="input disabled:opacity-50 disabled:cursor-not-allowed" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem" required disabled />
+            <input v-model="form.ssl_cert" class="input opacity-75 cursor-not-allowed" readonly
+              :placeholder="`/etc/letsencrypt/live/${form.domain || 'example.com'}/fullchain.pem`" required />
           </div>
           <div v-if="form.ssl_enabled">
             <label class="label">Private key path</label>
-            <input v-model="form.ssl_key" class="input disabled:opacity-50 disabled:cursor-not-allowed" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" required disabled />
+            <input v-model="form.ssl_key" class="input opacity-75 cursor-not-allowed" readonly
+              :placeholder="`/etc/letsencrypt/live/${form.domain || 'example.com'}/privkey.pem`" required />
           </div>
           <div v-if="submitError" class="text-sm text-red-400">{{ submitError }}</div>
           <div class="flex gap-3 justify-end">
@@ -211,11 +213,20 @@ async function submitSite() {
   submitError.value = ''
   submitting.value = true
   try {
+    const domain = form.domain
+    // Auto-fill ssl paths from domain if still empty (e.g. user enabled SSL before typing domain)
+    const sslCert = form.ssl_cert || (form.ssl_enabled && domain ? `/etc/letsencrypt/live/${domain}/fullchain.pem` : null)
+    const sslKey = form.ssl_key || (form.ssl_enabled && domain ? `/etc/letsencrypt/live/${domain}/privkey.pem` : null)
     const payload = {
-      ...form,
-      name: form.domain,
+      domain,
+      name: domain,
+      root_path: form.root_path,
+      module_id: form.module_id,
       app_type: form.php_version ? 'php' : 'static',
       app_version: form.php_version || null,
+      ssl_enabled: form.ssl_enabled,
+      ssl_cert: form.ssl_enabled ? sslCert : null,
+      ssl_key: form.ssl_enabled ? sslKey : null,
     }
     if (isEditing.value) {
       await api.put(`/sites/${selectedSite.value.id}`, payload)
