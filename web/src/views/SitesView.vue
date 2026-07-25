@@ -103,7 +103,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, watch } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
 
 const sites = ref([])
@@ -115,6 +115,28 @@ const errorMessage = ref('')
 
 const form = reactive({
   domain: '', root_path: '', php_version: '', ssl_enabled: false, ssl_cert: '', ssl_key: '',
+})
+
+watch(() => form.domain, (newDomain) => {
+  if (!newDomain) return
+  if (form.root_path === '' || form.root_path.startsWith('/var/www/')) {
+    form.root_path = `/var/www/${newDomain}`
+  }
+  if (form.ssl_enabled) {
+    if (form.ssl_cert === '' || form.ssl_cert.startsWith('/etc/letsencrypt/live/')) {
+      form.ssl_cert = `/etc/letsencrypt/live/${newDomain}/fullchain.pem`
+      form.ssl_key = `/etc/letsencrypt/live/${newDomain}/privkey.pem`
+    }
+  }
+})
+
+watch(() => form.ssl_enabled, (enabled) => {
+  if (enabled && form.domain) {
+    if (form.ssl_cert === '' || form.ssl_cert.startsWith('/etc/letsencrypt/live/')) {
+      form.ssl_cert = `/etc/letsencrypt/live/${form.domain}/fullchain.pem`
+      form.ssl_key = `/etc/letsencrypt/live/${form.domain}/privkey.pem`
+    }
+  }
 })
 
 onMounted(loadSites)
