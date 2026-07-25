@@ -157,13 +157,13 @@ func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
 	svcName := fmt.Sprintf("certbot-obtain-%s.service", domain)
 	svcPath := fmt.Sprintf("/etc/systemd/system/%s", svcName)
 
-	// Create oneshot systemd service to run certbot securely via Agent
+	// Create systemd service to run certbot securely via Agent
 	content := fmt.Sprintf(`[Unit]
 Description=Certbot Obtain for %s
 After=network.target
 
 [Service]
-Type=oneshot
+Type=simple
 ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
 `, domain, webroot, domain, emailFlag)
 
