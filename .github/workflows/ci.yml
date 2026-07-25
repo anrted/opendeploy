@@ -17,7 +17,7 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
-      - run: mkdir -p internal/core/webui/dist && touch internal/core/webui/dist/index.html
+      - run: mkdir -p internal/core/webui/dist && echo '<div id="app"></div>' > internal/core/webui/dist/index.html
       - run: go test ./...
       - run: go vet ./...
 
