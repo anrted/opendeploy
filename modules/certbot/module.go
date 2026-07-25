@@ -145,6 +145,11 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 // ─── CertbotPlugin ─────────────────────────────────────────────────────────
 
 func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
+	installed, _, _ := m.deps.Agent.PackageInstalled(ctx, "certbot")
+	if !installed {
+		return apperrors.InvalidInput("Certbot is not installed on the server. Please install the Certbot module first.")
+	}
+
 	email := m.deps.Config.Get("email", "")
 
 	var emailFlag string
