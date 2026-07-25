@@ -50,6 +50,7 @@ func main() {
 				} else {
 					fmt.Println("Downloading and applying the latest OpenDeploy update...")
 				}
+				os.Remove(reqFile) // Clear the request file after reading
 			} else {
 				fmt.Println("Downloading and applying the latest OpenDeploy update...")
 			}
