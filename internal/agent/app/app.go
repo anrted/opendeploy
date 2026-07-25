@@ -84,7 +84,10 @@ func (a *Agent) Start() error {
 		return fmt.Errorf("agent: secure socket %q: %w", socketPath, err)
 	}
 
-	a.grpcServer = grpc.NewServer()
+	a.grpcServer = grpc.NewServer(
+		grpc.MaxRecvMsgSize(50 << 20),
+		grpc.MaxSendMsgSize(50 << 20),
+	)
 	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector(), a.shell).Register(a.grpcServer)
 
 	a.logger.Info("agent: gRPC server started", "socket", socketPath)
