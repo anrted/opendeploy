@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/anrted/opendeploy/pkg/version"
 )
@@ -38,8 +39,22 @@ func main() {
 		os.Exit(1)
 	case "update":
 		if len(args) > 1 && args[1] == "--apply" {
-			fmt.Println("Downloading and applying the latest OpenDeploy update...")
-			cmd := exec.Command("sh", "-c", "curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | bash")
+			updateScript := "curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | bash"
+			
+			// Check if this is a dev update request
+			reqFile := "/var/lib/opendeploy/update.request"
+			if b, err := os.ReadFile(reqFile); err == nil {
+				if strings.Contains(string(b), "dev") {
+					fmt.Println("Downloading and applying the DEV OpenDeploy update...")
+					updateScript = "curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | bash -s -- --dev"
+				} else {
+					fmt.Println("Downloading and applying the latest OpenDeploy update...")
+				}
+			} else {
+				fmt.Println("Downloading and applying the latest OpenDeploy update...")
+			}
+
+			cmd := exec.Command("sh", "-c", updateScript)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {

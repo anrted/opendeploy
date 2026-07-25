@@ -79,7 +79,7 @@
             </span>
           </div>
           <div v-if="updateStatus.update_available" class="mt-4 flex flex-wrap gap-3">
-            <button type="button" class="btn-primary" :disabled="applyingUpdate" @click="applyUpdate">
+            <button type="button" class="btn-primary" :disabled="applyingUpdate" @click="applyUpdate('stable')">
               {{ applyingUpdate ? $t('settings.updates.updating') : $t('settings.updates.updateNow') }}
             </button>
             <a :href="updateStatus.update_url || updateStatus.release_url" target="_blank" rel="noopener noreferrer" class="btn-secondary inline-flex">
@@ -87,6 +87,11 @@
             </a>
             <button v-if="applyingUpdate" type="button" class="btn-secondary" @click="cancelUpdate">
               {{ $t('settings.updates.cancel') }}
+            </button>
+          </div>
+          <div v-else class="mt-4 flex flex-wrap gap-3">
+            <button type="button" class="btn-secondary" :disabled="applyingUpdate" @click="applyUpdate('dev')">
+              Установить тестовую сборку
             </button>
           </div>
           <div v-if="updateMessage" class="mt-4 text-sm text-emerald-400">{{ updateMessage }}</div>
@@ -143,15 +148,19 @@ async function checkUpdates() {
   }
 }
 
-async function applyUpdate() {
-  if (!confirm('Update OpenDeploy from the trusted GitHub repository? Services will restart.')) return
+async function applyUpdate(updateType = 'stable') {
+  if (updateType === 'dev') {
+    if (!confirm('Warning: Dev builds may be unstable. Continue?')) return
+  } else {
+    if (!confirm('Update OpenDeploy from the trusted GitHub repository? Services will restart.')) return
+  }
   applyingUpdate.value = true
   updateError.value = ''
   updateMessage.value = ''
   updateCancel.value = false
   const targetCommit = updateStatus.value?.latest_commit
   try {
-    await api.post('/updates/apply')
+    await api.post('/updates/apply', { type: updateType })
     updateMessage.value = t('settings.updates.started')
     await waitForUpdatedCore(targetCommit)
   } catch (e) {

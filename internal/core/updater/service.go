@@ -98,7 +98,7 @@ func (s *Service) Check(ctx context.Context) (*Status, error) {
 	return &copy, nil
 }
 
-func (s *Service) Apply(ctx context.Context) error {
+func (s *Service) Apply(ctx context.Context, updateType string) error {
 	if s.agent == nil {
 		return fmt.Errorf("updates: Agent is unavailable")
 	}
@@ -106,10 +106,14 @@ func (s *Service) Apply(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !status.UpdateAvailable {
+	if !status.UpdateAvailable && updateType != "dev" {
 		return fmt.Errorf("updates: OpenDeploy is already up to date")
 	}
-	return s.agent.FileWrite(ctx, updateRequest, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
+	content := time.Now().UTC().Format(time.RFC3339)
+	if updateType == "dev" {
+		content = "dev"
+	}
+	return s.agent.FileWrite(ctx, updateRequest, []byte(content+"\n"), 0o600)
 }
 
 func (s *Service) getGitHub(ctx context.Context, url string, destination any) error {

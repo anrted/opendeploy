@@ -177,7 +177,13 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 // ApplyUpdate handles POST /api/v1/updates/apply. It requests the privileged
 // Agent-side systemd update unit; Core never executes build or system commands.
 func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
-	if err := h.updates.Apply(r.Context()); err != nil {
+	var req struct {
+		Type string `json:"type"`
+	}
+	// Ignore error if body is empty or invalid, just use empty type
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	
+	if err := h.updates.Apply(r.Context(), req.Type); err != nil {
 		writeError(w, apperrors.Internal("start update", err))
 		return
 	}
