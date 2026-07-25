@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -167,13 +168,13 @@ ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
 `, domain, webroot, domain, emailFlag)
 
 	if err := m.deps.Agent.FileWrite(ctx, svcPath, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("certbot: write systemd service: %w", err)
+		return apperrors.Internal(fmt.Sprintf("certbot: write systemd service: %v", err), err)
 	}
 	defer m.deps.Agent.FileDelete(ctx, svcPath)
 
 	m.logger.InfoContext(ctx, "certbot: starting oneshot service", "service", svcName)
 	if err := m.deps.Agent.ServiceStart(ctx, svcName); err != nil {
-		return fmt.Errorf("certbot: start oneshot service: %w", err)
+		return apperrors.Internal(fmt.Sprintf("certbot: start oneshot service: %v", err), err)
 	}
 
 	// Poll for completion
@@ -184,13 +185,13 @@ ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return apperrors.Internal("certbot: request cancelled", ctx.Err())
 		case <-timeout:
-			return fmt.Errorf("certbot: timeout waiting for %s", svcName)
+			return apperrors.Internal(fmt.Sprintf("certbot: timeout waiting for %s", svcName), nil)
 		case <-ticker.C:
 			status, err := m.deps.Agent.ServiceStatus(ctx, svcName)
 			if err != nil {
-				return fmt.Errorf("certbot: query status: %w", err)
+				return apperrors.Internal(fmt.Sprintf("certbot: query status: %v", err), err)
 			}
 			if !status.Active {
 				// Process finished. Check substate.
@@ -199,7 +200,7 @@ ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
 				}
 				// It failed
 				logs, _ := m.deps.Agent.ServiceLogs(ctx, svcName, 30)
-				return fmt.Errorf("certbot failed to obtain certificate:\n%s", strings.Join(logs, "\n"))
+				return apperrors.InvalidInput(fmt.Sprintf("Certbot failed to obtain certificate:\n%s", strings.Join(logs, "\n")))
 			}
 		}
 	}
