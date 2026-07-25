@@ -17,6 +17,7 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
+      - run: mkdir -p internal/core/webui/dist && touch internal/core/webui/dist/.gitkeep
       - run: go test ./...
       - run: go vet ./...
 
