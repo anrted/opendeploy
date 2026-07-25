@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/anrted/opendeploy/pkg/contract"
 )
@@ -139,4 +141,64 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 	}, nil
 }
 
-var _ contract.Module = (*Module)(nil)
+// ─── CertbotPlugin ─────────────────────────────────────────────────────────
+
+func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
+	email := m.deps.Config.Get("email", "")
+	if email == "" {
+		return fmt.Errorf("certbot: email must be configured in module settings before obtaining certificates")
+	}
+
+	svcName := fmt.Sprintf("certbot-obtain-%s.service", domain)
+	svcPath := fmt.Sprintf("/etc/systemd/system/%s", svcName)
+
+	// Create oneshot systemd service to run certbot securely via Agent
+	content := fmt.Sprintf(`[Unit]
+Description=Certbot Obtain for %s
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s -m %s --agree-tos -n
+`, domain, webroot, domain, email)
+
+	if err := m.deps.Agent.FileWrite(ctx, svcPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("certbot: write systemd service: %w", err)
+	}
+	defer m.deps.Agent.FileDelete(ctx, svcPath)
+
+	m.logger.InfoContext(ctx, "certbot: starting oneshot service", "service", svcName)
+	if err := m.deps.Agent.ServiceStart(ctx, svcName); err != nil {
+		return fmt.Errorf("certbot: start oneshot service: %w", err)
+	}
+
+	// Poll for completion
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	timeout := time.After(3 * time.Minute)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return fmt.Errorf("certbot: timeout waiting for %s", svcName)
+		case <-ticker.C:
+			status, err := m.deps.Agent.ServiceStatus(ctx, svcName)
+			if err != nil {
+				return fmt.Errorf("certbot: query status: %w", err)
+			}
+			if !status.Active {
+				// Process finished. Check substate.
+				if status.SubState == "dead" {
+					return nil // success
+				}
+				// It failed
+				logs, _ := m.deps.Agent.ServiceLogs(ctx, svcName, 30)
+				return fmt.Errorf("certbot failed to obtain certificate:\n%s", strings.Join(logs, "\n"))
+			}
+		}
+	}
+}
+
+var _ contract.CertbotPlugin = (*Module)(nil)
