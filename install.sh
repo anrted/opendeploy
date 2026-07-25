@@ -93,14 +93,29 @@ for req in curl tar jq sha256sum grep awk; do
 done
 print_success "Все необходимые утилиты установлены"
 
-# 6. Получение последнего релиза
-print_step "Поиск последней стабильной версии"
-LATEST_RELEASE=$(curl -fsSL "$GITHUB_API" || echo "")
-VERSION=$(echo "$LATEST_RELEASE" | jq -r .tag_name || echo "null")
-if [ "$VERSION" = "null" ] || [ -z "$VERSION" ]; then
-    die "Не удалось определить последнюю версию релиза. Проверьте подключение к GitHub."
+USE_DEV=0
+for arg in "$@"; do
+    case $arg in
+        --dev|--nightly)
+            USE_DEV=1
+            shift
+            ;;
+    esac
+done
+
+if [ "$USE_DEV" -eq 1 ]; then
+    print_step "Использование тестовой (nightly) сборки"
+    VERSION="nightly"
+else
+    # 6. Получение последнего релиза
+    print_step "Поиск последней стабильной версии"
+    LATEST_RELEASE=$(curl -fsSL "$GITHUB_API" || echo "")
+    VERSION=$(echo "$LATEST_RELEASE" | jq -r .tag_name || echo "null")
+    if [ "$VERSION" = "null" ] || [ -z "$VERSION" ]; then
+        die "Не удалось определить последнюю версию релиза. Проверьте подключение к GitHub."
+    fi
+    print_success "Найдена версия: $VERSION"
 fi
-print_success "Найдена версия: $VERSION"
 
 TAR_NAME="opendeploy-linux-${ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${TAR_NAME}"
