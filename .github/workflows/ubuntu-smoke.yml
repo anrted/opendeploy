@@ -25,7 +25,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install system dependency
-        run: sudo apt-get update && sudo apt-get install -y nginx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          sudo systemctl enable --now nginx
       - name: Build and install
         run: |
           make build
@@ -44,7 +47,7 @@ jobs:
           test -n "$token"
           sudo install -d -o www-data -g www-data /var/www/smoke
           echo smoke | sudo tee /var/www/smoke/index.html >/dev/null
-          curl -fsS http://127.0.0.1:5888/api/v1/sites \
+          curl --fail-with-body -sS http://127.0.0.1:5888/api/v1/sites \
             -H "Authorization: Bearer $token" \
             -H 'Content-Type: application/json' \
             -d '{"domain":"smoke.local","root_path":"/var/www/smoke","module_id":"nginx"}'
