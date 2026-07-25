@@ -95,6 +95,7 @@ func (m *Manager) Disable(ctx context.Context, name string) error {
 func (m *Manager) Status(ctx context.Context, name string) (*ServiceStatus, error) {
 	activeResult, _ := m.shell.Run(ctx, "systemctl", "is-active", name)
 	enabledResult, _ := m.shell.Run(ctx, "systemctl", "is-enabled", name)
+	subStateResult, _ := m.shell.Run(ctx, "systemctl", "show", "-p", "SubState", "--value", name)
 
 	active := false
 	if activeResult != nil {
@@ -104,11 +105,16 @@ func (m *Manager) Status(ctx context.Context, name string) (*ServiceStatus, erro
 	if enabledResult != nil {
 		enabled = strings.TrimSpace(enabledResult.Stdout) == "enabled"
 	}
+	subState := ""
+	if subStateResult != nil {
+		subState = strings.TrimSpace(subStateResult.Stdout)
+	}
 
 	return &ServiceStatus{
-		Name:    name,
-		Active:  active,
-		Enabled: enabled,
+		Name:     name,
+		Active:   active,
+		Enabled:  enabled,
+		SubState: subState,
 	}, nil
 }
 
