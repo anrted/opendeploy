@@ -78,20 +78,18 @@
               {{ updateStatus.update_available ? $t('settings.updates.available') : $t('settings.updates.upToDate') }}
             </span>
           </div>
-          <div v-if="updateStatus.update_available" class="mt-4 flex flex-wrap gap-3">
-            <button type="button" class="btn-primary" :disabled="applyingUpdate" @click="applyUpdate('stable')">
-              {{ applyingUpdate ? $t('settings.updates.updating') : $t('settings.updates.updateNow') }}
+          <div class="mt-4 flex flex-wrap gap-3">
+            <button v-if="updateStatus.update_available" type="button" class="btn-primary" :disabled="applyingUpdate" @click="applyUpdate('stable')">
+              {{ applyingUpdate ? $t('settings.updates.updating') : 'Обновить до стабильной версии' }}
+            </button>
+            <button type="button" class="btn-secondary" :disabled="applyingUpdate" @click="applyUpdate('dev')">
+              Обновить до тестовой сборки
             </button>
             <a :href="updateStatus.update_url || updateStatus.release_url" target="_blank" rel="noopener noreferrer" class="btn-secondary inline-flex">
               {{ $t('settings.updates.viewChanges') }}
             </a>
             <button v-if="applyingUpdate" type="button" class="btn-secondary" @click="cancelUpdate">
               {{ $t('settings.updates.cancel') }}
-            </button>
-          </div>
-          <div v-else class="mt-4 flex flex-wrap gap-3">
-            <button type="button" class="btn-secondary" :disabled="applyingUpdate" @click="applyUpdate('dev')">
-              Установить тестовую сборку
             </button>
           </div>
           <div v-if="updateMessage" class="mt-4 text-sm text-emerald-400">{{ updateMessage }}</div>

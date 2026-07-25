@@ -130,7 +130,20 @@ func (m *Module) handleStatus(wAny interface{}, rAny interface{}) {
 		m.writeError(w, err)
 		return
 	}
-	m.respond(w, http.StatusOK, map[string]any{"status": status})
+	
+	// Map to lowercase keys to match frontend expectations
+	statusMap := map[string]any{
+		"active":           status.Active,
+		"default_incoming": status.DefaultIncoming,
+		"default_outgoing": status.DefaultOutgoing,
+		"default_routed":   status.DefaultRouted,
+		"ipv6_enabled":     status.IPv6Enabled,
+		"logging":          status.Logging,
+		"rule_count":       status.RuleCount,
+		"profile_name":     status.ProfileName,
+	}
+
+	m.respond(w, http.StatusOK, map[string]any{"status": statusMap})
 }
 
 func (m *Module) handleList(wAny interface{}, rAny interface{}) {
