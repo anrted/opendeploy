@@ -92,11 +92,11 @@
           </div>
           <div v-if="form.ssl_enabled">
             <label class="label">Certificate path</label>
-            <input v-model="form.ssl_cert" class="input" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem" required />
+            <input v-model="form.ssl_cert" class="input disabled:opacity-50 disabled:cursor-not-allowed" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem" required disabled />
           </div>
           <div v-if="form.ssl_enabled">
             <label class="label">Private key path</label>
-            <input v-model="form.ssl_key" class="input" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" required />
+            <input v-model="form.ssl_key" class="input disabled:opacity-50 disabled:cursor-not-allowed" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" required disabled />
           </div>
           <div v-if="submitError" class="text-sm text-red-400">{{ submitError }}</div>
           <div class="flex gap-3 justify-end">
