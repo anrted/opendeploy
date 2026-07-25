@@ -1,25 +1,52 @@
 # Managed by OpenDeploy Nginx Module.
-# You can customize this template.
-
-server {
+# Manual changes will be overwritten.
 {{- if .SSLEnabled }}
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    ssl_certificate {{ .SSLCert }};
-    ssl_certificate_key {{ .SSLKey }};
+server {
     listen 80;
     listen [::]:80;
+    server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
 {{- if .ForceHTTPS }}
-    if ($scheme = http) {
-        return 301 https://$host$request_uri;
+    return 301 https://$host$request_uri;
+{{- else }}
+    root {{ .RootPath }};
+    index index.html index.htm index.php;
+
+{{- if eq .AppType "php" }}
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php{{ .AppVersion }}-fpm.sock;
+    }
+{{- else if eq .AppType "proxy" }}
+    location / {
+        proxy_pass {{ .ProxyTarget }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+{{- else }}
+    location / {
+        try_files $uri $uri/ =404;
     }
 {{- end }}
-{{- else }}
-    listen 80;
-    listen [::]:80;
 {{- end }}
+}
 
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
     server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
+
+    ssl_certificate {{ .SSLCert }};
+    ssl_certificate_key {{ .SSLKey }};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
     root {{ .RootPath }};
     index index.html index.htm index.php;
 
@@ -47,3 +74,37 @@ server {
     }
 {{- end }}
 }
+{{- else }}
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
+
+    root {{ .RootPath }};
+    index index.html index.htm index.php;
+
+{{- if eq .AppType "php" }}
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php{{ .AppVersion }}-fpm.sock;
+    }
+{{- else if eq .AppType "proxy" }}
+    location / {
+        proxy_pass {{ .ProxyTarget }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+{{- else }}
+    location / {
+        try_files $uri $uri/ =404;
+    }
+{{- end }}
+}
+{{- end }}
