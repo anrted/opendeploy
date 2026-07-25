@@ -79,7 +79,7 @@ func (m *aptManager) Update(ctx context.Context, pkg string) (<-chan string, err
 }
 
 func (m *aptManager) Installed(ctx context.Context, pkg string) (bool, string, error) {
-	result, err := m.shell.Run(ctx, "apt", "list", "--installed")
+	result, err := m.shell.Run(ctx, "apt", "list", "--installed", pkg)
 	if err != nil {
 		return false, "", err
 	}
@@ -90,6 +90,11 @@ func (m *aptManager) Installed(ctx context.Context, pkg string) (bool, string, e
 				return true, parts[1], nil
 			}
 			return true, "", nil
+		}
+	}
+	if pkg == "nodejs" {
+		if result, err := m.shell.Run(ctx, "node", "--version"); err == nil {
+			return true, strings.TrimSpace(strings.TrimPrefix(result.Stdout, "v")), nil
 		}
 	}
 	return false, "", nil
@@ -149,6 +154,11 @@ func (m *dnfManager) Installed(ctx context.Context, pkg string) (bool, string, e
 				return true, parts[1], nil
 			}
 			return true, "", nil
+		}
+	}
+	if pkg == "nodejs" {
+		if result, err := m.shell.Run(ctx, "node", "--version"); err == nil {
+			return true, strings.TrimSpace(strings.TrimPrefix(result.Stdout, "v")), nil
 		}
 	}
 	return false, "", nil

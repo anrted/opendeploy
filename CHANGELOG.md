@@ -3,6 +3,13 @@
 All notable changes to OpenDeploy are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Runtime reconciliation for software installed outside OpenDeploy.
+- Administrator-triggered GitHub updates through a dedicated systemd path unit.
+
 ## [0.1.0-alpha] - 2026-07-25
 
 ### Added
@@ -18,7 +25,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Production systemd units and an idempotent Ubuntu installer/uninstaller.
 - Ubuntu end-to-end smoke workflow covering installation, login, site provisioning,
   Nginx validation, and service restart.
-
 ### Security
 
 - Core never executes privileged system commands; all privileged operations cross

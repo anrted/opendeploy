@@ -174,6 +174,18 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, status)
 }
 
+// ApplyUpdate handles POST /api/v1/updates/apply. It requests the privileged
+// Agent-side systemd update unit; Core never executes build or system commands.
+func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
+	if err := h.updates.Apply(r.Context()); err != nil {
+		writeError(w, apperrors.Internal("start update", err))
+		return
+	}
+	respond(w, http.StatusAccepted, map[string]string{
+		"message": "update started; services will restart automatically",
+	})
+}
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 func respond(w http.ResponseWriter, status int, data any) {

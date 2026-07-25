@@ -9,9 +9,11 @@ var (
 	Version = "dev"
 	// BuildTime is the UTC time when the binary was built.
 	BuildTime = "unknown"
+	// Commit is the exact source revision used for the binary.
+	Commit = "unknown"
 )
 
 // Info returns a human-readable version string.
 func Info() string {
-	return fmt.Sprintf("OpenDeploy %s (built %s)", Version, BuildTime)
+	return fmt.Sprintf("OpenDeploy %s (%s, built %s)", Version, Commit, BuildTime)
 }

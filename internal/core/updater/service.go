@@ -10,47 +10,56 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
-const releasesURL = "https://api.github.com/repos/anrted/opendeploy/releases?per_page=1"
+const (
+	releasesURL   = "https://api.github.com/repos/anrted/opendeploy/releases?per_page=1"
+	mainCommitURL = "https://api.github.com/repos/anrted/opendeploy/commits/main"
+	updateRequest = "/var/lib/opendeploy/update.request"
+)
 
 type Status struct {
 	CurrentVersion  string     `json:"current_version"`
+	CurrentCommit   string     `json:"current_commit"`
 	LatestVersion   string     `json:"latest_version"`
+	LatestCommit    string     `json:"latest_commit"`
 	UpdateAvailable bool       `json:"update_available"`
 	ReleaseURL      string     `json:"release_url"`
+	UpdateURL       string     `json:"update_url"`
 	PublishedAt     *time.Time `json:"published_at,omitempty"`
+}
+
+type agentWriter interface {
+	FileWrite(ctx context.Context, path string, content []byte, mode uint32) error
 }
 
 type Service struct {
 	client         *http.Client
 	currentVersion string
+	currentCommit  string
+	agent          agentWriter
+	mu             sync.Mutex
+	cached         *Status
+	cachedAt       time.Time
 }
 
-func NewService(currentVersion string) *Service {
+func NewService(currentVersion, currentCommit string, agent agentWriter) *Service {
 	return &Service{
 		currentVersion: currentVersion,
+		currentCommit:  currentCommit,
+		agent:          agent,
 		client:         &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
 func (s *Service) Check(ctx context.Context) (*Status, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("updates: create request: %w", err)
-	}
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", "OpenDeploy/"+s.currentVersion)
-
-	response, err := s.client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("updates: request GitHub: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-		return nil, fmt.Errorf("updates: GitHub returned HTTP %d", response.StatusCode)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cached != nil && time.Since(s.cachedAt) < time.Minute {
+		copy := *s.cached
+		return &copy, nil
 	}
 
 	var releases []struct {
@@ -59,20 +68,73 @@ func (s *Service) Check(ctx context.Context) (*Status, error) {
 		PublishedAt time.Time `json:"published_at"`
 		Draft       bool      `json:"draft"`
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&releases); err != nil {
-		return nil, fmt.Errorf("updates: decode GitHub response: %w", err)
+	if err := s.getGitHub(ctx, releasesURL, &releases); err != nil {
+		return nil, err
 	}
 	if len(releases) == 0 || releases[0].Draft {
 		return nil, fmt.Errorf("updates: no published release found")
 	}
 	latest := releases[0]
-	return &Status{
+	var commit struct {
+		SHA     string `json:"sha"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := s.getGitHub(ctx, mainCommitURL, &commit); err != nil {
+		return nil, err
+	}
+	commitUpdate := s.currentCommit != "" && s.currentCommit != "unknown" &&
+		!strings.HasPrefix(commit.SHA, s.currentCommit) &&
+		!strings.HasPrefix(s.currentCommit, commit.SHA)
+	result := &Status{
 		CurrentVersion:  s.currentVersion,
+		CurrentCommit:   s.currentCommit,
 		LatestVersion:   latest.TagName,
-		UpdateAvailable: compareVersions(latest.TagName, s.currentVersion) > 0,
+		LatestCommit:    commit.SHA,
+		UpdateAvailable: commitUpdate || compareVersions(latest.TagName, s.currentVersion) > 0,
 		ReleaseURL:      latest.HTMLURL,
+		UpdateURL:       commit.HTMLURL,
 		PublishedAt:     &latest.PublishedAt,
-	}, nil
+	}
+	s.cached = result
+	s.cachedAt = time.Now()
+	copy := *result
+	return &copy, nil
+}
+
+func (s *Service) Apply(ctx context.Context) error {
+	if s.agent == nil {
+		return fmt.Errorf("updates: Agent is unavailable")
+	}
+	status, err := s.Check(ctx)
+	if err != nil {
+		return err
+	}
+	if !status.UpdateAvailable {
+		return fmt.Errorf("updates: OpenDeploy is already up to date")
+	}
+	return s.agent.FileWrite(ctx, updateRequest, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
+}
+
+func (s *Service) getGitHub(ctx context.Context, url string, destination any) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("updates: create request: %w", err)
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("User-Agent", "OpenDeploy/"+s.currentVersion)
+	response, err := s.client.Do(request)
+	if err != nil {
+		return fmt.Errorf("updates: request GitHub: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+		return fmt.Errorf("updates: GitHub returned HTTP %d", response.StatusCode)
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(destination); err != nil {
+		return fmt.Errorf("updates: decode GitHub response: %w", err)
+	}
+	return nil
 }
 
 var versionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?`)

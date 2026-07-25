@@ -38,6 +38,12 @@ The initial username is `admin`. Remove `OD_ADMIN_PASSWORD` from the environment
 file after the first successful startup. Place OpenDeploy behind an HTTPS
 reverse proxy before exposing it outside a trusted network.
 
+The installer records the canonical source checkout in
+`/etc/opendeploy/source-dir` and enables `opendeploy-update.path`. Administrators
+can then apply a clean fast-forward update from the trusted GitHub repository
+in Settings. Existing credentials, configuration, and SQLite data are
+preserved.
+
 To uninstall while preserving configuration and data:
 
 ```bash
