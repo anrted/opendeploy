@@ -1,0 +1,44 @@
+## OpenDeploy Configuration
+## Copy to /etc/opendeploy/opendeploy.yaml and edit before first run.
+
+server:
+  host: "0.0.0.0"
+  port: 5888
+  read_timeout: 30s
+  write_timeout: 60s
+
+database:
+  driver: "sqlite"
+  dsn: "/var/lib/opendeploy/data.db"
+
+agent:
+  # Unix socket path. Must match the Agent configuration.
+  socket: "/run/opendeploy-agent/agent.sock"
+  timeout: 120s
+
+auth:
+  # REQUIRED in production: set a 32+ character random string.
+  # Alternatively, export OD_JWT_SECRET environment variable.
+  # If empty, an ephemeral secret is generated (sessions reset on restart).
+  jwt_secret: ""
+  access_token_ttl: 15m
+  refresh_token_ttl: 168h  # 7 days
+
+security:
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+  csrf:
+    enabled: true
+
+logging:
+  level: "info"     # debug | info | warn | error
+  format: "json"    # json | text
+  file: "/var/log/opendeploy/core.log"
+
+modules:
+  enabled:
+    - nginx
+    - php
+    - nodejs
+    - git

@@ -1,0 +1,247 @@
+syntax = "proto3";
+
+package agent.v1;
+
+option go_package = "github.com/anrted/opendeploy/proto/agent/v1;agentv1";
+
+// AgentService is the gRPC service exposed by the OpenDeploy Agent.
+// The Core calls these methods to perform privileged system operations.
+// The Agent validates every request against an allowlist before execution.
+service AgentService {
+    // ── Systemd service management ─────────────────────────────────────────
+    rpc ServiceAction (ServiceActionRequest) returns (ServiceActionResponse);
+    rpc ServiceStatus (ServiceStatusRequest) returns (ServiceStatusResponse);
+    rpc ServiceLogs   (ServiceLogsRequest)   returns (stream LogLine);
+
+    // ── Package management ─────────────────────────────────────────────────
+    rpc PackageInstall (PackageRequest)       returns (stream PackageOutput);
+    rpc PackageRemove  (PackageRequest)       returns (stream PackageOutput);
+    rpc PackageUpdate  (PackageRequest)       returns (stream PackageOutput);
+    rpc PackageStatus  (PackageRequest)       returns (PackageStatusResponse);
+
+    // ── File system ────────────────────────────────────────────────────────
+    rpc FileRead   (FileReadRequest)   returns (FileReadResponse);
+    rpc FileWrite  (FileWriteRequest)  returns (FileWriteResponse);
+    rpc FileDelete (FileDeleteRequest) returns (FileDeleteResponse);
+    rpc DirCreate  (DirCreateRequest)  returns (DirCreateResponse);
+    rpc DirList    (DirListRequest)    returns (DirListResponse);
+
+    // Typed Nginx site configuration. The Agent renders, validates and applies
+    // the configuration atomically; Core cannot execute arbitrary commands.
+    rpc NginxSiteApply (NginxSiteApplyRequest) returns (NginxSiteApplyResponse);
+
+    // ── Firewall ───────────────────────────────────────────────────────────
+    rpc FirewallRule (FirewallRuleRequest) returns (FirewallRuleResponse);
+    rpc FirewallList (FirewallListRequest) returns (FirewallListResponse);
+
+    // ── System information ─────────────────────────────────────────────────
+    rpc SystemStats (SystemStatsRequest) returns (SystemStatsResponse);
+
+    // ── Health check ───────────────────────────────────────────────────────
+    rpc Ping (PingRequest) returns (PingResponse);
+}
+
+// ─── Service management ────────────────────────────────────────────────────
+
+enum ServiceActionType {
+    SERVICE_ACTION_UNSPECIFIED = 0;
+    SERVICE_ACTION_START       = 1;
+    SERVICE_ACTION_STOP        = 2;
+    SERVICE_ACTION_RESTART     = 3;
+    SERVICE_ACTION_ENABLE      = 4;
+    SERVICE_ACTION_DISABLE     = 5;
+}
+
+message ServiceActionRequest {
+    string            service_name = 1;
+    ServiceActionType action       = 2;
+}
+
+message ServiceActionResponse {
+    bool   success = 1;
+    string message = 2;
+}
+
+message ServiceStatusRequest {
+    string service_name = 1;
+}
+
+message ServiceStatusResponse {
+    string name        = 1;
+    bool   active      = 2;
+    bool   enabled     = 3;
+    string sub_state   = 4;
+    string description = 5;
+}
+
+message ServiceLogsRequest {
+    string service_name = 1;
+    int32  lines        = 2;
+}
+
+message LogLine {
+    string line      = 1;
+    int64  timestamp = 2; // Unix nanoseconds
+}
+
+// ─── Package management ────────────────────────────────────────────────────
+
+message PackageRequest {
+    string package_name = 1;
+}
+
+message PackageOutput {
+    string line   = 1;
+    bool   is_err = 2; // true if stderr
+}
+
+message PackageStatusResponse {
+    bool   installed = 1;
+    string version   = 2;
+}
+
+// ─── File system ───────────────────────────────────────────────────────────
+
+message FileReadRequest {
+    string path = 1;
+}
+
+message FileReadResponse {
+    bytes content = 1;
+}
+
+message FileWriteRequest {
+    string path    = 1;
+    bytes  content = 2;
+    uint32 mode    = 3; // unix permission bits (e.g. 0644)
+}
+
+message FileWriteResponse {
+    bool success = 1;
+}
+
+message FileDeleteRequest {
+    string path = 1;
+}
+
+message FileDeleteResponse {
+    bool success = 1;
+}
+
+message DirCreateRequest {
+    string path = 1;
+    uint32 mode = 2;
+}
+
+message DirCreateResponse {
+    bool success = 1;
+}
+
+message DirListRequest {
+    string path = 1;
+}
+
+message DirListResponse {
+    repeated FileEntry entries = 1;
+}
+
+message FileEntry {
+    string name     = 1;
+    string path     = 2;
+    bool   is_dir   = 3;
+    int64  size     = 4;
+    uint32 mode     = 5;
+    int64  mod_time = 6; // Unix seconds
+}
+
+enum NginxSiteAction {
+    NGINX_SITE_ACTION_UNSPECIFIED = 0;
+    NGINX_SITE_ACTION_UPSERT      = 1;
+    NGINX_SITE_ACTION_DELETE      = 2;
+    NGINX_SITE_ACTION_ENABLE      = 3;
+    NGINX_SITE_ACTION_DISABLE     = 4;
+}
+
+message NginxSiteApplyRequest {
+    NginxSiteAction action      = 1;
+    string          domain      = 2;
+    string          root_path   = 3;
+    string          php_version = 4;
+    bool            ssl_enabled = 5;
+    string          ssl_cert    = 6;
+    string          ssl_key     = 7;
+}
+
+message NginxSiteApplyResponse {
+    bool   success = 1;
+    string message = 2;
+}
+
+// ─── Firewall ──────────────────────────────────────────────────────────────
+
+enum FirewallAction {
+    FIREWALL_ACTION_UNSPECIFIED = 0;
+    FIREWALL_ACTION_ALLOW       = 1;
+    FIREWALL_ACTION_DENY        = 2;
+}
+
+message FirewallRuleRequest {
+    int32          port     = 1;
+    string         protocol = 2; // "tcp" | "udp"
+    FirewallAction action   = 3;
+}
+
+message FirewallRuleResponse {
+    bool   success = 1;
+    string message = 2;
+}
+
+message FirewallListRequest {}
+
+message FirewallListResponse {
+    repeated FirewallEntry rules = 1;
+}
+
+message FirewallEntry {
+    int32  port     = 1;
+    string protocol = 2;
+    string action   = 3;
+}
+
+// ─── System information ────────────────────────────────────────────────────
+
+message SystemStatsRequest {}
+
+message SystemStatsResponse {
+    double cpu_usage_percent    = 1;
+    int32  cpu_cores            = 2;
+    uint64 memory_total         = 3;
+    uint64 memory_used          = 4;
+    uint64 memory_free          = 5;
+    uint64 swap_total           = 6;
+    uint64 swap_used            = 7;
+    repeated DiskStatEntry disk = 8;
+    uint64 net_bytes_sent       = 9;
+    uint64 net_bytes_recv       = 10;
+    double load_1               = 11;
+    double load_5               = 12;
+    double load_15              = 13;
+    double temperature          = 14;
+    int64  uptime               = 15;
+}
+
+message DiskStatEntry {
+    string mountpoint    = 1;
+    uint64 total         = 2;
+    uint64 used          = 3;
+    uint64 free          = 4;
+    double used_percent  = 5;
+}
+
+// ─── Ping ──────────────────────────────────────────────────────────────────
+
+message PingRequest {}
+
+message PingResponse {
+    string version = 1;
+}

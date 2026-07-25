@@ -1,0 +1,7 @@
+/.cache/
+/.tools/
+/.agents/
+/bin/
+/coverage.out
+/web/dist/
+/web/node_modules/

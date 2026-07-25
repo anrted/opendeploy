@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    background-color: #0f1117;
+    color: #e2e8f0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #161b27; }
+  ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4a5568; }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-[#2d3748] bg-[#1e2535] p-6 shadow-lg;
+  }
+
+  /* Buttons - all properties inlined, no @apply of custom classes */
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+           transition-all duration-200 focus:outline-none cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+           transition-all duration-200 focus:outline-none cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed
+           bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95 shadow-lg shadow-indigo-600/20;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+           transition-all duration-200 focus:outline-none cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed
+           bg-[#2d3748] text-[#e2e8f0] hover:bg-[#374151] active:scale-95;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+           transition-all duration-200 focus:outline-none cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed
+           bg-red-600/10 text-red-400 border border-red-600/30 hover:bg-red-600/20 active:scale-95;
+  }
+  .btn-success {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+           transition-all duration-200 focus:outline-none cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed
+           bg-emerald-600/10 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/20 active:scale-95;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-success {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium
+           bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20;
+  }
+  .badge-warning {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium
+           bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20;
+  }
+  .badge-danger {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium
+           bg-red-500/10 text-red-400 ring-1 ring-red-500/20;
+  }
+  .badge-muted {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium
+           bg-slate-500/10 text-slate-400 ring-1 ring-slate-500/20;
+  }
+  .badge-primary {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium
+           bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20;
+  }
+
+  /* Form */
+  .input {
+    @apply w-full rounded-lg border border-[#2d3748] bg-[#0f1117] px-3 py-2 text-sm
+           text-[#e2e8f0] placeholder-[#4a5568]
+           focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none
+           transition-colors duration-200;
+  }
+  .label {
+    @apply block text-xs font-medium text-[#94a3b8] mb-1.5;
+  }
+
+  /* Table */
+  .table-wrapper { @apply overflow-x-auto rounded-xl border border-[#2d3748]; }
+  .table         { @apply w-full text-sm; }
+  .table thead   { background-color: #161b27; }
+  .table th      { @apply px-4 py-3 text-left text-xs font-semibold text-[#64748b] uppercase tracking-wider; }
+  .table tbody tr { @apply border-t border-[#2d3748] transition-colors; }
+  .table tbody tr:hover { background-color: rgba(30, 37, 53, 0.5); }
+  .table td      { @apply px-4 py-3 text-[#cbd5e1]; }
+
+  /* Nav */
+  .nav-item {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
+           text-[#64748b] transition-all duration-200 cursor-pointer
+           hover:bg-[#1e2535] hover:text-[#e2e8f0];
+  }
+  .nav-item.active {
+    @apply bg-indigo-600/10 text-indigo-400;
+  }
+
+  /* Typography */
+  .page-title    { @apply text-2xl font-bold text-[#e2e8f0] tracking-tight; }
+  .page-subtitle { @apply text-sm text-[#64748b] mt-0.5; }
+}
