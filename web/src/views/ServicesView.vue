@@ -1,5 +1,6 @@
 <template>
   <div>
+    <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{{ errorMessage }}</div>
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="page-title">Services</h1>
@@ -71,12 +72,14 @@
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import api from '@/api/client'
+import api, { apiErrorMessage } from '@/api/client'
 
 const services = ref([])
 const loading = ref(true)
 const showAdd = ref(false)
 const adding = ref(false)
+const actionID = ref('')
+const errorMessage = ref('')
 const form = reactive({ name: '', unit: '', description: '' })
 
 onMounted(load)
@@ -84,8 +87,11 @@ onMounted(load)
 async function load() {
   loading.value = true
   try {
+    errorMessage.value = ''
     const { data } = await api.get('/services')
     services.value = data || []
+  } catch (e) {
+    errorMessage.value = apiErrorMessage(e, 'Unable to load services')
   } finally {
     loading.value = false
   }
@@ -98,21 +104,42 @@ function stateBadge(s) {
 async function addService() {
   adding.value = true
   try {
+    errorMessage.value = ''
     await api.post('/services', form)
     showAdd.value = false
     form.name = form.unit = form.description = ''
     await load()
+  } catch (e) {
+    errorMessage.value = apiErrorMessage(e, 'Unable to add service')
   } finally {
     adding.value = false
   }
 }
 
-const startSvc   = async (id) => { await api.post(`/services/${id}/start`).catch(console.error); await load() }
-const stopSvc    = async (id) => { await api.post(`/services/${id}/stop`).catch(console.error); await load() }
-const restartSvc = async (id) => { await api.post(`/services/${id}/restart`).catch(console.error); await load() }
+async function serviceAction(id, action) {
+  if (['stop', 'restart'].includes(action) && !confirm(`${action} this service?`)) return
+  actionID.value = id
+  try {
+    errorMessage.value = ''
+    await api.post(`/services/${id}/${action}`)
+    await load()
+  } catch (e) {
+    errorMessage.value = apiErrorMessage(e, `Unable to ${action} service`)
+  } finally {
+    actionID.value = ''
+  }
+}
+const startSvc   = (id) => serviceAction(id, 'start')
+const stopSvc    = (id) => serviceAction(id, 'stop')
+const restartSvc = (id) => serviceAction(id, 'restart')
 const removeSvc  = async (id) => {
   if (!confirm('Remove this service?')) return
-  await api.delete(`/services/${id}`).catch(console.error)
-  await load()
+  try {
+    errorMessage.value = ''
+    await api.delete(`/services/${id}`)
+    await load()
+  } catch (e) {
+    errorMessage.value = apiErrorMessage(e, 'Unable to remove service')
+  }
 }
 </script>

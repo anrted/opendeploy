@@ -1,5 +1,6 @@
 <template>
   <div>
+    <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{{ errorMessage }}</div>
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="page-title">Sites</h1>
@@ -80,6 +81,14 @@
             <input id="site-ssl" v-model="form.ssl_enabled" type="checkbox" class="rounded" />
             <label for="site-ssl" class="text-sm text-[#e2e8f0] cursor-pointer">Enable SSL</label>
           </div>
+          <div v-if="form.ssl_enabled">
+            <label class="label">Certificate path</label>
+            <input v-model="form.ssl_cert" class="input" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem" required />
+          </div>
+          <div v-if="form.ssl_enabled">
+            <label class="label">Private key path</label>
+            <input v-model="form.ssl_key" class="input" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" required />
+          </div>
           <div v-if="createError" class="text-sm text-red-400">{{ createError }}</div>
           <div class="flex gap-3 justify-end">
             <button type="button" class="btn-secondary" @click="showCreate = false">Cancel</button>
@@ -95,16 +104,17 @@
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import api from '@/api/client'
+import api, { apiErrorMessage } from '@/api/client'
 
 const sites = ref([])
 const loading = ref(true)
 const showCreate = ref(false)
 const creating = ref(false)
 const createError = ref('')
+const errorMessage = ref('')
 
 const form = reactive({
-  domain: '', root_path: '', php_version: '', ssl_enabled: false,
+  domain: '', root_path: '', php_version: '', ssl_enabled: false, ssl_cert: '', ssl_key: '',
 })
 
 onMounted(loadSites)
@@ -112,10 +122,11 @@ onMounted(loadSites)
 async function loadSites() {
   loading.value = true
   try {
+    errorMessage.value = ''
     const { data } = await api.get('/sites')
     sites.value = data || []
   } catch (e) {
-    console.error(e)
+    errorMessage.value = apiErrorMessage(e, 'Unable to load sites')
   } finally {
     loading.value = false
   }
@@ -135,29 +146,43 @@ async function createSite() {
       module_id: 'nginx',
     })
     showCreate.value = false
-    form.domain = form.root_path = form.php_version = ''
+    form.domain = form.root_path = form.php_version = form.ssl_cert = form.ssl_key = ''
     form.ssl_enabled = false
     await loadSites()
   } catch (e) {
-    createError.value = e.response?.data?.error?.message || 'Error creating site'
+    createError.value = apiErrorMessage(e, 'Error creating site')
   } finally {
     creating.value = false
   }
 }
 
 async function enableSite(id) {
-  await api.post(`/sites/${id}/enable`).catch(console.error)
-  await loadSites()
+  await siteAction(id, 'enable')
 }
 
 async function disableSite(id) {
-  await api.post(`/sites/${id}/disable`).catch(console.error)
-  await loadSites()
+  if (!confirm('Disable this site?')) return
+  await siteAction(id, 'disable')
 }
 
 async function deleteSite(id) {
   if (!confirm('Delete this site?')) return
-  await api.delete(`/sites/${id}`).catch(console.error)
-  await loadSites()
+  try {
+    errorMessage.value = ''
+    await api.delete(`/sites/${id}`)
+    await loadSites()
+  } catch (e) {
+    errorMessage.value = apiErrorMessage(e, 'Unable to delete site')
+  }
+}
+
+async function siteAction(id, action) {
+  try {
+    errorMessage.value = ''
+    await api.post(`/sites/${id}/${action}`)
+    await loadSites()
+  } catch (e) {
+    errorMessage.value = apiErrorMessage(e, `Unable to ${action} site`)
+  }
 }
 </script>

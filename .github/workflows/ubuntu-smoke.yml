@@ -1,0 +1,62 @@
+name: Ubuntu smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install system dependency
+        run: sudo apt-get update && sudo apt-get install -y nginx
+      - name: Build and install
+        run: |
+          make build
+          sudo sh deployments/install.sh
+      - name: Start services
+        run: |
+          sudo systemctl start opendeploy-agent
+          sudo systemctl start opendeploy-core
+          timeout 30 sh -c 'until curl -fsS http://127.0.0.1:5888/health; do sleep 1; done'
+      - name: Login and provision Nginx site
+        run: |
+          password=$(sudo sed -n 's/^OD_ADMIN_PASSWORD=//p' /etc/opendeploy/env)
+          token=$(curl -fsS http://127.0.0.1:5888/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"username\":\"admin\",\"password\":\"$password\"}" | jq -r .access_token)
+          test -n "$token"
+          sudo install -d -o www-data -g www-data /var/www/smoke
+          echo smoke | sudo tee /var/www/smoke/index.html >/dev/null
+          curl -fsS http://127.0.0.1:5888/api/v1/sites \
+            -H "Authorization: Bearer $token" \
+            -H 'Content-Type: application/json' \
+            -d '{"domain":"smoke.local","root_path":"/var/www/smoke","module_id":"nginx"}'
+          curl -fsS -H 'Host: smoke.local' http://127.0.0.1/ | grep smoke
+          sudo nginx -t
+      - name: Reboot-equivalent restart
+        run: |
+          sudo systemctl restart opendeploy-agent opendeploy-core
+          timeout 30 sh -c 'until curl -fsS http://127.0.0.1:5888/health; do sleep 1; done'
+          curl -fsS -H 'Host: smoke.local' http://127.0.0.1/ | grep smoke
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          sudo systemctl status opendeploy-agent opendeploy-core --no-pager || true
+          sudo journalctl -u opendeploy-agent -u opendeploy-core --no-pager || true

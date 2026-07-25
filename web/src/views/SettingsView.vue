@@ -35,7 +35,7 @@
         <div class="space-y-3 text-sm">
           <div class="flex justify-between">
             <span class="text-[#64748b]">Version</span>
-            <span class="text-[#e2e8f0] font-mono">v1.0.0</span>
+            <span class="text-[#e2e8f0] font-mono">v0.1.0-alpha</span>
           </div>
           <div class="flex justify-between">
             <span class="text-[#64748b]">License</span>
@@ -44,7 +44,7 @@
           <div class="flex justify-between">
             <span class="text-[#64748b]">GitHub</span>
             <a href="https://github.com/anrted/opendeploy" class="text-indigo-400 hover:text-indigo-300">
-              opendeploy/opendeploy
+              anrted/opendeploy
             </a>
           </div>
         </div>

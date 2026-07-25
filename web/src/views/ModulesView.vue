@@ -1,5 +1,6 @@
 <template>
   <div>
+    <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{{ errorMessage }}</div>
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="page-title">Modules</h1>
@@ -60,21 +61,23 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import api from '@/api/client'
+import api, { apiErrorMessage } from '@/api/client'
 
 const modules = ref([])
 const loading = ref(true)
 const actionLoading = ref({})
+const errorMessage = ref('')
 
 onMounted(loadModules)
 
 async function loadModules() {
   loading.value = true
   try {
+    errorMessage.value = ''
     const { data } = await api.get('/modules')
     modules.value = data || []
   } catch (e) {
-    console.error(e)
+    errorMessage.value = apiErrorMessage(e, 'Unable to load modules')
   } finally {
     loading.value = false
   }
@@ -94,12 +97,15 @@ function stateBadge(state) {
 }
 
 async function action(id, endpoint, label) {
+  if (['uninstall', 'disable', 'restart'].includes(endpoint) &&
+      !confirm(`${endpoint[0].toUpperCase() + endpoint.slice(1)} module ${id}?`)) return
   actionLoading.value[id] = label
   try {
+    errorMessage.value = ''
     await api.post(`/modules/${id}/${endpoint}`)
     await loadModules()
   } catch (e) {
-    console.error(e)
+    errorMessage.value = apiErrorMessage(e, `Unable to ${endpoint} module`)
   } finally {
     delete actionLoading.value[id]
   }

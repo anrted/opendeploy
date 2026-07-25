@@ -38,3 +38,7 @@ api.interceptors.response.use(
 )
 
 export default api
+
+export function apiErrorMessage(error, fallback = 'Request failed') {
+  return error?.response?.data?.error?.message || error?.message || fallback
+}

@@ -1,5 +1,9 @@
 <template>
   <div>
+    <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+      {{ errorMessage }}
+      <button class="ml-2 underline" @click="loadOverview">Retry</button>
+    </div>
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
@@ -113,13 +117,15 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import api from '@/api/client'
+import api, { apiErrorMessage } from '@/api/client'
 import StatTile from '@/components/StatTile.vue'
 
 const overview = ref(null)
 const stats = ref(null)
 const wsConnected = ref(false)
+const errorMessage = ref('')
 let ws = null
+let reconnectTimer = null
 
 onMounted(async () => {
   await loadOverview()
@@ -128,27 +134,37 @@ onMounted(async () => {
 
 onUnmounted(() => {
   ws?.close()
+  clearTimeout(reconnectTimer)
 })
 
 async function loadOverview() {
   try {
+    errorMessage.value = ''
     const { data } = await api.get('/dashboard')
     overview.value = data
     stats.value = data.server_stats
   } catch (e) {
-    console.error('Dashboard load error:', e)
+    errorMessage.value = apiErrorMessage(e, 'Unable to load dashboard')
   }
 }
 
-function connectWebSocket() {
-  const token = localStorage.getItem('od_access_token')
+async function connectWebSocket() {
+  let ticket
+  try {
+    const { data } = await api.post('/dashboard/ws-ticket')
+    ticket = data.ticket
+  } catch (e) {
+    errorMessage.value = apiErrorMessage(e, 'Unable to authorize live metrics')
+    reconnectTimer = setTimeout(connectWebSocket, 5000)
+    return
+  }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  ws = new WebSocket(`${proto}//${location.host}/api/v1/dashboard/ws?token=${token}`)
+  ws = new WebSocket(`${proto}//${location.host}/api/v1/dashboard/ws?ticket=${encodeURIComponent(ticket)}`)
   ws.onopen = () => { wsConnected.value = true }
   ws.onclose = () => {
     wsConnected.value = false
     // Reconnect after 5s
-    setTimeout(connectWebSocket, 5000)
+    reconnectTimer = setTimeout(connectWebSocket, 5000)
   }
   ws.onmessage = (evt) => {
     try {

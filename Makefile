@@ -7,7 +7,7 @@ CORE_BIN   := bin/opendeploy-core
 AGENT_BIN  := bin/opendeploy-agent
 CLI_BIN    := bin/opendeploy-cli
 
-.PHONY: all build frontend build-core build-agent build-cli clean test lint proto dev-core dev-agent
+.PHONY: all build frontend build-core build-agent build-cli clean test lint proto dev-core dev-agent install uninstall
 
 all: build
 
@@ -84,21 +84,10 @@ clean:
 
 ## Install to system (Linux)
 install: build
-	@echo "→ Installing to /usr/local/bin/..."
-	install -m 755 $(CORE_BIN)  /usr/local/bin/opendeploy-core
-	install -m 755 $(AGENT_BIN) /usr/local/bin/opendeploy-agent
-	install -m 755 $(CLI_BIN)   /usr/local/bin/opendeploy
-	@echo "→ Installing systemd services..."
-	install -m 644 deployments/systemd/opendeploy-core.service  /etc/systemd/system/
-	install -m 644 deployments/systemd/opendeploy-agent.service /etc/systemd/system/
-	@echo "→ Creating directories..."
-	mkdir -p /etc/opendeploy /var/lib/opendeploy /var/log/opendeploy /run/opendeploy-agent
-	@if [ ! -f /etc/opendeploy/opendeploy.yaml ]; then \
-		install -m 640 configs/opendeploy.yaml /etc/opendeploy/opendeploy.yaml; \
-	fi
-	systemctl daemon-reload
-	@echo "✓ Installation complete."
-	@echo "  Start with: systemctl start opendeploy-agent opendeploy-core"
+	sh deployments/install.sh
+
+uninstall:
+	sh deployments/uninstall.sh
 
 ## Help
 help:

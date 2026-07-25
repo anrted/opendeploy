@@ -97,6 +97,9 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 
 	// ── Health check (unauthenticated) ────────────────────────────────────
 	r.Get("/health", healthHandler)
+	if deps.DashboardHandler != nil {
+		r.Get("/api/v1/dashboard/ws", deps.DashboardHandler.WebSocket)
+	}
 
 	// ── API v1 ────────────────────────────────────────────────────────────
 	r.Route("/api/v1", func(r chi.Router) {
@@ -113,49 +116,49 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 
 			// Module routes
 			if deps.ModuleHandler != nil {
-				r.Get("/modules", deps.ModuleHandler.List)
-				r.Get("/modules/{id}", deps.ModuleHandler.Get)
-				r.Post("/modules/{id}/install", deps.ModuleHandler.Install)
-				r.Post("/modules/{id}/uninstall", deps.ModuleHandler.Uninstall)
-				r.Post("/modules/{id}/enable", deps.ModuleHandler.Enable)
-				r.Post("/modules/{id}/disable", deps.ModuleHandler.Disable)
-				r.Post("/modules/{id}/restart", deps.ModuleHandler.Restart)
-				r.Get("/jobs/{id}", deps.ModuleHandler.GetJob)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules", deps.ModuleHandler.List)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}", deps.ModuleHandler.Get)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleInstall)).Post("/modules/{id}/install", deps.ModuleHandler.Install)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleUninstall)).Post("/modules/{id}/uninstall", deps.ModuleHandler.Uninstall)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleEnable)).Post("/modules/{id}/enable", deps.ModuleHandler.Enable)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleDisable)).Post("/modules/{id}/disable", deps.ModuleHandler.Disable)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/restart", deps.ModuleHandler.Restart)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/jobs/{id}", deps.ModuleHandler.GetJob)
 			}
 
 			// Dashboard routes
 			if deps.DashboardHandler != nil {
-				r.Get("/dashboard", deps.DashboardHandler.Overview)
-				r.Get("/dashboard/snapshots", deps.DashboardHandler.Snapshots)
-				r.Get("/dashboard/ws", deps.DashboardHandler.WebSocket)
+				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/dashboard", deps.DashboardHandler.Overview)
+				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/dashboard/snapshots", deps.DashboardHandler.Snapshots)
+				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Post("/dashboard/ws-ticket", deps.DashboardHandler.IssueWebSocketTicket)
 			}
 
 			// Site routes
 			if deps.SiteHandler != nil {
-				r.Get("/sites", deps.SiteHandler.List)
-				r.Post("/sites", deps.SiteHandler.Create)
-				r.Get("/sites/{id}", deps.SiteHandler.Get)
-				r.Put("/sites/{id}", deps.SiteHandler.Update)
-				r.Delete("/sites/{id}", deps.SiteHandler.Delete)
-				r.Post("/sites/{id}/enable", deps.SiteHandler.Enable)
-				r.Post("/sites/{id}/disable", deps.SiteHandler.Disable)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteView)).Get("/sites", deps.SiteHandler.List)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteCreate)).Post("/sites", deps.SiteHandler.Create)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteView)).Get("/sites/{id}", deps.SiteHandler.Get)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Put("/sites/{id}", deps.SiteHandler.Update)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteDelete)).Delete("/sites/{id}", deps.SiteHandler.Delete)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/enable", deps.SiteHandler.Enable)
+				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/disable", deps.SiteHandler.Disable)
 			}
 
 			// Service routes
 			if deps.ServiceHandler != nil {
-				r.Get("/services", deps.ServiceHandler.List)
-				r.Post("/services", deps.ServiceHandler.Add)
-				r.Post("/services/{id}/start", deps.ServiceHandler.Start)
-				r.Post("/services/{id}/stop", deps.ServiceHandler.Stop)
-				r.Post("/services/{id}/restart", deps.ServiceHandler.Restart)
-				r.Get("/services/{id}/logs", deps.ServiceHandler.Logs)
-				r.Delete("/services/{id}", deps.ServiceHandler.Remove)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceView)).Get("/services", deps.ServiceHandler.List)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Post("/services", deps.ServiceHandler.Add)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Post("/services/{id}/start", deps.ServiceHandler.Start)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Post("/services/{id}/stop", deps.ServiceHandler.Stop)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Post("/services/{id}/restart", deps.ServiceHandler.Restart)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceView)).Get("/services/{id}/logs", deps.ServiceHandler.Logs)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Delete("/services/{id}", deps.ServiceHandler.Remove)
 			}
 
 			// Settings routes
 			if deps.SettingsHandler != nil {
-				r.Get("/settings", deps.SettingsHandler.List)
-				r.Put("/settings", deps.SettingsHandler.Update)
+				r.With(coreMiddleware.RequirePermission(auth.PermSettingsView)).Get("/settings", deps.SettingsHandler.List)
+				r.With(coreMiddleware.RequirePermission(auth.PermSettingsUpdate)).Put("/settings", deps.SettingsHandler.Update)
 			}
 		})
 	})
