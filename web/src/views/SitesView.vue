@@ -21,7 +21,7 @@
           <tr>
             <th>Domain</th>
             <th>Root Path</th>
-            <th>PHP</th>
+            <th>App</th>
             <th>SSL</th>
             <th>State</th>
             <th>Module</th>
@@ -36,11 +36,11 @@
             <td colspan="7" class="text-center py-10 text-[#4a5568]">No sites configured yet</td>
           </tr>
           <tr v-for="site in sites" :key="site.id">
-            <td class="font-medium text-white">{{ site.domain }}</td>
+            <td class="font-medium text-white">{{ primaryDomain(site) }}</td>
             <td class="font-mono text-xs">{{ site.root_path }}</td>
-            <td>{{ site.php_version || '—' }}</td>
+            <td>{{ appLabel(site) }}</td>
             <td>
-              <span v-if="site.ssl_enabled" class="badge-success">SSL</span>
+              <span v-if="site.ssl" class="badge-success">SSL</span>
               <span v-else class="badge-muted">HTTP</span>
             </td>
             <td><span :class="siteBadge(site.state)">{{ site.state }}</span></td>
@@ -82,13 +82,13 @@
           <div>
             <label class="label">PHP Version (optional)</label>
             <select v-model="form.php_version" class="input">
-              <option value="">None</option>
+              <option value="">None (static)</option>
               <option>8.1</option><option>8.2</option><option>8.3</option><option>8.4</option>
             </select>
           </div>
           <div class="flex items-center gap-2">
             <input id="site-ssl" v-model="form.ssl_enabled" type="checkbox" class="rounded" />
-            <label for="site-ssl" class="text-sm text-[#e2e8f0] cursor-pointer">Enable SSL</label>
+            <label for="site-ssl" class="text-sm text-[#e2e8f0] cursor-pointer">Enable SSL (Let's Encrypt)</label>
           </div>
           <div v-if="form.ssl_enabled">
             <label class="label">Certificate path</label>
@@ -134,6 +134,20 @@ const selectedSite = ref(null)
 const form = reactive({
   domain: '', root_path: '', module_id: 'nginx', php_version: '', ssl_enabled: false, ssl_cert: '', ssl_key: '',
 })
+
+// Helpers to extract data from new relational API format
+function primaryDomain(site) {
+  if (!site.domains || !site.domains.length) return site.name || '—'
+  const primary = site.domains.find(d => d.type === 'primary') || site.domains[0]
+  return primary.domain
+}
+
+function appLabel(site) {
+  if (!site.app) return '—'
+  if (site.app.app_type === 'php') return `PHP ${site.app.app_version || ''}`
+  if (site.app.app_type === 'proxy') return 'Proxy'
+  return 'Static'
+}
 
 watch(() => form.domain, (newDomain) => {
   if (!newDomain) return
@@ -193,13 +207,14 @@ function openCreateModal() {
 function openEditModal(site) {
   isEditing.value = true
   selectedSite.value = site
-  form.domain = site.domain
+  // Map from new relational API format back to form fields
+  form.domain = primaryDomain(site)
   form.root_path = site.root_path
   form.module_id = site.module_id || 'nginx'
-  form.php_version = site.php_version || ''
-  form.ssl_enabled = site.ssl_enabled
-  form.ssl_cert = site.ssl_cert || ''
-  form.ssl_key = site.ssl_key || ''
+  form.php_version = site.app?.app_version || ''
+  form.ssl_enabled = !!site.ssl
+  form.ssl_cert = site.ssl?.cert_path || ''
+  form.ssl_key = site.ssl?.key_path || ''
   submitError.value = ''
   showModal.value = true
 }
