@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 
 	"github.com/anrted/opendeploy/pkg/version"
 )
@@ -35,6 +36,19 @@ func main() {
 	case "status":
 		fmt.Fprintln(os.Stderr, "error: CLI API client not yet implemented (Stage 8)")
 		os.Exit(1)
+	case "update":
+		if len(args) > 1 && args[1] == "--apply" {
+			fmt.Println("Downloading and applying the latest OpenDeploy update...")
+			cmd := exec.Command("sh", "-c", "curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | bash")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				log.Fatalf("Update failed: %v", err)
+			}
+			fmt.Println("Update completed successfully.")
+			os.Exit(0)
+		}
+		fmt.Println("Run 'opendeploy update --apply' to apply the latest update.")
 	default:
 		log.Printf("unknown command: %q\n", args[0])
 		printUsage()
