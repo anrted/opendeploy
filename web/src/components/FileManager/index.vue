@@ -57,13 +57,14 @@
     </div>
 
     <!-- Main Content Area -->
-    <div class="flex-1 overflow-auto p-6 flex gap-6">
+    <div class="flex-1 overflow-hidden p-6 flex gap-6">
       
       <!-- File List -->
       <div class="flex-1 bg-[#1e293b]/50 border border-slate-700/50 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm flex flex-col relative" @drop.prevent="handleDrop" @dragover.prevent>
-        <table class="w-full text-left border-collapse">
-          <thead>
-            <tr class="bg-slate-800/50 text-slate-300 text-sm font-semibold border-b border-slate-700/50">
+        <div class="flex-1 overflow-y-auto min-h-0">
+          <table class="w-full text-left border-collapse relative">
+            <thead class="sticky top-0 z-10">
+              <tr class="bg-slate-800/90 backdrop-blur-md text-slate-300 text-sm font-semibold border-b border-slate-700/50">
               <th class="p-4 w-12 text-center">
                 <input type="checkbox" class="rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-800" 
                        :checked="isAllSelected" @change="toggleSelectAll" />
@@ -120,6 +121,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
     </div>
     
