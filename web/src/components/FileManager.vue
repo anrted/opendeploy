@@ -14,7 +14,7 @@
     <!-- Toolbar & Breadcrumb -->
     <div class="flex items-center justify-between px-6 py-3 border-b border-[#2d3748] bg-[#161b27]/50">
       <div class="flex items-center gap-2 text-sm font-mono text-[#e2e8f0]">
-        <button @click="navigateTo('/')" class="hover:text-indigo-400 transition-colors">/ (root)</button>
+        <button @click="navigateTo('/')" class="hover:text-indigo-400 transition-colors">{{ site.root_path }}</button>
         <template v-for="(part, idx) in pathParts" :key="idx">
           <span class="text-[#64748b]">/</span>
           <button @click="navigateTo(buildPath(idx))" class="hover:text-indigo-400 transition-colors">{{ part }}</button>
