@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/internal/core/module"
@@ -86,6 +87,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
 			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
 		}
+		time.Sleep(2 * time.Second) // wait for web server to restart
 		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
 			_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
 			// Return the error directly if it's already an AppError
@@ -163,6 +165,7 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
 			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
 		}
+		time.Sleep(2 * time.Second) // wait for web server to restart
 		if err := s.obtainCertbotSSL(ctx, site.Domain, site.RootPath); err != nil {
 			_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
 			if _, ok := err.(*apperrors.AppError); ok {
