@@ -175,6 +175,10 @@ func (c *Client) FirewallDeny(ctx context.Context, port int, protocol string) er
 	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{Port: int32(port), Protocol: protocol, Action: agentv1.FirewallAction_FIREWALL_ACTION_DENY})
 	return err
 }
+func (c *Client) FirewallDelete(ctx context.Context, port int, protocol string) error {
+	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{Port: int32(port), Protocol: protocol, Action: agentv1.FirewallAction_FIREWALL_ACTION_DELETE})
+	return err
+}
 func (c *Client) FirewallList(ctx context.Context) ([]contract.FirewallRule, error) {
 	result, err := c.stub.FirewallList(ctx, &agentv1.FirewallListRequest{})
 	if err != nil {

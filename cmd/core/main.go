@@ -29,6 +29,7 @@ import (
 	moduleNodejs "github.com/anrted/opendeploy/modules/nodejs"
 	modulePHP "github.com/anrted/opendeploy/modules/php"
 	modulePostgreSQL "github.com/anrted/opendeploy/modules/postgresql"
+	moduleUFW "github.com/anrted/opendeploy/modules/ufw"
 	"github.com/anrted/opendeploy/pkg/version"
 )
 
@@ -107,4 +108,5 @@ func registerModules(a *app.App) {
 	a.RegisterModule(moduleCertbot.New())
 	a.RegisterModule(moduleMySQL.New())
 	a.RegisterModule(modulePostgreSQL.New())
+	a.RegisterModule(moduleUFW.New())
 }

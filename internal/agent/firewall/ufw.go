@@ -51,6 +51,23 @@ func (m *UFWManager) Deny(ctx context.Context, port int, protocol string) error 
 	return nil
 }
 
+// Delete removes a rule from the firewall.
+func (m *UFWManager) Delete(ctx context.Context, port int, protocol string) error {
+	spec := fmt.Sprintf("%d/%s", port, protocol)
+	
+	// First, try to delete allow rule
+	_, err1 := m.shell.Run(ctx, "ufw", "delete", "allow", spec)
+	// Also try to delete deny rule
+	_, err2 := m.shell.Run(ctx, "ufw", "delete", "deny", spec)
+
+	if err1 != nil && err2 != nil {
+		return fmt.Errorf("ufw: delete %s failed", spec)
+	}
+
+	m.logger.InfoContext(ctx, "firewall: deleted rule", "port", port, "proto", protocol)
+	return nil
+}
+
 // List returns the current firewall rules.
 func (m *UFWManager) List(ctx context.Context) ([]Rule, error) {
 	result, err := m.shell.Run(ctx, "ufw", "status", "numbered")
