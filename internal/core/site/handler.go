@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/anrted/opendeploy/internal/core/auth"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
@@ -228,6 +230,55 @@ func principalOrEmpty(r *http.Request) *auth.Principal {
 		return p
 	}
 	return &auth.Principal{}
+}
+
+// BatchOperations handles POST /api/v1/sites/{id}/files/batch
+func (h *Handler) BatchOperations(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	
+	var req struct {
+		Action  string   `json:"action"` // "delete", "copy", "move", "chmod", "chown"
+		Paths   []string `json:"paths"`
+		DstPath string   `json:"dst_path"`
+		Mode    uint32   `json:"mode"`
+		Uid     int      `json:"uid"`
+		Gid     int      `json:"gid"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, apperrors.InvalidInput("invalid json body"))
+		return
+	}
+
+	for _, p := range req.Paths {
+		var err error
+		switch req.Action {
+		case "delete":
+			err = h.service.DeleteFile(r.Context(), id, p)
+		case "copy":
+			dst := req.DstPath
+			if strings.HasSuffix(dst, "/") {
+				dst = dst + filepath.Base(p)
+			}
+			err = h.service.CopyFile(r.Context(), id, p, dst)
+		case "move":
+			dst := req.DstPath
+			if strings.HasSuffix(dst, "/") {
+				dst = dst + filepath.Base(p)
+			}
+			err = h.service.RenameFile(r.Context(), id, p, dst)
+		case "chmod":
+			err = h.service.ChmodFile(r.Context(), id, p, req.Mode)
+		case "chown":
+			err = h.service.ChownFile(r.Context(), id, p, req.Uid, req.Gid)
+		default:
+			err = apperrors.InvalidInput("unsupported action")
+		}
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "batch operation completed"})
 }
 
 func realIP(r *http.Request) string {

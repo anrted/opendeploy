@@ -209,8 +209,14 @@ type AgentClient interface {
 	FileRead(ctx context.Context, path string) ([]byte, error)
 	FileWrite(ctx context.Context, path string, content []byte, mode uint32) error
 	FileDelete(ctx context.Context, path string) error
+	FileRename(ctx context.Context, oldPath, newPath string) error
+	FileCopy(ctx context.Context, srcPath, dstPath string) error
+	FileChmod(ctx context.Context, path string, mode uint32) error
+	FileChown(ctx context.Context, path string, uid, gid int) error
 	DirCreate(ctx context.Context, path string, mode uint32) error
 	DirList(ctx context.Context, path string) ([]FileInfo, error)
+	ArchiveCreate(ctx context.Context, paths []string, dstPath string) error
+	ArchiveExtract(ctx context.Context, srcPath, dstDir string) error
 
 	// Firewall
 	FirewallAllow(ctx context.Context, port int, proto string) error
@@ -263,6 +269,8 @@ type FileInfo struct {
 	Size    int64     `json:"size"`
 	Mode    uint32    `json:"mode"`
 	ModTime time.Time `json:"mod_time"`
+	Owner   string    `json:"owner"`
+	Group   string    `json:"group"`
 }
 
 // FirewallRule represents a single firewall rule.

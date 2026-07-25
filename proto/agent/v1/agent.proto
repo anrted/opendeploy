@@ -26,6 +26,13 @@ service AgentService {
     rpc FileDelete (FileDeleteRequest) returns (FileDeleteResponse);
     rpc DirCreate  (DirCreateRequest)  returns (DirCreateResponse);
     rpc DirList    (DirListRequest)    returns (DirListResponse);
+    rpc FileRename (FileRenameRequest) returns (FileRenameResponse);
+    rpc FileCopy   (FileCopyRequest)   returns (FileCopyResponse);
+    rpc FileChmod  (FileChmodRequest)  returns (FileChmodResponse);
+    rpc FileChown  (FileChownRequest)  returns (FileChownResponse);
+    rpc ArchiveCreate  (ArchiveCreateRequest)  returns (ArchiveCreateResponse);
+    rpc ArchiveExtract (ArchiveExtractRequest) returns (ArchiveExtractResponse);
+    rpc FileUploadStream (stream FileUploadRequest) returns (FileUploadResponse);
 
     // Typed Nginx site configuration. The Agent renders, validates and applies
     // the configuration atomically; Core cannot execute arbitrary commands.
@@ -165,6 +172,66 @@ message FileEntry {
     int64  size     = 4;
     uint32 mode     = 5;
     int64  mod_time = 6; // Unix seconds
+    string owner    = 7;
+    string group    = 8;
+}
+
+message FileRenameRequest {
+    string old_path = 1;
+    string new_path = 2;
+}
+message FileRenameResponse {
+    bool success = 1;
+}
+
+message FileCopyRequest {
+    string src_path = 1;
+    string dst_path = 2;
+}
+message FileCopyResponse {
+    bool success = 1;
+}
+
+message FileChmodRequest {
+    string path = 1;
+    uint32 mode = 2;
+}
+message FileChmodResponse {
+    bool success = 1;
+}
+
+message FileChownRequest {
+    string path = 1;
+    int32  uid  = 2;
+    int32  gid  = 3;
+}
+message FileChownResponse {
+    bool success = 1;
+}
+
+message ArchiveCreateRequest {
+    repeated string paths    = 1;
+    string          dst_path = 2;
+}
+message ArchiveCreateResponse {
+    bool success = 1;
+}
+
+message ArchiveExtractRequest {
+    string src_path = 1;
+    string dst_dir  = 2;
+}
+message ArchiveExtractResponse {
+    bool success = 1;
+}
+
+message FileUploadRequest {
+    string path    = 1; // Only required on first message
+    uint32 mode    = 2; // Only required on first message
+    bytes  chunk   = 3;
+}
+message FileUploadResponse {
+    bool success = 1;
 }
 
 enum NginxSiteAction {

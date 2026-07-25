@@ -119,7 +119,7 @@
 <script setup>
 import { ref, onMounted, reactive, watch } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
-import FileManager from '@/components/FileManager.vue'
+import FileManager from '@/components/FileManager/index.vue'
 
 const sites = ref([])
 const loading = ref(true)
