@@ -27,8 +27,11 @@ func (m *Module) Description() string { return "Advanced Firewall Management" }
 func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	m.deps = deps
 	m.logger = deps.Logger.With("module", moduleID)
-	
-	// Ensure critical ports are allowed so we don't lock ourselves out if UFW is enabled
+	m.logger.Info("firewall module bootstrapped")
+	return nil
+}
+
+func (m *Module) ensureCriticalPorts(ctx context.Context) {
 	criticalPorts := []struct {
 		port  string
 		proto string
@@ -45,13 +48,10 @@ func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 			Protocol: p.proto,
 			Action:   "allow",
 		}
-		if err := m.deps.Agent.FirewallRule(context.Background(), req); err != nil {
+		if err := m.deps.Agent.FirewallRule(ctx, req); err != nil {
 			m.logger.Warn("failed to ensure critical port is allowed", "port", p.port, "proto", p.proto, "error", err)
 		}
 	}
-	
-	m.logger.Info("firewall module bootstrapped")
-	return nil
 }
 
 func (m *Module) Shutdown(_ context.Context) error { return nil }
@@ -86,6 +86,7 @@ func (m *Module) Uninstall(ctx context.Context) error {
 
 func (m *Module) Enable(ctx context.Context) error {
 	m.logger.InfoContext(ctx, "firewall: enable")
+	m.ensureCriticalPorts(ctx)
 	return m.deps.Agent.FirewallToggle(ctx, true)
 }
 
@@ -201,6 +202,10 @@ func (m *Module) handleToggle(wAny interface{}, rAny interface{}) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		m.writeError(w, fmt.Errorf("invalid json body"))
 		return
+	}
+
+	if req.Enable {
+		m.ensureCriticalPorts(r.Context())
 	}
 
 	if err := m.deps.Agent.FirewallToggle(r.Context(), req.Enable); err != nil {
