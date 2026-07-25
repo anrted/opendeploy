@@ -180,6 +180,36 @@ func (c *Client) DirList(ctx context.Context, path string) ([]contract.FileInfo,
 	return entries, nil
 }
 
+func (c *Client) FileRename(ctx context.Context, oldPath, newPath string) error {
+	_, err := c.stub.FileRename(ctx, &agentv1.FileRenameRequest{OldPath: oldPath, NewPath: newPath})
+	return err
+}
+
+func (c *Client) FileCopy(ctx context.Context, srcPath, dstPath string) error {
+	_, err := c.stub.FileCopy(ctx, &agentv1.FileCopyRequest{SrcPath: srcPath, DstPath: dstPath})
+	return err
+}
+
+func (c *Client) FileChmod(ctx context.Context, path string, mode uint32) error {
+	_, err := c.stub.FileChmod(ctx, &agentv1.FileChmodRequest{Path: path, Mode: mode})
+	return err
+}
+
+func (c *Client) FileChown(ctx context.Context, path string, uid, gid int) error {
+	_, err := c.stub.FileChown(ctx, &agentv1.FileChownRequest{Path: path, Uid: int32(uid), Gid: int32(gid)})
+	return err
+}
+
+func (c *Client) ArchiveCreate(ctx context.Context, paths []string, dstPath string) error {
+	_, err := c.stub.ArchiveCreate(ctx, &agentv1.ArchiveCreateRequest{Paths: paths, DstPath: dstPath})
+	return err
+}
+
+func (c *Client) ArchiveExtract(ctx context.Context, srcPath, dstDir string) error {
+	_, err := c.stub.ArchiveExtract(ctx, &agentv1.ArchiveExtractRequest{SrcPath: srcPath, DstDir: dstDir})
+	return err
+}
+
 
 func (c *Client) FirewallAllow(ctx context.Context, port int, protocol string) error {
 	_, err := c.stub.FirewallRule(ctx, &agentv1.FirewallRuleRequest{Port: int32(port), Protocol: protocol, Action: agentv1.FirewallAction_FIREWALL_ACTION_ALLOW})
