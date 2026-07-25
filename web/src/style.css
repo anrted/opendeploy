@@ -85,6 +85,9 @@
            focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none
            transition-colors duration-200;
   }
+  select {
+    transition: none !important;
+  }
   .label {
     @apply block text-xs font-medium text-[#94a3b8] mb-1.5;
   }
