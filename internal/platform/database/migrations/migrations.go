@@ -52,7 +52,10 @@ func migrateLegacyMetadata(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	if !hasName || hasVersion {
+	if hasVersion {
+		return repairConvertedMetadata(db)
+	}
+	if !hasName {
 		return nil
 	}
 
@@ -61,20 +64,7 @@ func migrateLegacyMetadata(db *sql.DB) error {
 		return err
 	}
 
-	var currentVersion uint64
-	for _, name := range names {
-		if !strings.HasSuffix(name, ".up.sql") {
-			continue
-		}
-		prefix, _, ok := strings.Cut(name, "_")
-		if !ok {
-			continue
-		}
-		version, err := strconv.ParseUint(prefix, 10, 64)
-		if err == nil && version > currentVersion {
-			currentVersion = version
-		}
-	}
+	currentVersion := latestLegacyVersion(names)
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -151,4 +141,88 @@ func legacyMigrationNames(db *sql.DB) ([]string, error) {
 		return nil, fmt.Errorf("iterate legacy migration names: %w", err)
 	}
 	return names, nil
+}
+
+func repairConvertedMetadata(db *sql.DB) error {
+	var hasLegacyName bool
+	rows, err := db.Query(`PRAGMA table_info(schema_migrations_legacy)`)
+	if err != nil {
+		return fmt.Errorf("inspect legacy migration metadata: %w", err)
+	}
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan legacy migration metadata: %w", err)
+		}
+		hasLegacyName = hasLegacyName || name == "name"
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close legacy migration metadata: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate legacy migration metadata: %w", err)
+	}
+	if !hasLegacyName {
+		return nil
+	}
+
+	var names []string
+	nameRows, err := db.Query(`SELECT name FROM schema_migrations_legacy`)
+	if err != nil {
+		return fmt.Errorf("read preserved legacy migration names: %w", err)
+	}
+	for nameRows.Next() {
+		var name string
+		if err := nameRows.Scan(&name); err != nil {
+			_ = nameRows.Close()
+			return fmt.Errorf("scan preserved legacy migration name: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := nameRows.Close(); err != nil {
+		return fmt.Errorf("close preserved legacy migration names: %w", err)
+	}
+	if err := nameRows.Err(); err != nil {
+		return fmt.Errorf("iterate preserved legacy migration names: %w", err)
+	}
+
+	legacyVersion := latestLegacyVersion(names)
+	if legacyVersion == 0 {
+		return nil
+	}
+
+	var version uint64
+	var dirty bool
+	if err := db.QueryRow(`SELECT version, dirty FROM schema_migrations LIMIT 1`).Scan(&version, &dirty); err != nil {
+		return fmt.Errorf("read converted migration metadata: %w", err)
+	}
+	if version >= legacyVersion && !dirty {
+		return nil
+	}
+	if _, err := db.Exec(`UPDATE schema_migrations SET version = ?, dirty = 0`, legacyVersion); err != nil {
+		return fmt.Errorf("repair converted migration metadata: %w", err)
+	}
+	return nil
+}
+
+func latestLegacyVersion(names []string) uint64 {
+	var currentVersion uint64
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".down.sql") {
+			continue
+		}
+		prefix, _, ok := strings.Cut(name, "_")
+		if !ok {
+			continue
+		}
+		version, err := strconv.ParseUint(prefix, 10, 64)
+		if err == nil && version > currentVersion {
+			currentVersion = version
+		}
+	}
+	return currentVersion
 }
