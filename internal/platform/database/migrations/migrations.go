@@ -5,6 +5,8 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -16,6 +18,10 @@ var sqlFiles embed.FS
 
 // Run applies all pending SQL migration files using golang-migrate.
 func Run(db *sql.DB) error {
+	if err := migrateLegacyMetadata(db); err != nil {
+		return fmt.Errorf("migrate legacy metadata: %w", err)
+	}
+
 	d, err := iofs.New(sqlFiles, ".")
 	if err != nil {
 		return fmt.Errorf("create iofs: %w", err)
@@ -35,5 +41,98 @@ func Run(db *sql.DB) error {
 		return fmt.Errorf("migrate up: %w", err)
 	}
 
+	return nil
+}
+
+// migrateLegacyMetadata upgrades the migration table used by early OpenDeploy
+// releases (name, applied_at) to the format expected by golang-migrate
+// (version, dirty). Application tables and data are not modified.
+func migrateLegacyMetadata(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(schema_migrations)`)
+	if err != nil {
+		return fmt.Errorf("inspect schema_migrations: %w", err)
+	}
+
+	hasName := false
+	hasVersion := false
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan schema_migrations column: %w", err)
+		}
+		hasName = hasName || name == "name"
+		hasVersion = hasVersion || name == "version"
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close schema_migrations columns: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate schema_migrations columns: %w", err)
+	}
+	if !hasName || hasVersion {
+		return nil
+	}
+
+	var names []string
+	nameRows, err := db.Query(`SELECT name FROM schema_migrations`)
+	if err != nil {
+		return fmt.Errorf("read legacy migration names: %w", err)
+	}
+	for nameRows.Next() {
+		var name string
+		if err := nameRows.Scan(&name); err != nil {
+			_ = nameRows.Close()
+			return fmt.Errorf("scan legacy migration name: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := nameRows.Close(); err != nil {
+		return fmt.Errorf("close legacy migration names: %w", err)
+	}
+	if err := nameRows.Err(); err != nil {
+		return fmt.Errorf("iterate legacy migration names: %w", err)
+	}
+
+	var currentVersion uint64
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".up.sql") {
+			continue
+		}
+		prefix, _, ok := strings.Cut(name, "_")
+		if !ok {
+			continue
+		}
+		version, err := strconv.ParseUint(prefix, 10, 64)
+		if err == nil && version > currentVersion {
+			currentVersion = version
+		}
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin legacy migration metadata transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if _, err := tx.Exec(`ALTER TABLE schema_migrations RENAME TO schema_migrations_legacy`); err != nil {
+		return fmt.Errorf("preserve legacy migration metadata: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE TABLE schema_migrations (version uint64 NOT NULL PRIMARY KEY, dirty bool NOT NULL)`); err != nil {
+		return fmt.Errorf("create migration metadata: %w", err)
+	}
+	if currentVersion > 0 {
+		if _, err := tx.Exec(`INSERT INTO schema_migrations (version, dirty) VALUES (?, 0)`, currentVersion); err != nil {
+			return fmt.Errorf("record migrated version %d: %w", currentVersion, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit legacy migration metadata: %w", err)
+	}
 	return nil
 }
