@@ -12,7 +12,7 @@ func TestCheckedInt32(t *testing.T) {
 		if err != nil {
 			t.Fatalf("checkedInt32(%d) returned an error: %v", value, err)
 		}
-		if got != int32(value) {
+		if int64(got) != int64(value) {
 			t.Fatalf("checkedInt32(%d) = %d", value, got)
 		}
 	}
