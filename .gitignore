@@ -8,5 +8,5 @@
 /web/node_modules/
 /task.md
 opendeploy-*
-implementation_plan.md
-core
+/core
+
