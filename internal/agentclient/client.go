@@ -464,7 +464,7 @@ func (c *Client) ProcessKill(ctx context.Context, pid int, force bool) error {
 }
 
 func checkedInt32(value int, field string) (int32, error) {
-	if int64(value) < math.MinInt32 || int64(value) > math.MaxInt32 {
+	if value < math.MinInt32 || value > math.MaxInt32 {
 		return 0, fmt.Errorf("%s value %d is outside the int32 range", field, value)
 	}
 	return int32(value), nil // #nosec G115 -- bounds are checked immediately above.
