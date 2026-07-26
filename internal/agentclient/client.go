@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"time"
 
 	"google.golang.org/grpc"
@@ -82,7 +83,11 @@ func (c *Client) ServiceStatus(ctx context.Context, name string) (*contract.Serv
 }
 
 func (c *Client) ServiceLogs(ctx context.Context, name string, lines int) ([]string, error) {
-	stream, err := c.stub.ServiceLogs(ctx, &agentv1.ServiceLogsRequest{ServiceName: name, Lines: int32(lines)})
+	lineCount, err := checkedInt32(lines, "lines")
+	if err != nil {
+		return nil, err
+	}
+	stream, err := c.stub.ServiceLogs(ctx, &agentv1.ServiceLogsRequest{ServiceName: name, Lines: lineCount})
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +105,11 @@ func (c *Client) ServiceLogs(ctx context.Context, name string, lines int) ([]str
 }
 
 func (c *Client) FileLogs(ctx context.Context, path string, lines int) ([]string, error) {
-	stream, err := c.stub.FileLogs(ctx, &agentv1.FileLogsRequest{Path: path, Lines: int32(lines)})
+	lineCount, err := checkedInt32(lines, "lines")
+	if err != nil {
+		return nil, err
+	}
+	stream, err := c.stub.FileLogs(ctx, &agentv1.FileLogsRequest{Path: path, Lines: lineCount})
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +271,15 @@ func (c *Client) FileChmod(ctx context.Context, path string, mode uint32) error 
 }
 
 func (c *Client) FileChown(ctx context.Context, path string, uid, gid int) error {
-	_, err := c.stub.FileChown(ctx, &agentv1.FileChownRequest{Path: path, Uid: int32(uid), Gid: int32(gid)})
+	uid32, err := checkedInt32(uid, "uid")
+	if err != nil {
+		return err
+	}
+	gid32, err := checkedInt32(gid, "gid")
+	if err != nil {
+		return err
+	}
+	_, err = c.stub.FileChown(ctx, &agentv1.FileChownRequest{Path: path, Uid: uid32, Gid: gid32})
 	return err
 }
 
@@ -275,7 +292,6 @@ func (c *Client) ArchiveExtract(ctx context.Context, srcPath, dstDir string) err
 	_, err := c.stub.ArchiveExtract(ctx, &agentv1.ArchiveExtractRequest{SrcPath: srcPath, DstDir: dstDir})
 	return err
 }
-
 
 func (c *Client) FirewallStatus(ctx context.Context) (*contract.FirewallStatus, error) {
 	result, err := c.stub.FirewallStatus(ctx, &agentv1.FirewallStatusRequest{})
@@ -439,8 +455,19 @@ func (c *Client) ProcessList(ctx context.Context) ([]contract.ProcessStats, erro
 }
 
 func (c *Client) ProcessKill(ctx context.Context, pid int, force bool) error {
-	_, err := c.stub.ProcessKill(ctx, &agentv1.ProcessKillRequest{Pid: int32(pid), Force: force})
+	pid32, err := checkedInt32(pid, "pid")
+	if err != nil {
+		return err
+	}
+	_, err = c.stub.ProcessKill(ctx, &agentv1.ProcessKillRequest{Pid: pid32, Force: force})
 	return err
+}
+
+func checkedInt32(value int, field string) (int32, error) {
+	if int64(value) < math.MinInt32 || int64(value) > math.MaxInt32 {
+		return 0, fmt.Errorf("%s value %d is outside the int32 range", field, value)
+	}
+	return int32(value), nil
 }
 
 var _ contract.AgentClient = (*Client)(nil)

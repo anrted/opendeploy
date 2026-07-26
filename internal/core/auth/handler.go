@@ -6,9 +6,9 @@ import (
 	"net"
 	"net/http"
 
+	"filippo.io/csrf/gorilla"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/internal/platform/logger"
-	"github.com/gorilla/csrf"
 )
 
 // contextKeyPrincipal is the context key for storing the authenticated user.
