@@ -104,6 +104,10 @@ fi
 # 5. Создание systemd сервисов
 print_step "Настройка systemd сервисов"
 
+printf '%s\n' "$PROJECT_DIR" > "$CONFIG_DIR/source-dir"
+chown root:opendeploy "$CONFIG_DIR/source-dir"
+chmod 0640 "$CONFIG_DIR/source-dir"
+
 cat << 'EOF' > "$SYSTEMD_DIR/opendeploy-core.service"
 [Unit]
 Description=OpenDeploy Core — Server Management Panel
