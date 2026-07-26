@@ -62,3 +62,29 @@ func TestPlaintextCSRFHandshake(t *testing.T) {
 		t.Fatalf("protected POST returned %d: %s", response.StatusCode, body)
 	}
 }
+
+func TestCSRFExemptRequest(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		authorization string
+		want          bool
+	}{
+		{name: "login", path: "/api/v1/auth/login", want: true},
+		{name: "refresh", path: "/api/v1/auth/refresh", want: true},
+		{name: "bearer API", path: "/api/v1/modules", authorization: "Bearer token", want: true},
+		{name: "lowercase bearer", path: "/api/v1/modules", authorization: "bearer token", want: true},
+		{name: "anonymous mutation", path: "/api/v1/modules", want: false},
+		{name: "unrelated authorization", path: "/api/v1/modules", authorization: "Basic value", want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, test.path, nil)
+			request.Header.Set("Authorization", test.authorization)
+			if got := csrfExemptRequest(request); got != test.want {
+				t.Fatalf("csrfExemptRequest() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}

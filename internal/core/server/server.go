@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -128,19 +129,30 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 		csrf.CookieName("csrf_token"),      // the cookie sent to the client
 		csrf.RequestHeader("X-CSRF-Token"), // the header the client must send back
 		csrf.ErrorHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, cookieErr := r.Cookie("csrf_token")
+			logger.Warn("csrf request rejected",
+				"path", r.URL.Path,
+				"reason", csrf.FailureReason(r),
+				"has_cookie", cookieErr == nil,
+				"has_header", r.Header.Get("X-CSRF-Token") != "",
+			)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			w.Write([]byte(`{"error":{"code":"forbidden","message":"CSRF token invalid or missing"}}`))
 		})),
 	)
-	if !csrfSecure {
-		protect := csrfMiddleware
-		csrfMiddleware = func(next http.Handler) http.Handler {
-			protected := protect(next)
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				protected.ServeHTTP(w, csrf.PlaintextHTTPRequest(r))
-			})
-		}
+	protect := csrfMiddleware
+	csrfMiddleware = func(next http.Handler) http.Handler {
+		protected := protect(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if csrfExemptRequest(r) {
+				r = csrf.UnsafeSkipCheck(r)
+			}
+			if !csrfSecure {
+				r = csrf.PlaintextHTTPRequest(r)
+			}
+			protected.ServeHTTP(w, r)
+		})
 	}
 	r.Use(csrfMiddleware)
 
@@ -251,6 +263,18 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 	r.Handle("/*", webui.Handler())
 
 	return r
+}
+
+// csrfExemptRequest skips cookie-based CSRF checks where authentication does
+// not use ambient browser credentials. Login and refresh exchange JSON tokens,
+// while protected API calls authenticate with an explicit Bearer header.
+func csrfExemptRequest(r *http.Request) bool {
+	switch r.URL.Path {
+	case "/api/v1/auth/login", "/api/v1/auth/refresh":
+		return true
+	}
+
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Authorization"))), "bearer ")
 }
 
 // ─── Built-in handlers ─────────────────────────────────────────────────────
