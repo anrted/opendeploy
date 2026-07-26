@@ -86,7 +86,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { api } from '@/utils/api'
+import api from '@/api/client'
 
 const processes = ref([])
 const loading = ref(true)
