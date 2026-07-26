@@ -109,7 +109,6 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 	r.Use(coreMiddleware.Recover)
 	r.Use(coreMiddleware.Logger(logger))
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
 
 	if deps.Config.Security.RateLimit.Enabled {
 		r.Use(coreMiddleware.RateLimit(deps.Config.Security.RateLimit.RequestsPerMinute))
@@ -191,7 +190,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/dashboard", deps.DashboardHandler.Overview)
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/dashboard/snapshots", deps.DashboardHandler.Snapshots)
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Post("/dashboard/ws-ticket", deps.DashboardHandler.IssueWebSocketTicket)
-				
+
 				// System processes
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/system/processes", deps.DashboardHandler.ListProcesses)
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Post("/system/processes/{pid}/kill", deps.DashboardHandler.KillProcess)

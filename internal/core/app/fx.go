@@ -46,6 +46,9 @@ var Module = fx.Options(
 		events.NewMemoryBus,
 		websocket.NewHub,
 		provideAgentClient,
+		func(client *agentclient.Client) contract.AgentClient {
+			return client
+		},
 		module.NewRegistry,
 
 		// Provide *sql.DB for repositories
