@@ -30,7 +30,16 @@ func (m *mockWebServer) Uninstall(ctx context.Context) error { return nil }
 func (m *mockWebServer) Enable(ctx context.Context) error { return nil }
 func (m *mockWebServer) Disable(ctx context.Context) error { return nil }
 func (m *mockWebServer) Restart(ctx context.Context) error { return nil }
-func (m *mockWebServer) Status(ctx context.Context) (*contract.ModuleStatus, error) { return nil, nil }
+func (m *mockWebServer) Category() string { return "Web" }
+func (m *mockWebServer) Icon() string { return "server" }
+func (m *mockWebServer) Dependencies() contract.ModuleDependencies { return contract.ModuleDependencies{} }
+func (m *mockWebServer) Capabilities() contract.ModuleCapabilities { return contract.ModuleCapabilities{} }
+func (m *mockWebServer) Actions() []contract.ActionDef { return nil }
+func (m *mockWebServer) ExecuteAction(ctx context.Context, actionID string) error { return nil }
+func (m *mockWebServer) Logs() []contract.LogDef { return nil }
+func (m *mockWebServer) SettingsSchema() []contract.SettingField { return nil }
+func (m *mockWebServer) Pages() []contract.ModulePage { return nil }
+func (m *mockWebServer) Status(ctx context.Context) (*contract.RuntimeStatus, error) { return nil, nil }
 func (m *mockWebServer) HealthCheck(ctx context.Context) (*contract.HealthReport, error) { return nil, nil }
 
 func (m *mockWebServer) ApplySite(_ context.Context, action contract.SiteAction, _ contract.SiteSpec) error {
