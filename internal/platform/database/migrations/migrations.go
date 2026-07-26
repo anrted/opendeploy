@@ -48,53 +48,17 @@ func Run(db *sql.DB) error {
 // releases (name, applied_at) to the format expected by golang-migrate
 // (version, dirty). Application tables and data are not modified.
 func migrateLegacyMetadata(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(schema_migrations)`)
+	hasName, hasVersion, err := migrationMetadataColumns(db)
 	if err != nil {
-		return fmt.Errorf("inspect schema_migrations: %w", err)
-	}
-
-	hasName := false
-	hasVersion := false
-	for rows.Next() {
-		var cid int
-		var name, columnType string
-		var notNull, primaryKey int
-		var defaultValue any
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("scan schema_migrations column: %w", err)
-		}
-		hasName = hasName || name == "name"
-		hasVersion = hasVersion || name == "version"
-	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close schema_migrations columns: %w", err)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate schema_migrations columns: %w", err)
+		return err
 	}
 	if !hasName || hasVersion {
 		return nil
 	}
 
-	var names []string
-	nameRows, err := db.Query(`SELECT name FROM schema_migrations`)
+	names, err := legacyMigrationNames(db)
 	if err != nil {
-		return fmt.Errorf("read legacy migration names: %w", err)
-	}
-	for nameRows.Next() {
-		var name string
-		if err := nameRows.Scan(&name); err != nil {
-			_ = nameRows.Close()
-			return fmt.Errorf("scan legacy migration name: %w", err)
-		}
-		names = append(names, name)
-	}
-	if err := nameRows.Close(); err != nil {
-		return fmt.Errorf("close legacy migration names: %w", err)
-	}
-	if err := nameRows.Err(); err != nil {
-		return fmt.Errorf("iterate legacy migration names: %w", err)
+		return err
 	}
 
 	var currentVersion uint64
@@ -135,4 +99,56 @@ func migrateLegacyMetadata(db *sql.DB) error {
 		return fmt.Errorf("commit legacy migration metadata: %w", err)
 	}
 	return nil
+}
+
+func migrationMetadataColumns(db *sql.DB) (bool, bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(schema_migrations)`)
+	if err != nil {
+		return false, false, fmt.Errorf("inspect schema_migrations: %w", err)
+	}
+
+	hasName := false
+	hasVersion := false
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return false, false, fmt.Errorf("scan schema_migrations column: %w", err)
+		}
+		hasName = hasName || name == "name"
+		hasVersion = hasVersion || name == "version"
+	}
+	if err := rows.Close(); err != nil {
+		return false, false, fmt.Errorf("close schema_migrations columns: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return false, false, fmt.Errorf("iterate schema_migrations columns: %w", err)
+	}
+	return hasName, hasVersion, nil
+}
+
+func legacyMigrationNames(db *sql.DB) ([]string, error) {
+	var names []string
+	nameRows, err := db.Query(`SELECT name FROM schema_migrations`)
+	if err != nil {
+		return nil, fmt.Errorf("read legacy migration names: %w", err)
+	}
+	for nameRows.Next() {
+		var name string
+		if err := nameRows.Scan(&name); err != nil {
+			_ = nameRows.Close()
+			return nil, fmt.Errorf("scan legacy migration name: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := nameRows.Close(); err != nil {
+		return nil, fmt.Errorf("close legacy migration names: %w", err)
+	}
+	if err := nameRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate legacy migration names: %w", err)
+	}
+	return names, nil
 }
