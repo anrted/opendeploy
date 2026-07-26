@@ -120,9 +120,10 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 	// (or via a dedicated endpoint).
 	// We use the same JWT secret for CSRF for simplicity, or a random 32-byte key.
 	// In production, Secure should be true (HTTPS only).
+	csrfSecure := deps.Config.Addr() == ":443" || deps.Config.Addr() == ":8443"
 	csrfMiddleware := csrf.Protect(
 		[]byte(deps.Config.Auth.JWTSecret),
-		csrf.Secure(deps.Config.Addr() == ":443" || deps.Config.Addr() == ":8443"),
+		csrf.Secure(csrfSecure),
 		csrf.Path("/"),
 		csrf.CookieName("csrf_token"),      // the cookie sent to the client
 		csrf.RequestHeader("X-CSRF-Token"), // the header the client must send back
@@ -132,6 +133,15 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 			w.Write([]byte(`{"error":{"code":"forbidden","message":"CSRF token invalid or missing"}}`))
 		})),
 	)
+	if !csrfSecure {
+		protect := csrfMiddleware
+		csrfMiddleware = func(next http.Handler) http.Handler {
+			protected := protect(next)
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				protected.ServeHTTP(w, csrf.PlaintextHTTPRequest(r))
+			})
+		}
+	}
 	r.Use(csrfMiddleware)
 
 	// ── Health check (unauthenticated) ────────────────────────────────────
