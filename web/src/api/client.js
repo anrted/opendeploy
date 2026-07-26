@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 const api = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
+  withCredentials: true,
 })
 
 let csrfToken = null
@@ -14,10 +15,20 @@ async function fetchCsrfToken() {
   if (csrfToken) return csrfToken
   if (csrfPromise) return csrfPromise
 
-  csrfPromise = axios.get('/api/v1/auth/csrf').then((res) => {
-    csrfToken = res.headers['x-csrf-token']
-    return csrfToken
-  }).catch(() => null)
+  csrfPromise = axios
+    .get('/api/v1/auth/csrf', { withCredentials: true })
+    .then((res) => {
+      const token = res.headers['x-csrf-token']
+      if (!token) {
+        throw new Error('CSRF token was not returned by the server')
+      }
+      csrfToken = token
+      return token
+    })
+    .finally(() => {
+      // A settled promise must not pin a failed or stale token forever.
+      csrfPromise = null
+    })
 
   return csrfPromise
 }
@@ -55,7 +66,7 @@ api.interceptors.response.use(
     // Refresh CSRF if it was forbidden
     if (error.response?.status === 403 && error.response?.data?.error?.code === 'forbidden' && !originalRequest._csrfRetry) {
       originalRequest._csrfRetry = true
-      csrfToken = null // force refresh
+      csrfToken = null // refresh both the token and its matching cookie
       const token = await fetchCsrfToken()
       if (token) {
         originalRequest.headers['X-CSRF-Token'] = token
