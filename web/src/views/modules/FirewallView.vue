@@ -1,7 +1,10 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import EmptyState from '@/components/EmptyState.vue'
+import { useConfirmStore } from '@/stores/confirm'
 
+const confirm = useConfirmStore()
 const activeTab = ref('overview')
 const status = ref(null)
 const rules = ref([])
@@ -55,7 +58,13 @@ async function toggleFirewall() {
   if (!status.value) return
   const willEnable = !status.value.active
   if (!willEnable) {
-    if (!confirm('Are you sure you want to disable the firewall? This may leave your server vulnerable.')) return
+    const confirmed = await confirm.require({
+      title: 'Disable Firewall',
+      message: 'Are you sure you want to disable the firewall? This may leave your server vulnerable.',
+      confirmText: 'Disable',
+      type: 'danger'
+    })
+    if (!confirmed) return
   }
   
   error.value = ''
@@ -71,7 +80,13 @@ async function toggleFirewall() {
 }
 
 async function resetFirewall() {
-  if (!confirm('Are you absolutely sure you want to reset the firewall? ALL custom rules will be deleted and you may be locked out.')) return
+  const confirmed = await confirm.require({
+    title: 'Reset Firewall',
+    message: 'Are you absolutely sure you want to reset the firewall? ALL custom rules will be deleted and you may be locked out.',
+    confirmText: 'Reset',
+    type: 'danger'
+  })
+  if (!confirmed) return
   
   error.value = ''
   loading.value = true
@@ -94,9 +109,13 @@ async function addRule() {
 
   // Safety check for blocking SSH
   if ((newRule.value.port === '22' || newRule.value.port === 'ssh') && newRule.value.action !== 'allow') {
-    if (!confirm('WARNING: You are about to block or reject port 22 (SSH). This might lock you out of the server. Do you want to proceed?')) {
-      return
-    }
+    const confirmed = await confirm.require({
+      title: 'Warning: Blocking SSH',
+      message: 'WARNING: You are about to block or reject port 22 (SSH). This might lock you out of the server. Do you want to proceed?',
+      confirmText: 'Proceed',
+      type: 'danger'
+    })
+    if (!confirmed) return
   }
 
   adding.value = true
@@ -121,14 +140,24 @@ async function addRule() {
 
 async function deleteRule(rule) {
   if (rule.port === '22' || rule.port === 'ssh') {
-    if (!confirm('WARNING: You are about to delete an SSH rule. Make sure you have another way to access the server. Proceed?')) {
-      return
-    }
+    const confirmed = await confirm.require({
+      title: 'Warning: Deleting SSH Rule',
+      message: 'WARNING: You are about to delete an SSH rule. Make sure you have another way to access the server. Proceed?',
+      confirmText: 'Proceed',
+      type: 'danger'
+    })
+    if (!confirmed) return
   } else if (rule.port === '443' || rule.port === '5888') {
     alert(`Deleting rule for port ${rule.port} is forbidden by system policy.`)
     return
   } else {
-    if (!confirm(`Delete rule ${rule.id}?`)) return
+    const confirmed = await confirm.require({
+      title: 'Delete Rule',
+      message: `Are you sure you want to delete rule ${rule.id}?`,
+      confirmText: 'Delete',
+      type: 'danger'
+    })
+    if (!confirmed) return
   }
 
   error.value = ''
@@ -279,8 +308,12 @@ const tabs = [
                 </td>
               </tr>
               <tr v-else-if="rules.length === 0">
-                <td colspan="6" class="px-6 py-12 text-center text-slate-500">
-                  No custom rules found. Default policies apply.
+                <td colspan="6" class="p-0">
+                  <EmptyState title="No Rules" description="No custom rules found. Default policies apply.">
+                    <template #action>
+                      <button class="btn-primary" @click="activeTab = 'add'">New Rule</button>
+                    </template>
+                  </EmptyState>
                 </td>
               </tr>
               <tr v-for="rule in rules" :key="rule.id" class="hover:bg-white/[0.02] transition-colors group">

@@ -7,6 +7,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/internal/platform/logger"
+	"github.com/gorilla/csrf"
 )
 
 // contextKeyPrincipal is the context key for storing the authenticated user.
@@ -111,6 +112,13 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, http.StatusOK, user)
+}
+
+// CSRFToken handles GET /api/v1/auth/csrf.
+// It simply provides a way for the frontend to get the CSRF token before logging in.
+func (h *Handler) CSRFToken(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-CSRF-Token", csrf.Token(r))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ─── Context helpers ───────────────────────────────────────────────────────

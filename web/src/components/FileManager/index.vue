@@ -56,36 +56,8 @@
       {{ error }}
     </div>
 
-    <!-- Editor Mode -->
-    <div v-if="editingFile" class="flex-1 overflow-hidden p-6 flex flex-col gap-4">
-      <div class="flex items-center justify-between">
-        <h3 class="text-white font-mono text-sm truncate flex-1">{{ editingFile.name }}</h3>
-        <div class="flex items-center gap-3">
-          <button class="btn-secondary text-sm py-1.5" @click="closeEditor" :disabled="savingFile">Cancel</button>
-          <button class="btn-primary text-sm py-1.5 flex items-center gap-2" @click="saveFile" :disabled="savingFile || loadingFile">
-            <svg v-if="savingFile" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            {{ savingFile ? 'Saving...' : 'Save' }}
-          </button>
-        </div>
-      </div>
-      <div class="flex-1 bg-[#1e293b]/50 border border-slate-700/50 rounded-xl overflow-hidden backdrop-blur-sm relative flex flex-col">
-        <div v-if="loadingFile" class="absolute inset-0 z-10 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center">
-          <svg class="animate-spin text-indigo-500 w-8 h-8" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-        </div>
-        <textarea 
-          v-model="editingContent" 
-          class="flex-1 w-full bg-transparent text-slate-300 font-mono text-sm p-4 resize-none outline-none focus:ring-0 border-none"
-          spellcheck="false"
-          placeholder="File content..."
-        ></textarea>
-      </div>
-    </div>
-
     <!-- Main Content Area -->
-    <div v-else class="flex-1 overflow-hidden p-6 flex gap-6">
+    <div class="flex-1 overflow-hidden p-6 flex gap-6">
       
       <!-- File List -->
       <div class="flex-1 bg-[#1e293b]/50 border border-slate-700/50 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm flex flex-col relative" @drop.prevent="handleDrop" @dragover.prevent>
@@ -156,6 +128,7 @@
         </div>
       </div>
     </div>
+    </div>
     
     <!-- Context Menu -->
     <div v-if="contextMenu.show" 
@@ -182,12 +155,27 @@
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Delete
       </button>
     </div>
+
+    <!-- Monaco Editor Modal -->
+    <FileEditor
+      v-if="editingFile && !loadingFile"
+      :filename="editingFile.name"
+      :initial-content="editingContent"
+      :is-saving="savingFile"
+      @close="closeEditor"
+      @save="saveFile"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import { useConfirmStore } from '@/stores/confirm'
+
+const FileEditor = defineAsyncComponent(() => import('./FileEditor.vue'))
+
+const confirm = useConfirmStore()
 
 const props = defineProps({
   site: { type: Object, required: true }
@@ -322,20 +310,24 @@ async function openEditor(file) {
   }
 }
 
-async function saveFile() {
+async function saveFile(newContent) {
   if (!editingFile.value) return
   savingFile.value = true
   error.value = ''
   try {
-    const blob = new Blob([editingContent.value], { type: 'text/plain' })
+    const blob = new Blob([newContent], { type: 'text/plain' })
     const formData = new FormData()
     formData.append('file', new File([blob], editingFile.value.name, { type: 'text/plain' }))
     
     await api.post(`/sites/${props.site.id}/file`, formData, { 
       params: { path: getFilePath(editingFile.value.name) }
     })
+    
+    // Update local content state to signify it's saved
+    editingContent.value = newContent
+    
     refresh()
-    closeEditor()
+    // Don't close editor automatically, let user close it if they want
   } catch (e) {
     error.value = apiErrorMessage(e, `Failed to save ${editingFile.value.name}`)
   } finally {
@@ -415,7 +407,13 @@ function closeContextMenu() {
 
 async function deleteFile(file) {
   closeContextMenu()
-  if (!confirm(`Delete ${file.name}?`)) return
+  const confirmed = await confirm.require({
+    title: 'Delete File',
+    message: `Are you sure you want to delete ${file.name}?`,
+    confirmText: 'Delete',
+    type: 'danger'
+  })
+  if (!confirmed) return
   error.value = ''
   
   try {
@@ -431,7 +429,13 @@ async function deleteFile(file) {
 
 async function batchDelete() {
   if (!selectedFiles.value.length) return
-  if (!confirm(`Delete ${selectedFiles.value.length} selected items?`)) return
+  const confirmed = await confirm.require({
+    title: 'Delete Files',
+    message: `Are you sure you want to delete ${selectedFiles.value.length} selected items?`,
+    confirmText: 'Delete',
+    type: 'danger'
+  })
+  if (!confirmed) return
   
   const paths = selectedFiles.value.map(name => getFilePath(name))
   try {

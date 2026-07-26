@@ -1,10 +1,9 @@
 <template>
-  <div class="min-h-screen flex" style="background-color: #0f1117;">
+  <div class="min-h-screen flex bg-bg-base text-text-main transition-colors duration-200">
     <!-- Sidebar -->
-    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-[#2d3748]"
-           style="background-color: #161b27;">
+    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-border-subtle bg-bg-card transition-colors duration-200">
       <!-- Logo -->
-      <div class="p-6 border-b border-[#2d3748]">
+      <div class="p-6 border-b border-border-subtle">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
@@ -14,11 +13,18 @@
               </svg>
             </div>
             <div>
-              <div class="text-sm font-bold text-white">OpenDeploy</div>
-              <div class="text-xs text-[#64748b]">v1.0.0</div>
+              <div class="text-sm font-bold text-text-main">OpenDeploy</div>
+              <div class="text-xs text-text-muted">v1.0.0</div>
             </div>
           </div>
-          <LanguageSwitcher />
+          <div class="flex items-center gap-2">
+            <!-- Theme Toggle -->
+            <button @click="themeStore.toggle()" class="text-text-muted hover:text-text-main transition-colors">
+              <svg v-if="themeStore.isDark" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+              <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+            </button>
+            <LanguageSwitcher />
+          </div>
         </div>
       </div>
 
@@ -37,17 +43,17 @@
       </nav>
 
       <!-- User info -->
-      <div class="p-4 border-t border-[#2d3748]">
-        <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#1e2535] cursor-pointer transition-colors"
+      <div class="p-4 border-t border-border-subtle">
+        <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-[#1e2535] cursor-pointer transition-colors"
              @click="handleLogout">
           <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-xs font-bold text-white">
             {{ userInitial }}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-[#e2e8f0] truncate">{{ auth.user?.username || 'User' }}</div>
-            <div class="text-xs text-[#64748b] truncate capitalize">{{ auth.user?.role || 'admin' }}</div>
+            <div class="text-sm font-medium text-text-main truncate">{{ auth.user?.username || 'User' }}</div>
+            <div class="text-xs text-text-muted truncate capitalize">{{ auth.user?.role || 'admin' }}</div>
           </div>
-          <svg class="w-4 h-4 text-[#64748b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
         </div>
@@ -67,7 +73,10 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+
+const themeStore = useThemeStore()
 
 // Icon components (inline SVGs as functional components)
 const DashboardIcon = {
@@ -88,12 +97,16 @@ const SettingsIcon = {
 const FirewallIcon = {
   template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`
 }
+const ProcessesIcon = {
+  template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>`
+}
 
 const navItems = [
   { name: 'dashboard', label: 'Dashboard', to: '/', icon: DashboardIcon },
   { name: 'modules',   label: 'Modules',   to: '/modules', icon: ModulesIcon },
   { name: 'sites',     label: 'Sites',     to: '/sites', icon: SitesIcon },
   { name: 'services',  label: 'Services',  to: '/services', icon: ServicesIcon },
+  { name: 'processes', label: 'Processes', to: '/processes', icon: ProcessesIcon },
   { name: 'firewall',  label: 'Firewall',  to: '/modules/firewall', icon: FirewallIcon },
   { name: 'settings',  label: 'Settings',  to: '/settings', icon: SettingsIcon },
 ]

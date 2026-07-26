@@ -3,6 +3,7 @@ package module
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/anrted/opendeploy/internal/core/auth"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
@@ -186,4 +187,98 @@ func realIP(r *http.Request) string {
 		return ip
 	}
 	return r.RemoteAddr
+}
+
+func (h *Handler) HandleGetDataGridSchema(w http.ResponseWriter, r *http.Request) {
+	moduleID := chi.URLParam(r, "id")
+	pageID := chi.URLParam(r, "pageId")
+	schema, err := h.service.GetDataGridSchema(r.Context(), moduleID, pageID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(schema)
+}
+
+func (h *Handler) HandleGetDataGridData(w http.ResponseWriter, r *http.Request) {
+	moduleID := chi.URLParam(r, "id")
+	pageID := chi.URLParam(r, "pageId")
+	data, err := h.service.GetDataGridData(r.Context(), moduleID, pageID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
+
+func (h *Handler) HandleExecuteDataGridAction(w http.ResponseWriter, r *http.Request) {
+	moduleID := chi.URLParam(r, "id")
+	pageID := chi.URLParam(r, "pageId")
+	actionID := chi.URLParam(r, "actionId")
+	
+	var payload map[string]any
+	if r.Body != nil && r.Body != http.NoBody {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	
+	err := h.service.ExecuteDataGridAction(r.Context(), moduleID, pageID, actionID, payload)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) HandleSaveSettings(w http.ResponseWriter, r *http.Request) {
+	moduleID := chi.URLParam(r, "id")
+	
+	var settings map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	
+	if err := h.service.SaveSettings(r.Context(), moduleID, settings); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) HandleReadLog(w http.ResponseWriter, r *http.Request) {
+	moduleID := chi.URLParam(r, "id")
+	logID := chi.URLParam(r, "logId")
+	
+	linesStr := r.URL.Query().Get("lines")
+	lines := 100
+	if linesStr != "" {
+		if parsed, err := strconv.Atoi(linesStr); err == nil && parsed > 0 {
+			lines = parsed
+		}
+	}
+	
+	output, err := h.service.ReadLog(r.Context(), moduleID, logID, lines)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(output)
+}
+
+func (h *Handler) HandleClearLog(w http.ResponseWriter, r *http.Request) {
+	moduleID := chi.URLParam(r, "id")
+	logID := chi.URLParam(r, "logId")
+	
+	if err := h.service.ClearLog(r.Context(), moduleID, logID); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

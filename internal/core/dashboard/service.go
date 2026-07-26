@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -73,6 +74,7 @@ type Service struct {
 	bus        *events.MemoryBus
 	hub        *wsHub.Hub
 	logger     *slog.Logger
+	cachedStats atomic.Value
 }
 
 // NewService constructs a dashboard Service.
@@ -100,14 +102,10 @@ func NewService(
 func (s *Service) Overview(ctx context.Context) (*Overview, error) {
 	overview := &Overview{}
 
-	// Live system stats from Agent.
-	if s.agent != nil {
-		stats, err := s.agent.SystemStats(ctx)
-		if err != nil {
-			s.logger.WarnContext(ctx, "dashboard: agent system stats unavailable", "error", err)
-		} else {
-			overview.ServerStats = stats
-		}
+	// Live system stats from Cache.
+	stats := s.cachedStats.Load()
+	if stats != nil {
+		overview.ServerStats = stats.(*contract.SystemStats)
 	}
 
 	// Module summary.
@@ -181,6 +179,7 @@ func (s *Service) poll(ctx context.Context) {
 		s.logger.WarnContext(ctx, "dashboard: poll stats failed", "error", err)
 		return
 	}
+	s.cachedStats.Store(stats)
 
 	// Persist snapshot.
 	diskPct := 0.0

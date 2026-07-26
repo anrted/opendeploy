@@ -16,8 +16,12 @@ import (
 type Manager interface {
 	Install(ctx context.Context, pkg string) (<-chan string, error)
 	Remove(ctx context.Context, pkg string) (<-chan string, error)
+	Purge(ctx context.Context, pkg string) (<-chan string, error)
 	Update(ctx context.Context, pkg string) (<-chan string, error)
+	Upgrade(ctx context.Context) (<-chan string, error)
+	Search(ctx context.Context, pkg string) (string, error)
 	Installed(ctx context.Context, pkg string) (bool, string, error)
+	LatestVersion(ctx context.Context, pkg string) (string, error)
 }
 
 // Detect returns the appropriate package manager for the current system.
@@ -76,6 +80,43 @@ func (m *aptManager) Update(ctx context.Context, pkg string) (<-chan string, err
 		return nil, fmt.Errorf("apt: update %s: %w", pkg, err)
 	}
 	return ch, nil
+}
+
+func (m *aptManager) Purge(ctx context.Context, pkg string) (<-chan string, error) {
+	ch := make(chan string, 64)
+	if err := m.shell.Stream(ctx, ch, "apt-get", "remove", "--purge", "-y", pkg); err != nil {
+		return nil, fmt.Errorf("apt: purge %s: %w", pkg, err)
+	}
+	return ch, nil
+}
+
+func (m *aptManager) Upgrade(ctx context.Context) (<-chan string, error) {
+	ch := make(chan string, 64)
+	if err := m.shell.Stream(ctx, ch, "apt-get", "upgrade", "-y", "-q"); err != nil {
+		return nil, fmt.Errorf("apt: upgrade: %w", err)
+	}
+	return ch, nil
+}
+
+func (m *aptManager) Search(ctx context.Context, pkg string) (string, error) {
+	result, err := m.shell.Run(ctx, "apt", "search", pkg)
+	if err != nil {
+		return "", fmt.Errorf("apt: search %s: %w", pkg, err)
+	}
+	return result.Stdout, nil
+}
+
+func (m *aptManager) LatestVersion(ctx context.Context, pkg string) (string, error) {
+	result, err := m.shell.Run(ctx, "apt", "show", pkg)
+	if err != nil {
+		return "", fmt.Errorf("apt: show %s: %w", pkg, err)
+	}
+	for _, line := range strings.Split(result.Stdout, "\n") {
+		if strings.HasPrefix(line, "Version: ") {
+			return strings.TrimPrefix(line, "Version: "), nil
+		}
+	}
+	return "", fmt.Errorf("version not found for %s", pkg)
 }
 
 func (m *aptManager) Installed(ctx context.Context, pkg string) (bool, string, error) {
@@ -140,6 +181,42 @@ func (m *dnfManager) Update(ctx context.Context, pkg string) (<-chan string, err
 		return nil, fmt.Errorf("%s: update %s: %w", m.bin, pkg, err)
 	}
 	return ch, nil
+}
+
+func (m *dnfManager) Purge(ctx context.Context, pkg string) (<-chan string, error) {
+	return m.Remove(ctx, pkg) // dnf doesn't have a direct equivalent to purge configuration
+}
+
+func (m *dnfManager) Upgrade(ctx context.Context) (<-chan string, error) {
+	ch := make(chan string, 64)
+	if err := m.shell.Stream(ctx, ch, m.bin, "upgrade", "-y"); err != nil {
+		return nil, fmt.Errorf("%s: upgrade: %w", m.bin, err)
+	}
+	return ch, nil
+}
+
+func (m *dnfManager) Search(ctx context.Context, pkg string) (string, error) {
+	result, err := m.shell.Run(ctx, m.bin, "search", pkg)
+	if err != nil {
+		return "", fmt.Errorf("%s: search %s: %w", m.bin, pkg, err)
+	}
+	return result.Stdout, nil
+}
+
+func (m *dnfManager) LatestVersion(ctx context.Context, pkg string) (string, error) {
+	result, err := m.shell.Run(ctx, m.bin, "info", pkg)
+	if err != nil {
+		return "", fmt.Errorf("%s: info %s: %w", m.bin, pkg, err)
+	}
+	for _, line := range strings.Split(result.Stdout, "\n") {
+		if strings.HasPrefix(line, "Version") {
+			parts := strings.Split(line, ":")
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1]), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("version not found for %s", pkg)
 }
 
 func (m *dnfManager) Installed(ctx context.Context, pkg string) (bool, string, error) {

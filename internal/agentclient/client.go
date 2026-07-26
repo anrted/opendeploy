@@ -117,6 +117,50 @@ func (c *Client) FileLogs(ctx context.Context, path string, lines int) ([]string
 	}
 }
 
+func (c *Client) StreamLogs(ctx context.Context, path string) (<-chan string, error) {
+	stream, err := c.stub.StreamLogs(ctx, &agentv1.StreamLogsRequest{Path: path})
+	if err != nil {
+		return nil, err
+	}
+	output := make(chan string, 64)
+	go func() {
+		defer close(output)
+		for {
+			line, err := stream.Recv()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				return
+			}
+			output <- line.Line
+		}
+	}()
+	return output, nil
+}
+
+func (c *Client) ServiceStreamLogs(ctx context.Context, name string) (<-chan string, error) {
+	stream, err := c.stub.ServiceStreamLogs(ctx, &agentv1.ServiceStreamLogsRequest{ServiceName: name})
+	if err != nil {
+		return nil, err
+	}
+	output := make(chan string, 64)
+	go func() {
+		defer close(output)
+		for {
+			line, err := stream.Recv()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				return
+			}
+			output <- line.Line
+		}
+	}()
+	return output, nil
+}
+
 func (c *Client) CommandExecute(ctx context.Context, command string, args ...string) (int, string, string, error) {
 	resp, err := c.stub.CommandExecute(ctx, &agentv1.CommandExecuteRequest{
 		Command: command,
@@ -369,6 +413,34 @@ func (c *Client) SystemStats(ctx context.Context) (*contract.SystemStats, error)
 		stats.Disk = append(stats.Disk, contract.DiskStats{Mountpoint: disk.Mountpoint, Total: disk.Total, Used: disk.Used, Free: disk.Free, UsedPercent: disk.UsedPercent})
 	}
 	return stats, nil
+}
+
+func (c *Client) ProcessList(ctx context.Context) ([]contract.ProcessStats, error) {
+	resp, err := c.stub.ProcessList(ctx, &agentv1.ProcessListRequest{})
+	if err != nil {
+		return nil, err
+	}
+	var result []contract.ProcessStats
+	for _, p := range resp.GetProcesses() {
+		result = append(result, contract.ProcessStats{
+			Pid:        int(p.GetPid()),
+			Ppid:       int(p.GetPpid()),
+			Name:       p.GetName(),
+			User:       p.GetUser(),
+			CpuPercent: p.GetCpuPercent(),
+			MemPercent: p.GetMemPercent(),
+			MemRss:     p.GetMemRss(),
+			NumThreads: int(p.GetNumThreads()),
+			CreateTime: p.GetCreateTime(),
+			Cmdline:    p.GetCmdline(),
+		})
+	}
+	return result, nil
+}
+
+func (c *Client) ProcessKill(ctx context.Context, pid int, force bool) error {
+	_, err := c.stub.ProcessKill(ctx, &agentv1.ProcessKillRequest{Pid: int32(pid), Force: force})
+	return err
 }
 
 var _ contract.AgentClient = (*Client)(nil)

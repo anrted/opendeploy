@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/csrf"
 
 	"github.com/anrted/opendeploy/internal/core/auth"
 	"github.com/anrted/opendeploy/internal/core/dashboard"
@@ -114,6 +115,26 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 		r.Use(coreMiddleware.RateLimit(deps.Config.Security.RateLimit.RequestsPerMinute))
 	}
 
+	// ── CSRF Protection ───────────────────────────────────────────────────
+	// Protect all POST/PUT/DELETE requests. Provide the token via a header
+	// X-CSRF-Token that the frontend can read from the initial request
+	// (or via a dedicated endpoint).
+	// We use the same JWT secret for CSRF for simplicity, or a random 32-byte key.
+	// In production, Secure should be true (HTTPS only).
+	csrfMiddleware := csrf.Protect(
+		[]byte(deps.Config.Auth.JWTSecret),
+		csrf.Secure(deps.Config.Addr() == ":443" || deps.Config.Addr() == ":8443"),
+		csrf.Path("/"),
+		csrf.CookieName("csrf_token"),      // the cookie sent to the client
+		csrf.RequestHeader("X-CSRF-Token"), // the header the client must send back
+		csrf.ErrorHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"error":{"code":"forbidden","message":"CSRF token invalid or missing"}}`))
+		})),
+	)
+	r.Use(csrfMiddleware)
+
 	// ── Health check (unauthenticated) ────────────────────────────────────
 	r.Get("/health", healthHandler)
 	if deps.DashboardHandler != nil {
@@ -123,6 +144,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 	// ── API v1 ────────────────────────────────────────────────────────────
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public auth endpoints
+		r.Get("/auth/csrf", deps.AuthHandler.CSRFToken)
 		r.Post("/auth/login", deps.AuthHandler.Login)
 		r.Post("/auth/refresh", deps.AuthHandler.Refresh)
 
@@ -143,7 +165,17 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleEnable)).Post("/modules/{id}/enable", deps.ModuleHandler.Enable)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleDisable)).Post("/modules/{id}/disable", deps.ModuleHandler.Disable)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/restart", deps.ModuleHandler.Restart)
-				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/actions/{actionId}", deps.ModuleHandler.ExecuteAction)
+
+				r.Get("/modules/{id}/datagrid/{pageId}/schema", deps.ModuleHandler.HandleGetDataGridSchema)
+				r.Get("/modules/{id}/datagrid/{pageId}/data", deps.ModuleHandler.HandleGetDataGridData)
+				r.Post("/modules/{id}/datagrid/{pageId}/action/{actionId}", deps.ModuleHandler.HandleExecuteDataGridAction)
+
+				r.Post("/modules/{id}/settings", deps.ModuleHandler.HandleSaveSettings)
+
+				r.Get("/modules/{id}/logs/{logId}/read", deps.ModuleHandler.HandleReadLog)
+				r.Post("/modules/{id}/logs/{logId}/clear", deps.ModuleHandler.HandleClearLog)
+
+				r.Post("/modules/{id}/actions/{actionId}", deps.ModuleHandler.ExecuteAction)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/jobs/{id}", deps.ModuleHandler.GetJob)
 			}
 
@@ -159,6 +191,10 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/dashboard", deps.DashboardHandler.Overview)
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/dashboard/snapshots", deps.DashboardHandler.Snapshots)
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Post("/dashboard/ws-ticket", deps.DashboardHandler.IssueWebSocketTicket)
+				
+				// System processes
+				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/system/processes", deps.DashboardHandler.ListProcesses)
+				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Post("/system/processes/{pid}/kill", deps.DashboardHandler.KillProcess)
 			}
 
 			// Site routes
@@ -186,12 +222,14 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Post("/services/{id}/stop", deps.ServiceHandler.Stop)
 				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Post("/services/{id}/restart", deps.ServiceHandler.Restart)
 				r.With(coreMiddleware.RequirePermission(auth.PermServiceView)).Get("/services/{id}/logs", deps.ServiceHandler.Logs)
+				r.With(coreMiddleware.RequirePermission(auth.PermServiceView)).Get("/services/{id}/logs/stream", deps.ServiceHandler.StreamLogs)
 				r.With(coreMiddleware.RequirePermission(auth.PermServiceManage)).Delete("/services/{id}", deps.ServiceHandler.Remove)
 			}
 
 			// Settings routes
 			if deps.SettingsHandler != nil {
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsView)).Get("/settings", deps.SettingsHandler.List)
+				r.With(coreMiddleware.RequirePermission(auth.PermSettingsView)).Get("/settings/specs", deps.SettingsHandler.Specs)
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsUpdate)).Put("/settings", deps.SettingsHandler.Update)
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsView)).Get("/updates", deps.SettingsHandler.UpdateStatus)
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsSecurity)).Post("/updates/apply", deps.SettingsHandler.ApplyUpdate)

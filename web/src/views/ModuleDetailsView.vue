@@ -12,9 +12,7 @@
       <!-- Header -->
       <div class="flex items-start justify-between mb-8">
         <div class="flex items-center gap-4">
-          <div class="w-16 h-16 rounded-2xl bg-black/20 flex items-center justify-center border border-[#334155]">
-            <i class="feather text-2xl text-indigo-400" :class="'icon-' + module.icon"></i>
-          </div>
+          <ModuleIcon :icon="module.icon || 'box'" size="lg" />
           <div>
             <div class="flex items-center gap-3 mb-1">
               <h1 class="text-2xl font-bold text-white">{{ module.name }}</h1>
@@ -127,7 +125,22 @@
                  <pre class="text-xs text-[#e2e8f0] whitespace-pre-wrap">{{ runtimeStatus.details }}</pre>
                </div>
             </div>
-            <div v-else class="text-sm text-[#94a3b8]">Status not available.</div>
+            
+            <!-- Dynamic Properties Cards -->
+            <div v-if="runtimeStatus && runtimeStatus.properties && runtimeStatus.properties.length > 0" class="mt-6">
+              <!-- Group properties by group -->
+              <div v-for="group in [...new Set(runtimeStatus.properties.map(p => p.group || 'General'))]" :key="group" class="mb-6">
+                <h3 class="text-sm font-medium text-[#94a3b8] mb-3 uppercase tracking-wider">{{ group }}</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div v-for="prop in runtimeStatus.properties.filter(p => (p.group || 'General') === group)" :key="prop.name" class="bg-[#0f172a] border border-[#334155] p-4 rounded-xl flex flex-col justify-center">
+                    <div class="text-xs text-[#64748b] mb-1">{{ prop.name }}</div>
+                    <div class="font-medium text-[#e2e8f0] truncate" :title="prop.value">{{ prop.value }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div v-else-if="!statusLoading && !runtimeStatus" class="text-sm text-[#94a3b8]">Status not available.</div>
           </div>
         </div>
 
@@ -160,55 +173,17 @@
 
         <!-- Settings Tab -->
         <div v-else-if="currentPage && currentPage.type === 'settings'" class="space-y-6">
-          <div v-if="module.settings_schema && module.settings_schema.length">
-            <div v-for="setting in module.settings_schema" :key="setting.id" class="mb-4">
-              <label class="block text-sm font-medium text-[#94a3b8] mb-1">{{ setting.label }}</label>
-              
-              <select v-if="setting.type === 'select'" class="input w-full md:w-1/2">
-                <option v-for="opt in setting.options" :key="opt" :value="opt" :selected="opt === setting.value">{{ opt }}</option>
-              </select>
-              
-              <input v-else-if="setting.type === 'boolean'" type="checkbox" :checked="setting.value" class="mt-2" />
-              
-              <input v-else type="text" :value="setting.value" class="input w-full md:w-1/2" />
-              
-              <p class="text-xs text-[#64748b] mt-1">{{ setting.description }}</p>
-            </div>
-            <button class="btn btn-primary mt-4">Save Settings</button>
-          </div>
-          <div v-else class="py-10 text-center text-[#64748b]">
-            <p>Settings schema is empty.</p>
-          </div>
+          <SettingsForm :moduleId="module.id" :schema="module.settings_schema" />
         </div>
 
         <!-- Logs Tab -->
         <div v-else-if="currentPage && currentPage.type === 'logs'" class="space-y-6">
-          <div v-if="module.logs && module.logs.length">
-            <div class="mb-4">
-              <label class="block text-sm font-medium text-[#94a3b8] mb-2">Select Log Source</label>
-              <select class="input w-full md:w-1/3" v-model="selectedLog">
-                <option v-for="log in module.logs" :key="log.id" :value="log.id">{{ log.name }} ({{ log.type }})</option>
-              </select>
-            </div>
-            <div class="bg-black/50 border border-[#334155] rounded-xl p-4 font-mono text-xs text-[#e2e8f0] h-96 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
-              This is a placeholder for real-time logs tailing... 
-              <br><br>
-              <span class="text-indigo-400">Selected Log: {{ selectedLog }}</span>
-            </div>
-          </div>
-          <div v-else class="py-10 text-center text-[#64748b]">
-            <p>No logs defined for this module.</p>
-          </div>
+          <LogsViewer :moduleId="module.id" :logs="module.logs" />
         </div>
 
-        <!-- DataGrid Placeholder Tab -->
+        <!-- DataGrid Tab -->
         <div v-else-if="currentPage && currentPage.type === 'datagrid'" class="space-y-6">
-          <div class="py-10 text-center text-[#64748b]">
-            <i class="feather icon-table text-4xl mb-4 text-[#475569]"></i>
-            <h3 class="text-lg font-medium text-white mb-2">{{ currentPage.title }}</h3>
-            <p>This dynamic grid is currently under development.</p>
-            <p class="text-xs mt-2 text-[#94a3b8]">(Will load metadata for {{ module.id }}/{{ currentPage.id }})</p>
-          </div>
+          <DataGrid :module="module" :page="currentPage" />
         </div>
         
       </div>
@@ -219,7 +194,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import DataGrid from '@/components/DataGrid.vue'
+import SettingsForm from '@/components/SettingsForm.vue'
+import LogsViewer from '@/components/LogsViewer.vue'
+import ModuleIcon from '@/components/ModuleIcon.vue'
 import api, { apiErrorMessage } from '@/api/client'
+import { useConfirmStore } from '@/stores/confirm'
+
+const confirm = useConfirmStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -291,8 +273,13 @@ function stateBadge(state) {
 
 async function executeDynamicAction(act) {
   if (act.requiresConfirmation || act.dangerous) {
-    const msg = `Are you sure you want to ${act.title}?`
-    if (!confirm(msg)) return
+    const confirmed = await confirm.require({
+      title: act.title,
+      message: `Are you sure you want to ${act.title}?`,
+      confirmText: act.title,
+      type: act.dangerous ? 'danger' : 'warning'
+    })
+    if (!confirmed) return
   }
   
   actionLoading.value = act.id
@@ -309,11 +296,17 @@ async function executeDynamicAction(act) {
 
 async function action(endpoint, label) {
   if (['uninstall', 'disable', 'restart'].includes(endpoint)) {
-    let msg = `${endpoint[0].toUpperCase() + endpoint.slice(1)} module ${module.value.name}?`
+    let msg = `Are you sure you want to ${endpoint} the ${module.value.name} module?`
     if (endpoint === 'uninstall' && module.value.dependencies?.required?.length) {
       msg += `\n\nWarning: This may affect dependencies.`
     }
-    if (!confirm(msg)) return
+    const confirmed = await confirm.require({
+      title: `${endpoint.charAt(0).toUpperCase() + endpoint.slice(1)} Module`,
+      message: msg,
+      confirmText: endpoint.charAt(0).toUpperCase() + endpoint.slice(1),
+      type: endpoint === 'uninstall' ? 'danger' : 'warning'
+    })
+    if (!confirmed) return
   }
   
   actionLoading.value = label

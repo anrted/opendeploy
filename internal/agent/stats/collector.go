@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/anrted/opendeploy/pkg/contract"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 // Collector gathers system statistics.
@@ -382,4 +383,60 @@ func getDiskUsage(mount string) (*contract.DiskStats, error) {
 		Free:        free,
 		UsedPercent: usedPct,
 	}, nil
+}
+
+// ─── Process Collection (using gopsutil) ───────────────────────────────────
+
+func (c *Collector) CollectProcesses() ([]contract.ProcessStats, error) {
+	procs, err := process.Processes()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []contract.ProcessStats
+	for _, p := range procs {
+		name, _ := p.Name()
+		if name == "" {
+			continue
+		}
+
+		ppid, _ := p.Ppid()
+		user, _ := p.Username()
+		cpu, _ := p.CPUPercent()
+		mem, _ := p.MemoryPercent()
+
+		var rss uint64
+		if memInfo, err := p.MemoryInfo(); err == nil {
+			rss = memInfo.RSS
+		}
+
+		threads, _ := p.NumThreads()
+		createTime, _ := p.CreateTime()
+		cmd, _ := p.Cmdline()
+
+		result = append(result, contract.ProcessStats{
+			Pid:        int(p.Pid),
+			Ppid:       int(ppid),
+			Name:       name,
+			User:       user,
+			CpuPercent: cpu,
+			MemPercent: float64(mem),
+			MemRss:     rss,
+			NumThreads: int(threads),
+			CreateTime: createTime,
+			Cmdline:    cmd,
+		})
+	}
+	return result, nil
+}
+
+func (c *Collector) KillProcess(pid int32, force bool) error {
+	p, err := process.NewProcess(pid)
+	if err != nil {
+		return err
+	}
+	if force {
+		return p.Kill()
+	}
+	return p.Terminate()
 }

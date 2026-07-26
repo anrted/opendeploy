@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os/user"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/internal/core/module"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/anrted/opendeploy/internal/platform/osprovider"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -98,9 +101,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	if err := s.agent.DirCreate(ctx, site.RootPath, 0o755); err != nil {
 		return nil, apperrors.Internal("failed to create site root directory", err)
 	}
-	// Temporarily hardcode UID/GID 33 (www-data on Debian) so PHP scripts can write to the directory.
-	// In the future, this should use per-site isolated Linux users.
-	_ = s.agent.FileChown(ctx, site.RootPath, 33, 33)
+	
+	// Get web user dynamically
+	provider, err := osprovider.NewProvider()
+	var webUid, webGid int = 33, 33 // fallback
+	if err == nil {
+		if u, err := user.Lookup(provider.WebUser()); err == nil {
+			if parsedUid, err := strconv.Atoi(u.Uid); err == nil {
+				webUid = parsedUid
+			}
+			if parsedGid, err := strconv.Atoi(u.Gid); err == nil {
+				webGid = parsedGid
+			}
+		}
+	}
+	_ = s.agent.FileChown(ctx, site.RootPath, webUid, webGid)
 
 	needsCertbot := site.SSL != nil && site.SSL.Provider == "certbot"
 

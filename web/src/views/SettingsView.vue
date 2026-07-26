@@ -8,23 +8,67 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div class="card">
         <h2 class="text-base font-semibold text-white mb-4">{{ $t('settings.general') }}</h2>
-        <form @submit.prevent="saveSettings" class="space-y-4">
-          <div>
-            <label class="label">{{ $t('settings.panelTitle') }}</label>
-            <input id="setting-title" v-model="settings['core.panel_title']" class="input" placeholder="OpenDeploy" />
-          </div>
-          <div>
-            <label class="label">{{ $t('settings.defaultPhp') }}</label>
-            <select v-model="settings['core.default_php']" class="input">
-              <option value="">None</option>
-              <option v-for="v in phpVersions" :key="v" :value="v">{{ v }}</option>
-            </select>
+        
+        <div v-if="loadingSpecs" class="flex justify-center py-10">
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
+        </div>
+        
+        <form v-else @submit.prevent="saveSettings" class="space-y-4">
+          <div v-for="spec in coreSpecs" :key="spec.key" class="space-y-1">
+            <label :for="spec.key" class="label">{{ spec.label }}</label>
+            <p v-if="spec.description" class="text-xs text-[#94a3b8] mb-2">{{ spec.description }}</p>
+            
+            <template v-if="spec.type === 'string'">
+              <input 
+                :id="spec.key" 
+                :type="spec.secret ? 'password' : 'text'"
+                v-model="settings[spec.key]" 
+                class="input" 
+                :placeholder="spec.default_value"
+                @input="validateField(spec)"
+                @blur="validateField(spec)"
+              />
+            </template>
+            
+            <template v-else-if="spec.type === 'select'">
+              <select :id="spec.key" v-model="settings[spec.key]" class="input" @change="validateField(spec)">
+                <option v-for="opt in spec.options" :key="opt" :value="opt">{{ opt || 'None' }}</option>
+              </select>
+            </template>
+            
+            <template v-else-if="spec.type === 'int'">
+              <input 
+                :id="spec.key" 
+                type="number"
+                v-model="settings[spec.key]" 
+                class="input" 
+                :placeholder="spec.default_value"
+                @input="validateField(spec)"
+                @blur="validateField(spec)"
+              />
+            </template>
+            
+            <template v-else-if="spec.type === 'bool'">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  :checked="settings[spec.key] === 'true'"
+                  @change="e => { settings[spec.key] = e.target.checked ? 'true' : 'false'; validateField(spec) }"
+                  class="rounded bg-[#1e293b] border-[#334155] text-indigo-500 focus:ring-indigo-500/30 w-4 h-4" 
+                />
+                <span class="text-sm text-[#e2e8f0]">{{ spec.label }}</span>
+              </label>
+            </template>
+            
+            <div v-if="validationErrors[spec.key]" class="text-xs text-red-400 mt-1">
+              {{ validationErrors[spec.key] }}
+            </div>
           </div>
 
-          <div v-if="saved" class="text-sm text-emerald-400">{{ $t('settings.saved') }}</div>
-          <div v-if="saveError" class="text-sm text-red-400">{{ saveError }}</div>
+          <div v-if="saved" class="text-sm text-emerald-400 mt-4">{{ $t('settings.saved') }}</div>
+          <div v-if="saveError" class="text-sm text-red-400 mt-4">{{ saveError }}</div>
 
-          <button id="save-settings-btn" type="submit" class="btn-primary" :disabled="saving">
+          <button id="save-settings-btn" type="submit" class="btn-primary mt-4" :disabled="saving || hasErrors">
             {{ saving ? $t('settings.saving') : $t('settings.saveSettings') }}
           </button>
         </form>
@@ -100,18 +144,27 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { apiErrorMessage } from '@/api/client'
+import { useConfirmStore } from '@/stores/confirm'
 
 const { t } = useI18n()
+const confirm = useConfirmStore()
 
-const settings = reactive({
-  'core.panel_title': '',
-  'core.default_php': '',
+const settings = reactive({})
+const validationErrors = reactive({})
+const specs = ref([])
+const loadingSpecs = ref(true)
+
+const coreSpecs = computed(() => {
+  return specs.value.filter(s => s.key.startsWith('core.'))
 })
 
-const phpVersions = ['8.1', '8.2', '8.3', '8.4']
+const hasErrors = computed(() => {
+  return Object.values(validationErrors).some(err => err !== '')
+})
+
 const saving = ref(false)
 const saved = ref(false)
 const saveError = ref('')
@@ -123,15 +176,63 @@ const updateMessage = ref('')
 
 onMounted(async () => {
   checkUpdates()
+  await loadSpecs()
+  await loadSettings()
+})
+
+async function loadSpecs() {
+  loadingSpecs.value = true
+  try {
+    const { data } = await api.get('/settings/specs')
+    if (Array.isArray(data)) {
+      specs.value = data
+      // Initialize settings object with empty/default values
+      data.forEach(s => {
+        if (settings[s.key] === undefined) {
+          settings[s.key] = s.default_value || ''
+        }
+      })
+    }
+  } catch (e) {
+    console.error('Failed to load specs', e)
+  } finally {
+    loadingSpecs.value = false
+  }
+}
+
+async function loadSettings() {
   try {
     const { data } = await api.get('/settings?ns=core')
     if (Array.isArray(data)) {
-      data.forEach(s => { settings[s.key] = s.value })
+      data.forEach(s => { 
+        settings[s.key] = s.value 
+      })
     }
+    // Validate initially
+    coreSpecs.value.forEach(spec => validateField(spec))
   } catch (e) {
     console.error(e)
   }
-})
+}
+
+function validateField(spec) {
+  const val = settings[spec.key]
+  
+  if (spec.required && !val) {
+    validationErrors[spec.key] = 'This field is required.'
+    return
+  }
+  
+  if (val && spec.validation_regex) {
+    const regex = new RegExp(spec.validation_regex)
+    if (!regex.test(val)) {
+      validationErrors[spec.key] = spec.validation_msg || 'Invalid format.'
+      return
+    }
+  }
+  
+  validationErrors[spec.key] = ''
+}
 
 async function checkUpdates() {
   checkingUpdates.value = true
@@ -148,9 +249,21 @@ async function checkUpdates() {
 
 async function applyUpdate(updateType = 'stable') {
   if (updateType === 'dev') {
-    if (!confirm('Warning: Dev builds may be unstable. Continue?')) return
+    const confirmed = await confirm.require({
+      title: 'Developer Update',
+      message: 'Warning: Dev builds may be unstable. Continue?',
+      confirmText: 'Continue',
+      type: 'warning'
+    })
+    if (!confirmed) return
   } else {
-    if (!confirm('Update OpenDeploy from the trusted GitHub repository? Services will restart.')) return
+    const confirmed = await confirm.require({
+      title: 'System Update',
+      message: 'Update OpenDeploy from the trusted GitHub repository? Services will restart.',
+      confirmText: 'Update',
+      type: 'warning'
+    })
+    if (!confirmed) return
   }
   applyingUpdate.value = true
   updateError.value = ''
@@ -213,11 +326,20 @@ async function waitForUpdatedCore(targetCommit) {
 }
 
 async function saveSettings() {
+  // Final validation before save
+  coreSpecs.value.forEach(spec => validateField(spec))
+  if (hasErrors.value) return
+  
   saving.value = true
   saved.value = false
   saveError.value = ''
   try {
-    await api.put('/settings', { ...settings })
+    const payload = {}
+    coreSpecs.value.forEach(s => {
+      payload[s.key] = settings[s.key]
+    })
+    
+    await api.put('/settings', payload)
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)
   } catch (e) {

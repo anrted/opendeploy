@@ -1,0 +1,26 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - revive
+    - gosec
+    - unconvert
+    - gocyclo
+    - misspell
+  disable-all: true
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        disabled: true
+  gocyclo:
+    min-complexity: 25
+
+issues:
+  exclude-use-default: false
+  max-same-issues: 0
+  max-issues-per-linter: 0

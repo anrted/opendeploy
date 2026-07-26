@@ -19,6 +19,7 @@ import (
 	"github.com/anrted/opendeploy/pkg/contract"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 // State represents the runtime state of a managed service.
@@ -244,6 +245,18 @@ func (s *SvcService) Logs(ctx context.Context, id string, lines int) ([]string, 
 	return s.agent.ServiceLogs(ctx, svc.Unit, lines)
 }
 
+// StreamLogs returns a channel that streams live logs for a managed service.
+func (s *SvcService) StreamLogs(ctx context.Context, id string) (<-chan string, error) {
+	svc, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if s.agent == nil {
+		return nil, apperrors.New(503, apperrors.CodeAgentUnavailable, "agent not available")
+	}
+	return s.agent.ServiceStreamLogs(ctx, svc.Unit)
+}
+
 // Remove deletes a managed service record (does NOT stop/uninstall the actual service).
 func (s *SvcService) Remove(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
@@ -330,6 +343,39 @@ func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, map[string]any{"lines": lines})
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+func (h *Handler) StreamLogs(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ch, err := h.svc.StreamLogs(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return // upgrader already writes the error response
+	}
+	defer conn.Close()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case line, ok := <-ch:
+			if !ok {
+				return
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(line)); err != nil {
+				return
+			}
+		}
+	}
 }
 
 func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {

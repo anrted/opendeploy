@@ -13,10 +13,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/module"
 	"github.com/anrted/opendeploy/internal/core/updater"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/anrted/opendeploy/pkg/contract"
 )
 
 // Setting is a single key-value configuration entry.
@@ -123,13 +126,52 @@ func (s *Service) Delete(ctx context.Context, key string) error {
 
 // Handler exposes settings over HTTP.
 type Handler struct {
-	svc     *Service
-	updates *updater.Service
+	svc      *Service
+	updates  *updater.Service
+	registry *module.Registry
+}
+
+// CoreSettings defines the global settings specifications.
+var CoreSettings = []contract.SettingSpec{
+	{
+		Key:             "core.panel_title",
+		Label:           "Panel Title",
+		Description:     "The title displayed in the top bar.",
+		Type:            contract.SettingTypeString,
+		DefaultValue:    "OpenDeploy",
+		ValidationRegex: `^[a-zA-Z0-9\s\-_]{1,32}$`,
+		ValidationMsg:   "Must be 1-32 characters (letters, numbers, spaces, -, _).",
+	},
+	{
+		Key:          "core.default_php",
+		Label:        "Default PHP Version",
+		Description:  "The default PHP version for new sites.",
+		Type:         contract.SettingTypeSelect,
+		Options:      []string{"", "8.1", "8.2", "8.3", "8.4"},
+	},
 }
 
 // NewHandler constructs a settings Handler.
-func NewHandler(svc *Service, updates *updater.Service) *Handler {
-	return &Handler{svc: svc, updates: updates}
+func NewHandler(svc *Service, updates *updater.Service, registry *module.Registry) *Handler {
+	return &Handler{svc: svc, updates: updates, registry: registry}
+}
+
+// GetSpecs returns all settings specifications from core and all registered modules.
+func (h *Handler) GetSpecs() []contract.SettingSpec {
+	specs := make([]contract.SettingSpec, 0)
+	specs = append(specs, CoreSettings...)
+	
+	if h.registry != nil {
+		for _, mod := range h.registry.All() {
+			specs = append(specs, mod.RegisterSettings()...)
+		}
+	}
+	return specs
+}
+
+// Specs returns the available settings specifications (GET /api/v1/settings/specs).
+func (h *Handler) Specs(w http.ResponseWriter, r *http.Request) {
+	respond(w, http.StatusOK, h.GetSpecs())
 }
 
 // List handles GET /api/v1/settings?ns=core
@@ -157,6 +199,29 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, apperrors.InvalidInput("no settings provided"))
 		return
 	}
+
+	// Validate inputs against specs
+	specs := h.GetSpecs()
+	specMap := make(map[string]contract.SettingSpec)
+	for _, s := range specs {
+		specMap[s.Key] = s
+	}
+
+	for k, v := range kv {
+		spec, ok := specMap[k]
+		if ok && spec.ValidationRegex != "" {
+			matched, err := regexp.MatchString(spec.ValidationRegex, v)
+			if err != nil || !matched {
+				msg := spec.ValidationMsg
+				if msg == "" {
+					msg = "Invalid value format."
+				}
+				writeError(w, apperrors.InvalidInput(fmt.Sprintf("Validation failed for %s: %s", k, msg)))
+				return
+			}
+		}
+	}
+
 	if err := h.svc.SetMany(r.Context(), kv); err != nil {
 		writeError(w, apperrors.Internal("update settings", err))
 		return

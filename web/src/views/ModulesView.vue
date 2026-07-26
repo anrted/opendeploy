@@ -52,8 +52,8 @@
       </svg>
     </div>
 
-    <div v-else-if="filteredModules.length === 0" class="text-center py-20 text-[#64748b]">
-      No modules found matching your criteria.
+    <div v-else-if="filteredModules.length === 0" class="py-20">
+      <EmptyState title="No Modules" description="No modules found matching your criteria. Try adjusting your filters." />
     </div>
 
     <!-- Grid -->
@@ -66,10 +66,7 @@
         <!-- Header -->
         <div class="flex items-start justify-between">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-[#1e293b] border border-[#334155] flex items-center justify-center text-[#94a3b8]">
-              <!-- Mock Icon -->
-              <span class="text-xs uppercase font-bold">{{ mod.icon || mod.name.slice(0, 2) }}</span>
-            </div>
+            <ModuleIcon :icon="mod.icon || 'box'" size="sm" />
             <div>
               <h3 class="font-semibold text-[#e2e8f0] leading-tight">{{ mod.name }}</h3>
               <span class="text-xs text-indigo-400 font-medium">{{ mod.category || 'System' }}</span>
@@ -97,6 +94,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import EmptyState from '@/components/EmptyState.vue'
+import ModuleIcon from '@/components/ModuleIcon.vue'
 
 const modules = ref([])
 const loading = ref(true)

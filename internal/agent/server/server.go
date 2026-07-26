@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/anrted/opendeploy/internal/agent/archive"
 	executor "github.com/anrted/opendeploy/internal/agent/executor"
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
@@ -35,7 +37,6 @@ type Service struct {
 func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager firewall.Provider, collector *stats.Collector, shell *executor.Shell) *Service {
 	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector, shell: shell}
 }
-
 
 func (s *Service) Register(registrar grpc.ServiceRegistrar) {
 	agentv1.RegisterAgentServiceServer(registrar, s)
@@ -111,7 +112,7 @@ func (s *Service) FileLogs(req *agentv1.FileLogsRequest, stream agentv1.AgentSer
 	if err != nil {
 		return internalError(err)
 	}
-	
+
 	// Split stdout by newline
 	var currentLine []byte
 	for i := 0; i < len(res.Stdout); i++ {
@@ -126,6 +127,44 @@ func (s *Service) FileLogs(req *agentv1.FileLogsRequest, stream agentv1.AgentSer
 	}
 	if len(currentLine) > 0 {
 		if err := stream.Send(&agentv1.LogLine{Line: string(currentLine), Timestamp: time.Now().UnixNano()}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) StreamLogs(req *agentv1.StreamLogsRequest, stream agentv1.AgentService_StreamLogsServer) error {
+	path := req.GetPath()
+	if path == "" {
+		return status.Error(codes.InvalidArgument, "path is required")
+	}
+
+	outCh := make(chan string)
+	if err := s.shell.Stream(stream.Context(), outCh, "tail", "-f", path); err != nil {
+		return internalError(err)
+	}
+
+	for line := range outCh {
+		if err := stream.Send(&agentv1.LogLine{Line: line, Timestamp: time.Now().UnixNano()}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) ServiceStreamLogs(req *agentv1.ServiceStreamLogsRequest, stream agentv1.AgentService_ServiceStreamLogsServer) error {
+	name := req.GetServiceName()
+	if name == "" {
+		return status.Error(codes.InvalidArgument, "service_name is required")
+	}
+
+	outCh := make(chan string)
+	if err := s.shell.Stream(stream.Context(), outCh, "journalctl", "-u", name, "-f", "-n", "10"); err != nil {
+		return internalError(err)
+	}
+
+	for line := range outCh {
+		if err := stream.Send(&agentv1.LogLine{Line: line, Timestamp: time.Now().UnixNano()}); err != nil {
 			return err
 		}
 	}
@@ -250,11 +289,38 @@ func (s *Service) FileChown(_ context.Context, req *agentv1.FileChownRequest) (*
 	}
 	return &agentv1.FileChownResponse{Success: true}, nil
 }
-func (s *Service) ArchiveCreate(_ context.Context, req *agentv1.ArchiveCreateRequest) (*agentv1.ArchiveCreateResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "ArchiveCreate not implemented")
+func (s *Service) ArchiveCreate(ctx context.Context, req *agentv1.ArchiveCreateRequest) (*agentv1.ArchiveCreateResponse, error) {
+	dest := req.GetDstPath()
+	var format string
+	switch {
+	case strings.HasSuffix(dest, ".zip"):
+		format = "zip"
+	case strings.HasSuffix(dest, ".tar.gz"), strings.HasSuffix(dest, ".tgz"):
+		format = "tar.gz"
+	case strings.HasSuffix(dest, ".tar.xz"), strings.HasSuffix(dest, ".txz"):
+		format = "tar.xz"
+	case strings.HasSuffix(dest, ".tar.bz2"), strings.HasSuffix(dest, ".tbz2"):
+		format = "tar.bz2"
+	case strings.HasSuffix(dest, ".tar"):
+		format = "tar"
+	case strings.HasSuffix(dest, ".7z"):
+		format = "7z"
+	default:
+		return nil, status.Error(codes.InvalidArgument, "unsupported archive format")
+	}
+
+	err := archive.Create(ctx, format, dest, req.GetPaths())
+	if err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.ArchiveCreateResponse{Success: true}, nil
 }
-func (s *Service) ArchiveExtract(_ context.Context, req *agentv1.ArchiveExtractRequest) (*agentv1.ArchiveExtractResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "ArchiveExtract not implemented")
+func (s *Service) ArchiveExtract(ctx context.Context, req *agentv1.ArchiveExtractRequest) (*agentv1.ArchiveExtractResponse, error) {
+	err := archive.Extract(ctx, req.GetSrcPath(), req.GetDstDir())
+	if err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.ArchiveExtractResponse{Success: true}, nil
 }
 func (s *Service) FileUploadStream(stream agentv1.AgentService_FileUploadStreamServer) error {
 	return status.Error(codes.Unimplemented, "FileUploadStream not implemented")
@@ -325,6 +391,36 @@ func (s *Service) SystemStats(_ context.Context, _ *agentv1.SystemStatsRequest) 
 
 func (s *Service) Ping(context.Context, *agentv1.PingRequest) (*agentv1.PingResponse, error) {
 	return &agentv1.PingResponse{Version: version.Version}, nil
+}
+
+func (s *Service) ProcessList(_ context.Context, _ *agentv1.ProcessListRequest) (*agentv1.ProcessListResponse, error) {
+	result, err := s.stats.CollectProcesses()
+	if err != nil {
+		return nil, internalError(err)
+	}
+	response := &agentv1.ProcessListResponse{Processes: make([]*agentv1.ProcessEntry, 0, len(result))}
+	for _, p := range result {
+		response.Processes = append(response.Processes, &agentv1.ProcessEntry{
+			Pid:        int32(p.Pid),
+			Ppid:       int32(p.Ppid),
+			Name:       p.Name,
+			User:       p.User,
+			CpuPercent: p.CpuPercent,
+			MemPercent: p.MemPercent,
+			MemRss:     p.MemRss,
+			NumThreads: int32(p.NumThreads),
+			CreateTime: p.CreateTime,
+			Cmdline:    p.Cmdline,
+		})
+	}
+	return response, nil
+}
+
+func (s *Service) ProcessKill(_ context.Context, req *agentv1.ProcessKillRequest) (*agentv1.ProcessKillResponse, error) {
+	if err := s.stats.KillProcess(req.GetPid(), req.GetForce()); err != nil {
+		return nil, internalError(err)
+	}
+	return &agentv1.ProcessKillResponse{Success: true}, nil
 }
 
 func internalError(err error) error {

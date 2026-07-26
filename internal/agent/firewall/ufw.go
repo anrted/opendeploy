@@ -110,7 +110,7 @@ func (m *UFWManager) AddRule(ctx context.Context, req *agentv1.FirewallRuleReque
         args = append(args, "out")
     }
     
-	if req.Source == "" && req.Destination == "" {
+	if req.Source == "" && req.Destination == "" && req.IpVersion == agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_BOTH {
 	    spec := req.Port
 	    if req.Protocol != "" && req.Protocol != "any" {
 	        spec = fmt.Sprintf("%s/%s", req.Port, req.Protocol)
@@ -120,16 +120,27 @@ func (m *UFWManager) AddRule(ctx context.Context, req *agentv1.FirewallRuleReque
 	    if req.Protocol != "" && req.Protocol != "any" {
 	        args = append(args, "proto", req.Protocol)
 	    }
-	    if req.Source != "" {
-	        args = append(args, "from", req.Source)
-	    } else {
-	        args = append(args, "from", "any")
+	    
+	    src := req.Source
+	    if src == "" {
+	        if req.IpVersion == agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V6 {
+	            src = "any v6"
+	        } else {
+	            src = "any"
+	        }
 	    }
-	    if req.Destination != "" {
-	        args = append(args, "to", req.Destination)
-	    } else {
-	        args = append(args, "to", "any")
+	    args = append(args, "from", src)
+	    
+	    dst := req.Destination
+	    if dst == "" {
+	        if req.IpVersion == agentv1.FirewallIPVersion_FIREWALL_IP_VERSION_V6 {
+	            dst = "any v6"
+	        } else {
+	            dst = "any"
+	        }
 	    }
+	    args = append(args, "to", dst)
+	    
 	    if req.Port != "" {
 	        args = append(args, "port", req.Port)
 	    }

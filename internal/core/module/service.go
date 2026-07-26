@@ -367,3 +367,75 @@ func (s *Service) recordAudit(ctx context.Context, userID, action, moduleID, ip 
 }
 
 func nowUTC() time.Time { return time.Now().UTC() }
+
+func (s *Service) GetDataGridSchema(ctx context.Context, moduleID, pageID string) (contract.DataGridSchema, error) {
+	m := s.registry.Find(moduleID)
+	if m == nil {
+		return contract.DataGridSchema{}, fmt.Errorf("module %s not found", moduleID)
+	}
+	dgp, ok := m.(contract.DataGridProvider)
+	if !ok {
+		return contract.DataGridSchema{}, fmt.Errorf("module does not support datagrid")
+	}
+	return dgp.DataGridSchema(pageID)
+}
+
+func (s *Service) GetDataGridData(ctx context.Context, moduleID, pageID string) ([]map[string]any, error) {
+	m := s.registry.Find(moduleID)
+	if m == nil {
+		return nil, fmt.Errorf("module %s not found", moduleID)
+	}
+	dgp, ok := m.(contract.DataGridProvider)
+	if !ok {
+		return nil, fmt.Errorf("module does not support datagrid")
+	}
+	return dgp.DataGridData(ctx, pageID)
+}
+
+func (s *Service) ExecuteDataGridAction(ctx context.Context, moduleID, pageID, actionID string, payload map[string]any) error {
+	m := s.registry.Find(moduleID)
+	if m == nil {
+		return fmt.Errorf("module %s not found", moduleID)
+	}
+	dgp, ok := m.(contract.DataGridProvider)
+	if !ok {
+		return fmt.Errorf("module does not support datagrid")
+	}
+	return dgp.DataGridAction(ctx, pageID, actionID, payload)
+}
+
+func (s *Service) SaveSettings(ctx context.Context, moduleID string, settings map[string]any) error {
+	m := s.registry.Find(moduleID)
+	if m == nil {
+		return fmt.Errorf("module %s not found", moduleID)
+	}
+	sp, ok := m.(contract.SettingsProvider)
+	if !ok {
+		return fmt.Errorf("module %s does not support saving settings", moduleID)
+	}
+	return sp.SaveSettings(ctx, settings)
+}
+
+func (s *Service) ReadLog(ctx context.Context, moduleID string, logID string, lines int) ([]string, error) {
+	m := s.registry.Find(moduleID)
+	if m == nil {
+		return nil, fmt.Errorf("module %s not found", moduleID)
+	}
+	lp, ok := m.(contract.LogProvider)
+	if !ok {
+		return nil, fmt.Errorf("module %s does not support log reading", moduleID)
+	}
+	return lp.ReadLog(ctx, logID, lines)
+}
+
+func (s *Service) ClearLog(ctx context.Context, moduleID string, logID string) error {
+	m := s.registry.Find(moduleID)
+	if m == nil {
+		return fmt.Errorf("module %s not found", moduleID)
+	}
+	lp, ok := m.(contract.LogProvider)
+	if !ok {
+		return fmt.Errorf("module %s does not support log clearing", moduleID)
+	}
+	return lp.ClearLog(ctx, logID)
+}

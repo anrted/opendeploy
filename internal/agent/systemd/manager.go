@@ -20,6 +20,9 @@ type ServiceStatus struct {
 	SubState    string
 	Description string
 	Since       *time.Time
+	MainPID     int
+	MemoryBytes uint64
+	CPUUsage    float64
 }
 
 // Manager handles systemd operations via systemctl.
@@ -100,11 +103,29 @@ func (m *Manager) Disable(ctx context.Context, name string) error {
 	return nil
 }
 
+// Mask masks a systemd service.
+func (m *Manager) Mask(ctx context.Context, name string) error {
+	_, err := m.shell.Run(ctx, "systemctl", "mask", name)
+	if err != nil {
+		return fmt.Errorf("systemd: mask %s: %w", name, err)
+	}
+	return nil
+}
+
+// Unmask unmasks a systemd service.
+func (m *Manager) Unmask(ctx context.Context, name string) error {
+	_, err := m.shell.Run(ctx, "systemctl", "unmask", name)
+	if err != nil {
+		return fmt.Errorf("systemd: unmask %s: %w", name, err)
+	}
+	return nil
+}
+
 // Status returns the runtime status of a service.
 func (m *Manager) Status(ctx context.Context, name string) (*ServiceStatus, error) {
 	activeResult, _ := m.shell.Run(ctx, "systemctl", "is-active", name)
 	enabledResult, _ := m.shell.Run(ctx, "systemctl", "is-enabled", name)
-	subStateResult, _ := m.shell.Run(ctx, "systemctl", "show", "-p", "SubState", "--value", name)
+	showResult, _ := m.shell.Run(ctx, "systemctl", "show", "-p", "SubState,MainPID,ActiveEnterTimestamp", name)
 
 	active := false
 	if activeResult != nil {
@@ -114,9 +135,31 @@ func (m *Manager) Status(ctx context.Context, name string) (*ServiceStatus, erro
 	if enabledResult != nil {
 		enabled = strings.TrimSpace(enabledResult.Stdout) == "enabled"
 	}
-	subState := ""
-	if subStateResult != nil {
-		subState = strings.TrimSpace(subStateResult.Stdout)
+
+	var subState string
+	var mainPID int
+	var since *time.Time
+
+	if showResult != nil {
+		lines := strings.Split(showResult.Stdout, "\n")
+		for _, line := range lines {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key, val := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+				switch key {
+				case "SubState":
+					subState = val
+				case "MainPID":
+					if pid, err := strconv.Atoi(val); err == nil {
+						mainPID = pid
+					}
+				case "ActiveEnterTimestamp":
+					if t, err := time.Parse("Mon 2006-01-02 15:04:05 MST", val); err == nil {
+						since = &t
+					}
+				}
+			}
+		}
 	}
 
 	return &ServiceStatus{
@@ -124,6 +167,8 @@ func (m *Manager) Status(ctx context.Context, name string) (*ServiceStatus, erro
 		Active:   active,
 		Enabled:  enabled,
 		SubState: subState,
+		MainPID:  mainPID,
+		Since:    since,
 	}, nil
 }
 

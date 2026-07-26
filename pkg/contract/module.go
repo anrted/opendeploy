@@ -119,13 +119,28 @@ type LogDef struct {
 
 // SettingField describes a dynamic configuration field.
 type SettingField struct {
-	ID          string   `json:"id"`
-	Type        string   `json:"type"` // "string", "number", "boolean", "select"
-	Label       string   `json:"label"`
-	Description string   `json:"description,omitempty"`
-	Value       any      `json:"value"`
-	Options     []string `json:"options,omitempty"`
-	Category    string   `json:"category,omitempty"`
+	ID              string   `json:"id"`
+	Type            string   `json:"type"` // "string", "number", "boolean", "select"
+	Label           string   `json:"label"`
+	Description     string   `json:"description,omitempty"`
+	Value           any      `json:"value"`
+	Options         []string `json:"options,omitempty"`
+	Category        string   `json:"category,omitempty"`
+	Advanced        bool     `json:"advanced,omitempty"`
+	RequiresRestart bool     `json:"requires_restart,omitempty"`
+	ValidationRegex string   `json:"validation_regex,omitempty"`
+	Placeholder     string   `json:"placeholder,omitempty"`
+}
+
+// SettingsProvider is implemented by modules that want to support dynamic setting updates.
+type SettingsProvider interface {
+	SaveSettings(ctx context.Context, settings map[string]any) error
+}
+
+// LogProvider is implemented by modules that want to expose log reading and clearing.
+type LogProvider interface {
+	ReadLog(ctx context.Context, logID string, lines int) ([]string, error)
+	ClearLog(ctx context.Context, logID string) error
 }
 
 // DatabasePlugin extends Module to provide database management (MySQL, PostgreSQL).
@@ -195,6 +210,13 @@ const (
 	ServiceFailed   ServiceStatusState = "failed"
 )
 
+// Property represents a generic key-value metric or status property.
+type Property struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Group string `json:"group,omitempty"`
+}
+
 // RuntimeStatus contains the runtime status of a module.
 type RuntimeStatus struct {
 	PackageStatus   PackageStatus      `json:"packageStatus"`
@@ -202,6 +224,7 @@ type RuntimeStatus struct {
 	SoftwareVersion string             `json:"softwareVersion"`
 	Health          HealthStatus       `json:"health"`
 	Details         string             `json:"details,omitempty"`
+	Properties      []Property         `json:"properties,omitempty"`
 }
 
 // HealthStatus represents the result of a health check.
@@ -257,14 +280,16 @@ type MenuItem struct {
 
 // SettingSpec describes a configurable setting exposed by a module.
 type SettingSpec struct {
-	Key          string      `json:"key"`
-	Label        string      `json:"label"`
-	Description  string      `json:"description,omitempty"`
-	Type         SettingType `json:"type"` // "string" | "bool" | "int" | "select"
-	DefaultValue string      `json:"default_value,omitempty"`
-	Options      []string    `json:"options,omitempty"` // for type "select"
-	Required     bool        `json:"required"`
-	Secret       bool        `json:"secret"` // masked in UI
+	Key             string      `json:"key"`
+	Label           string      `json:"label"`
+	Description     string      `json:"description,omitempty"`
+	Type            SettingType `json:"type"` // "string" | "bool" | "int" | "select"
+	DefaultValue    string      `json:"default_value,omitempty"`
+	Options         []string    `json:"options,omitempty"` // for type "select"
+	Required        bool        `json:"required"`
+	Secret          bool        `json:"secret"` // masked in UI
+	ValidationRegex string      `json:"validation_regex,omitempty"`
+	ValidationMsg   string      `json:"validation_msg,omitempty"`
 }
 
 // SettingType defines the value type of a setting.
@@ -292,7 +317,9 @@ type AgentClient interface {
 	ServiceReload(ctx context.Context, name string) error
 	ServiceStatus(ctx context.Context, name string) (*ServiceStatus, error)
 	ServiceLogs(ctx context.Context, name string, lines int) ([]string, error)
+	ServiceStreamLogs(ctx context.Context, name string) (<-chan string, error)
 	FileLogs(ctx context.Context, path string, lines int) ([]string, error)
+	StreamLogs(ctx context.Context, path string) (<-chan string, error)
 
 	CommandExecute(ctx context.Context, command string, args ...string) (int, string, string, error)
 
@@ -325,6 +352,8 @@ type AgentClient interface {
 
 	// System information
 	SystemStats(ctx context.Context) (*SystemStats, error)
+	ProcessList(ctx context.Context) ([]ProcessStats, error)
+	ProcessKill(ctx context.Context, pid int, force bool) error
 }
 
 type SiteAction string
@@ -461,6 +490,20 @@ type NetworkStats struct {
 	PacketsRecv uint64 `json:"packets_recv"`
 }
 
+// ProcessStats contains metrics for a single running process.
+type ProcessStats struct {
+	Pid        int     `json:"pid"`
+	Ppid       int     `json:"ppid"`
+	Name       string  `json:"name"`
+	User       string  `json:"user"`
+	CpuPercent float64 `json:"cpu_percent"`
+	MemPercent float64 `json:"mem_percent"`
+	MemRss     uint64  `json:"mem_rss"`
+	NumThreads int     `json:"num_threads"`
+	CreateTime int64   `json:"create_time"`
+	Cmdline    string  `json:"cmdline"`
+}
+
 // ─── EventBus ──────────────────────────────────────────────────────────────
 
 // EventBus is the public contract for the in-process event bus.
@@ -483,3 +526,30 @@ type EventHandler func(ctx context.Context, event Event) error
 
 // EventUnsubscribeFn removes an event subscription when called.
 type EventUnsubscribeFn func()
+
+// ─── DataGrid ──────────────────────────────────────────────────────────────
+
+// DataGridProvider is implemented by modules that want to expose tabular data
+// via the PageTypeDataGrid system.
+type DataGridProvider interface {
+	// DataGridSchema returns the schema (columns, supported actions) for a given pageID.
+	DataGridSchema(pageID string) (DataGridSchema, error)
+	// DataGridData returns the actual rows of data for a given pageID.
+	DataGridData(ctx context.Context, pageID string) ([]map[string]any, error)
+	// DataGridAction executes an action (like Delete, Unban, Create) on the datagrid.
+	DataGridAction(ctx context.Context, pageID string, actionID string, payload map[string]any) error
+}
+
+// DataGridSchema describes the layout and available actions of a datagrid page.
+type DataGridSchema struct {
+	Columns []DataGridColumn `json:"columns"`
+	Actions []ActionDef      `json:"actions"`
+}
+
+// DataGridColumn describes a single column in the datagrid.
+type DataGridColumn struct {
+	Key      string `json:"key"`
+	Title    string `json:"title"`
+	Type     string `json:"type"` // "text", "badge", "number", "date"
+	Sortable bool   `json:"sortable"`
+}

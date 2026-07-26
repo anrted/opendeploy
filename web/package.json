@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint . --fix",
+    "format": "prettier --write src/",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@guolao/vue-monaco-editor": "^1.6.0",
     "@heroicons/vue": "^2.2.0",
     "axios": "^1.18.1",
     "chart.js": "^4.5.1",
@@ -21,7 +25,14 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/test-utils": "^2.4.0",
+    "eslint": "^10.8.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.10.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^4.1.10"
   }
 }

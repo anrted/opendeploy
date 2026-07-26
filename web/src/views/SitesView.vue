@@ -33,7 +33,13 @@
             <td colspan="7" class="text-center py-10 text-[#4a5568]">Loading…</td>
           </tr>
           <tr v-else-if="!sites.length">
-            <td colspan="7" class="text-center py-10 text-[#4a5568]">No sites configured yet</td>
+            <td colspan="7" class="p-0">
+              <EmptyState title="No Sites" description="No sites configured yet. Add a new site to get started.">
+                <template #action>
+                  <button class="btn-primary" @click="openCreateModal">Add Site</button>
+                </template>
+              </EmptyState>
+            </td>
           </tr>
           <tr v-for="site in sites" :key="site.id">
             <td class="font-medium text-white">{{ primaryDomain(site) }}</td>
@@ -120,6 +126,10 @@
 import { ref, onMounted, reactive, watch } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
 import FileManager from '@/components/FileManager/index.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import { useConfirmStore } from '@/stores/confirm'
+
+const confirm = useConfirmStore()
 
 const sites = ref([])
 const loading = ref(true)
@@ -264,12 +274,24 @@ async function enableSite(id) {
 }
 
 async function disableSite(id) {
-  if (!confirm('Disable this site?')) return
+  const confirmed = await confirm.require({
+    title: 'Disable Site',
+    message: 'Are you sure you want to disable this site?',
+    confirmText: 'Disable',
+    type: 'warning'
+  })
+  if (!confirmed) return
   await siteAction(id, 'disable')
 }
 
 async function deleteSite(id) {
-  if (!confirm('Delete this site?')) return
+  const confirmed = await confirm.require({
+    title: 'Delete Site',
+    message: 'Are you sure you want to delete this site? This action cannot be undone.',
+    confirmText: 'Delete',
+    type: 'danger'
+  })
+  if (!confirmed) return
   try {
     errorMessage.value = ''
     await api.delete(`/sites/${id}`)

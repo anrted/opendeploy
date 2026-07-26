@@ -127,22 +127,6 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 
 // ─── DatabasePlugin ────────────────────────────────────────────────────────
 
-func (m *Module) CreateDatabase(ctx context.Context, dbName, user, password string) error {
-	// In a real implementation, we would connect to MySQL and execute:
-	// CREATE DATABASE `dbName`;
-	// CREATE USER 'user'@'localhost' IDENTIFIED BY 'password';
-	// GRANT ALL PRIVILEGES ON `dbName`.* TO 'user'@'localhost';
-	m.logger.Info("MySQL: Creating database", "db", dbName, "user", user)
-	return nil
-}
-
-func (m *Module) DeleteDatabase(ctx context.Context, dbName, user string) error {
-	// DROP DATABASE `dbName`;
-	// DROP USER 'user'@'localhost';
-	m.logger.Info("MySQL: Deleting database", "db", dbName, "user", user)
-	return nil
-}
-
 var _ contract.DatabasePlugin = (*Module)(nil)
 
 func (m *Module) Actions() []contract.ActionDef { return nil }

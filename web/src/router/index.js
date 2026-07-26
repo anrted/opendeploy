@@ -48,6 +48,11 @@ const routes = [
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),
       },
+      {
+        path: 'processes',
+        name: 'processes',
+        component: () => import('@/views/ProcessesView.vue'),
+      },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },

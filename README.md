@@ -5,6 +5,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Architecture](https://img.shields.io/badge/Architecture-Modular-brightgreen)](#architecture)
+[![CI/CD](https://github.com/anrted/opendeploy/actions/workflows/ci.yml/badge.svg)](https://github.com/anrted/opendeploy/actions)
 
 OpenDeploy is a **modular server management platform** — not just a control panel. It provides a beautiful, modern web interface to fully manage your Linux server without SSH, while every component remains independent and extensible.
 
@@ -127,6 +128,7 @@ See [configs/opendeploy.yaml](configs/opendeploy.yaml) for all options.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System design and component interaction
 - [API.md](API.md) — REST API reference
 - [INSTALL.md](INSTALL.md) — Detailed installation guide
+- [TESTING.md](TESTING.md) — How to run tests and CI/CD details
 - [SECURITY.md](SECURITY.md) — Security model and reporting
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 - [ROADMAP.md](ROADMAP.md) — Future plans
