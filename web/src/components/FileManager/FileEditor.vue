@@ -1,6 +1,6 @@
 <template>
   <div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50 backdrop-blur-sm">
-    <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col border border-gray-700 overflow-hidden">
+    <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col border border-gray-700 overflow-hidden">
       
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800">
@@ -28,7 +28,7 @@
       </div>
 
       <!-- Editor -->
-      <div class="flex-1 relative bg-[#1e1e1e]">
+      <div class="flex-1 min-h-0 relative bg-[#1e1e1e]">
         <vue-monaco-editor
           v-model:value="content"
           :language="language"

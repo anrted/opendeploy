@@ -97,8 +97,8 @@ let pollInterval = null
 
 const fetchProcesses = async () => {
   try {
-    const data = await api.get('/system/processes')
-    processes.value = data || []
+    const { data } = await api.get('/system/processes')
+    processes.value = Array.isArray(data) ? data : []
   } catch (error) {
     console.error('Failed to fetch processes:', error)
   } finally {
@@ -128,7 +128,7 @@ const sortBy = (key) => {
 }
 
 const filteredProcesses = computed(() => {
-  let result = processes.value
+  let result = [...processes.value]
   
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()

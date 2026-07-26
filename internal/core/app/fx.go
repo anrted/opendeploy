@@ -87,12 +87,19 @@ var Module = fx.Options(
 		provideServer,
 	),
 	fx.Invoke(
+		registerModules,
 		seedAdmin,
 		startBackgroundJobs,
 		bootstrapModules,
 		startServer,
 	),
 )
+
+func registerModules(modules []contract.Module, registry *module.Registry) {
+	for _, m := range modules {
+		registry.Register(m)
+	}
+}
 
 // provideLogger creates the slog logger based on config.
 func provideLogger(cfg *config.Config) (*slog.Logger, error) {

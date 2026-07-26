@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/anrted/opendeploy/internal/core/app"
-	"github.com/anrted/opendeploy/internal/core/module"
 	moduleApache "github.com/anrted/opendeploy/modules/apache"
 	moduleCertbot "github.com/anrted/opendeploy/modules/certbot"
 	moduleFail2Ban "github.com/anrted/opendeploy/modules/fail2ban"
@@ -50,13 +49,6 @@ func main() {
 					modulePostgreSQL.New(),
 					moduleFirewall.New(),
 					moduleFail2Ban.New(),
-				}
-			},
-		),
-		fx.Invoke(
-			func(modules []contract.Module, registry *module.Registry) {
-				for _, m := range modules {
-					registry.Register(m)
 				}
 			},
 		),
