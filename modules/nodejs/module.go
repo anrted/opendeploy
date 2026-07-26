@@ -25,6 +25,21 @@ func (m *Module) Name() string        { return "Node.js" }
 func (m *Module) Version() string     { return "1.0.0" }
 func (m *Module) Description() string { return "JavaScript runtime environment (LTS)" }
 
+func (m *Module) Category() string { return "Languages" }
+func (m *Module) Icon() string     { return "code" }
+func (m *Module) Dependencies() contract.ModuleDependencies {
+	return contract.ModuleDependencies{}
+}
+func (m *Module) Capabilities() contract.ModuleCapabilities {
+	return contract.ModuleCapabilities{
+		SupportsService:  false,
+		SupportsSettings: false,
+		SupportsLogs:     false,
+		SupportsRestart:  false,
+		SupportsUpdate:   true,
+	}
+}
+
 func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	m.deps = deps
 	m.logger = deps.Logger.With("module", moduleID)
@@ -78,13 +93,15 @@ func (m *Module) Enable(_ context.Context) error  { return nil }
 func (m *Module) Disable(_ context.Context) error { return nil }
 func (m *Module) Restart(_ context.Context) error { return nil }
 
-func (m *Module) Status(ctx context.Context) (*contract.ModuleStatus, error) {
+func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "nodejs")
-	if !installed {
-		return &contract.ModuleStatus{State: contract.StateAvailable}, nil
+	pkgStatus := contract.PackageNotInstalled
+	if installed {
+		pkgStatus = contract.PackageInstalled
 	}
-	return &contract.ModuleStatus{
-		State: contract.StateInstalled, InstalledVersion: version,
+	return &contract.RuntimeStatus{
+		PackageStatus:   pkgStatus,
+		SoftwareVersion: version,
 	}, nil
 }
 
@@ -103,3 +120,28 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 }
 
 var _ contract.Module = (*Module)(nil)
+
+func (m *Module) Actions() []contract.ActionDef { return nil }
+func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
+	return fmt.Errorf("unknown action: %s", actionID)
+}
+func (m *Module) Logs() []contract.LogDef {
+	if m.Capabilities().SupportsService {
+		return []contract.LogDef{{ID: "service", Name: "Systemd Log", Type: "systemd"}}
+	}
+	return nil
+}
+func (m *Module) SettingsSchema() []contract.SettingField { return nil }
+
+func (m *Module) Pages() []contract.ModulePage {
+	pages := []contract.ModulePage{
+		{ID: "overview", Title: "Overview", Type: contract.PageTypeOverview},
+	}
+	if m.Capabilities().SupportsSettings {
+		pages = append(pages, contract.ModulePage{ID: "settings", Title: "Settings", Type: contract.PageTypeSettings})
+	}
+	if m.Capabilities().SupportsLogs {
+		pages = append(pages, contract.ModulePage{ID: "logs", Title: "Logs", Type: contract.PageTypeLogs})
+	}
+	return pages
+}

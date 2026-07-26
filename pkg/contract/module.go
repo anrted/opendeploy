@@ -23,6 +23,13 @@ type Module interface {
 	Name() string        // human-readable name: "Nginx Web Server"
 	Version() string     // module spec version (not the installed package version)
 	Description() string // one-line description for the UI
+	Category() string
+	Icon() string
+	Dependencies() ModuleDependencies
+	Capabilities() ModuleCapabilities
+
+	// Pages returns the dynamic pages (tabs) this module provides in the UI.
+	Pages() []ModulePage
 
 	// Lifecycle — called by the core during startup / shutdown.
 	Bootstrap(deps ModuleDeps) error
@@ -41,14 +48,84 @@ type Module interface {
 	Restart(ctx context.Context) error
 
 	// Observability
-	Status(ctx context.Context) (*ModuleStatus, error)
+	Status(ctx context.Context) (*RuntimeStatus, error)
 	HealthCheck(ctx context.Context) (*HealthReport, error)
+
+	// Universal Page (Metadata-driven UI)
+	Actions() []ActionDef
+	ExecuteAction(ctx context.Context, actionID string) error
+	Logs() []LogDef
+	SettingsSchema() []SettingField
 }
 
 // WebServerPlugin extends Module to provide web server configurations (Nginx, Apache).
 type WebServerPlugin interface {
 	Module
 	ApplySite(ctx context.Context, action SiteAction, spec SiteSpec) error
+}
+
+// ModuleDependencies describes the requirements and conflicts of a module.
+type ModuleDependencies struct {
+	Required    []string `json:"required"`
+	Recommended []string `json:"recommended"`
+	Conflicts   []string `json:"conflicts"`
+}
+
+// ModuleCapabilities defines what features the module supports.
+// Deprecated: Moving towards dynamic metadata (Actions, Logs, SettingsSchema)
+type ModuleCapabilities struct {
+	SupportsService  bool `json:"supports_service"`
+	SupportsSettings bool `json:"supports_settings"`
+	SupportsLogs     bool `json:"supports_logs"`
+	SupportsRestart  bool `json:"supports_restart"`
+	SupportsUpdate   bool `json:"supports_update"`
+}
+
+// ActionDef describes a dynamically available action on the module page.
+type ActionDef struct {
+	ID                   string `json:"id"`
+	Title                string `json:"title"`
+	Description          string `json:"description,omitempty"`
+	Icon                 string `json:"icon"`      // e.g. "play", "stop", "refresh", "trash"
+	Color                string `json:"color"`     // e.g. "primary", "danger", "warning", "success"
+	RequiresConfirmation bool   `json:"requiresConfirmation"`
+	Dangerous            bool   `json:"dangerous"`
+}
+
+// PageType defines the type of page in the UI.
+type PageType string
+
+const (
+	PageTypeOverview PageType = "overview"
+	PageTypeSettings PageType = "settings"
+	PageTypeLogs     PageType = "logs"
+	PageTypeDataGrid PageType = "datagrid"
+)
+
+// ModulePage describes a tab/page contributed by a module.
+type ModulePage struct {
+	ID    string   `json:"id"`
+	Title string   `json:"title"`
+	Type  PageType `json:"type"`
+}
+
+// LogDef describes a log source exposed by the module.
+type LogDef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"` // "systemd" or "file"
+	Path string `json:"path,omitempty"` // For file type logs
+}
+
+// SettingField describes a dynamic configuration field.
+type SettingField struct {
+	ID          string   `json:"id"`
+	Type        string   `json:"type"` // "string", "number", "boolean", "select"
+	Label       string   `json:"label"`
+	Description string   `json:"description,omitempty"`
+	Value       any      `json:"value"`
+	Options     []string `json:"options,omitempty"`
+	Category    string   `json:"category,omitempty"`
 }
 
 // DatabasePlugin extends Module to provide database management (MySQL, PostgreSQL).
@@ -100,12 +177,31 @@ const (
 	StateError      ModuleState = "error"
 )
 
-// ModuleStatus contains the runtime status of a module.
-type ModuleStatus struct {
-	State            ModuleState `json:"state"`
-	InstalledVersion string      `json:"installed_version,omitempty"`
-	ServiceRunning   bool        `json:"service_running"`
-	Details          string      `json:"details,omitempty"`
+// PackageStatus represents the OS package state.
+type PackageStatus string
+
+const (
+	PackageInstalled    PackageStatus = "installed"
+	PackageNotInstalled PackageStatus = "not_installed"
+	PackageBroken       PackageStatus = "broken"
+)
+
+// ServiceStatusState represents the systemd service state.
+type ServiceStatusState string
+
+const (
+	ServiceRunning  ServiceStatusState = "running"
+	ServiceStopped  ServiceStatusState = "stopped"
+	ServiceFailed   ServiceStatusState = "failed"
+)
+
+// RuntimeStatus contains the runtime status of a module.
+type RuntimeStatus struct {
+	PackageStatus   PackageStatus      `json:"packageStatus"`
+	ServiceStatus   ServiceStatusState `json:"serviceStatus,omitempty"`
+	SoftwareVersion string             `json:"softwareVersion"`
+	Health          HealthStatus       `json:"health"`
+	Details         string             `json:"details,omitempty"`
 }
 
 // HealthStatus represents the result of a health check.
@@ -196,6 +292,7 @@ type AgentClient interface {
 	ServiceReload(ctx context.Context, name string) error
 	ServiceStatus(ctx context.Context, name string) (*ServiceStatus, error)
 	ServiceLogs(ctx context.Context, name string, lines int) ([]string, error)
+	FileLogs(ctx context.Context, path string, lines int) ([]string, error)
 
 	CommandExecute(ctx context.Context, command string, args ...string) (int, string, string, error)
 

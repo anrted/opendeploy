@@ -37,6 +37,21 @@ func (m *Module) Name() string        { return "Nginx Web Server" }
 func (m *Module) Version() string     { return "1.0.0" }
 func (m *Module) Description() string { return "High-performance HTTP server and reverse proxy" }
 
+func (m *Module) Category() string { return "Web" }
+func (m *Module) Icon() string     { return "server" }
+func (m *Module) Dependencies() contract.ModuleDependencies {
+	return contract.ModuleDependencies{}
+}
+func (m *Module) Capabilities() contract.ModuleCapabilities {
+	return contract.ModuleCapabilities{
+		SupportsService:  true,
+		SupportsSettings: false,
+		SupportsLogs:     true,
+		SupportsRestart:  true,
+		SupportsUpdate:   true,
+	}
+}
+
 func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	m.deps = deps
 	m.log = deps.Logger.With("module", moduleID)
@@ -113,23 +128,29 @@ func (m *Module) Restart(ctx context.Context) error {
 	return m.deps.Agent.ServiceRestart(ctx, "nginx")
 }
 
-func (m *Module) Status(ctx context.Context) (*contract.ModuleStatus, error) {
+func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "nginx")
-	if err != nil {
-		return &contract.ModuleStatus{State: contract.StateError, Details: err.Error()}, nil
-	}
-	state := contract.StateDisabled
-	if svcStatus.Active {
-		state = contract.StateEnabled
-	}
+
 	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "nginx")
-	if !installed {
-		state = contract.StateAvailable
+	pkgStatus := contract.PackageNotInstalled
+	if installed {
+		pkgStatus = contract.PackageInstalled
 	}
-	return &contract.ModuleStatus{
-		State:            state,
-		InstalledVersion: version,
-		ServiceRunning:   svcStatus.Active,
+
+	var srvStatus contract.ServiceStatusState = contract.ServiceStopped
+	if err == nil {
+		if svcStatus.Active {
+			srvStatus = contract.ServiceRunning
+		}
+	} else {
+		srvStatus = contract.ServiceFailed
+	}
+
+	return &contract.RuntimeStatus{
+		PackageStatus:   pkgStatus,
+		ServiceStatus:   srvStatus,
+		SoftwareVersion: version,
+		Details:         "",
 	}, nil
 }
 
@@ -233,3 +254,71 @@ func formatServiceMsg(active bool) string {
 
 // compile-time assertion
 var _ contract.WebServerPlugin = (*Module)(nil)
+
+func (m *Module) Actions() []contract.ActionDef {
+	return []contract.ActionDef{
+		{ID: "reload", Title: "Reload Configuration", Icon: "refresh", Color: "primary", RequiresConfirmation: false},
+		{ID: "test_config", Title: "Test Configuration", Icon: "check-circle", Color: "secondary", RequiresConfirmation: false},
+	}
+}
+func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
+	switch actionID {
+	case "reload":
+		return m.deps.Agent.ServiceReload(ctx, "nginx")
+	case "test_config":
+		_, stdout, stderr, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
+		if err != nil {
+			return fmt.Errorf("nginx -t failed: %v\n%s", err, stderr)
+		}
+		m.log.Info("Config test passed", "output", stdout)
+		return nil
+	default:
+		return fmt.Errorf("unknown action: %s", actionID)
+	}
+}
+func (m *Module) Logs() []contract.LogDef {
+	return []contract.LogDef{
+		{ID: "service", Name: "Systemd Service Log", Type: "systemd"},
+		{ID: "access", Name: "Global Access Log", Type: "file", Path: "/var/log/nginx/access.log"},
+		{ID: "error", Name: "Global Error Log", Type: "file", Path: "/var/log/nginx/error.log"},
+	}
+}
+func (m *Module) SettingsSchema() []contract.SettingField {
+	return []contract.SettingField{
+		{
+			ID:          "worker_processes",
+			Type:        "select",
+			Label:       "Worker Processes",
+			Description: "Number of worker processes (usually auto)",
+			Value:       "auto",
+			Options:     []string{"auto", "1", "2", "4", "8"},
+			Category:    "Performance",
+		},
+		{
+			ID:          "server_tokens",
+			Type:        "boolean",
+			Label:       "Server Tokens",
+			Description: "Emit nginx version on error pages and in the 'Server' response header",
+			Value:       false,
+			Category:    "Security",
+		},
+	}
+}
+
+func (m *Module) Pages() []contract.ModulePage {
+	pages := []contract.ModulePage{
+		{ID: "overview", Title: "Overview", Type: contract.PageTypeOverview},
+	}
+	if m.Capabilities().SupportsSettings {
+		pages = append(pages, contract.ModulePage{ID: "settings", Title: "Settings", Type: contract.PageTypeSettings})
+	}
+	if m.Capabilities().SupportsLogs {
+		pages = append(pages, contract.ModulePage{ID: "logs", Title: "Logs", Type: contract.PageTypeLogs})
+	}
+	
+	// Nginx specific pages
+	pages = append(pages, contract.ModulePage{ID: "sites", Title: "Virtual Hosts", Type: contract.PageTypeDataGrid})
+	pages = append(pages, contract.ModulePage{ID: "certificates", Title: "Certificates", Type: contract.PageTypeDataGrid})
+	
+	return pages
+}

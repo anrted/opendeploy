@@ -31,6 +31,21 @@ func (m *Module) Description() string {
 	return "PHP scripting language with FPM support (multiple versions)"
 }
 
+func (m *Module) Category() string { return "Languages" }
+func (m *Module) Icon() string     { return "code" }
+func (m *Module) Dependencies() contract.ModuleDependencies {
+	return contract.ModuleDependencies{}
+}
+func (m *Module) Capabilities() contract.ModuleCapabilities {
+	return contract.ModuleCapabilities{
+		SupportsService:  true, // fpm pools are services
+		SupportsSettings: true,
+		SupportsLogs:     true,
+		SupportsRestart:  true,
+		SupportsUpdate:   true,
+	}
+}
+
 func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	m.deps = deps
 	m.logger = deps.Logger.With("module", moduleID)
@@ -115,19 +130,27 @@ func (m *Module) Restart(ctx context.Context) error {
 	return m.deps.Agent.ServiceRestart(ctx, "php8.3-fpm")
 }
 
-func (m *Module) Status(ctx context.Context) (*contract.ModuleStatus, error) {
+func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "php8.3-fpm")
-	if !installed {
-		return &contract.ModuleStatus{State: contract.StateAvailable}, nil
+	pkgStatus := contract.PackageNotInstalled
+	if installed {
+		pkgStatus = contract.PackageInstalled
 	}
-	svcStatus, _ := m.deps.Agent.ServiceStatus(ctx, "php8.3-fpm")
-	running := svcStatus != nil && svcStatus.Active
-	state := contract.StateDisabled
-	if running {
-		state = contract.StateEnabled
+
+	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "php8.3-fpm")
+	var srvStatus contract.ServiceStatusState = contract.ServiceStopped
+	if err == nil && svcStatus != nil {
+		if svcStatus.Active {
+			srvStatus = contract.ServiceRunning
+		}
+	} else if err != nil {
+		srvStatus = contract.ServiceFailed
 	}
-	return &contract.ModuleStatus{
-		State: state, InstalledVersion: version, ServiceRunning: running,
+
+	return &contract.RuntimeStatus{
+		PackageStatus:   pkgStatus,
+		ServiceStatus:   srvStatus,
+		SoftwareVersion: version,
 	}, nil
 }
 
@@ -162,3 +185,28 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 func (m *Module) SupportedVersions() []string { return supportedVersions }
 
 var _ contract.Module = (*Module)(nil)
+
+func (m *Module) Actions() []contract.ActionDef { return nil }
+func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
+	return fmt.Errorf("unknown action: %s", actionID)
+}
+func (m *Module) Logs() []contract.LogDef {
+	if m.Capabilities().SupportsService {
+		return []contract.LogDef{{ID: "service", Name: "Systemd Log", Type: "systemd"}}
+	}
+	return nil
+}
+func (m *Module) SettingsSchema() []contract.SettingField { return nil }
+
+func (m *Module) Pages() []contract.ModulePage {
+	pages := []contract.ModulePage{
+		{ID: "overview", Title: "Overview", Type: contract.PageTypeOverview},
+	}
+	if m.Capabilities().SupportsSettings {
+		pages = append(pages, contract.ModulePage{ID: "settings", Title: "Settings", Type: contract.PageTypeSettings})
+	}
+	if m.Capabilities().SupportsLogs {
+		pages = append(pages, contract.ModulePage{ID: "logs", Title: "Logs", Type: contract.PageTypeLogs})
+	}
+	return pages
+}

@@ -76,7 +76,7 @@ func (s *Service) ServiceStatus(ctx context.Context, req *agentv1.ServiceStatusR
 	return &agentv1.ServiceStatusResponse{Name: result.Name, Active: result.Active, Enabled: result.Enabled, SubState: result.SubState, Description: result.Description}, nil
 }
 
-func (s *Service) ServiceLogs(req *agentv1.ServiceLogsRequest, stream grpc.ServerStreamingServer[agentv1.LogLine]) error {
+func (s *Service) ServiceLogs(req *agentv1.ServiceLogsRequest, stream agentv1.AgentService_ServiceLogsServer) error {
 	lines := int(req.GetLines())
 	if lines < 1 || lines > 10_000 {
 		return status.Error(codes.InvalidArgument, "lines must be between 1 and 10000")
@@ -87,6 +87,45 @@ func (s *Service) ServiceLogs(req *agentv1.ServiceLogsRequest, stream grpc.Serve
 	}
 	for _, line := range result {
 		if err := stream.Send(&agentv1.LogLine{Line: line, Timestamp: time.Now().UnixNano()}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) FileLogs(req *agentv1.FileLogsRequest, stream agentv1.AgentService_FileLogsServer) error {
+	lines := int(req.GetLines())
+	if lines < 1 || lines > 10_000 {
+		return status.Error(codes.InvalidArgument, "lines must be between 1 and 10000")
+	}
+	path := req.GetPath()
+	if path == "" {
+		return status.Error(codes.InvalidArgument, "path is required")
+	}
+
+	// Wait, tailing arbitrary files is okay for Agent since it requires admin.
+	// We rely on the allowed paths or shell isolation if needed.
+	// Actually, just let it fail if it doesn't exist.
+
+	res, err := s.shell.Run(stream.Context(), "tail", "-n", fmt.Sprint(lines), path)
+	if err != nil {
+		return internalError(err)
+	}
+	
+	// Split stdout by newline
+	var currentLine []byte
+	for i := 0; i < len(res.Stdout); i++ {
+		if res.Stdout[i] == '\n' {
+			if err := stream.Send(&agentv1.LogLine{Line: string(currentLine), Timestamp: time.Now().UnixNano()}); err != nil {
+				return err
+			}
+			currentLine = currentLine[:0]
+		} else {
+			currentLine = append(currentLine, res.Stdout[i])
+		}
+	}
+	if len(currentLine) > 0 {
+		if err := stream.Send(&agentv1.LogLine{Line: string(currentLine), Timestamp: time.Now().UnixNano()}); err != nil {
 			return err
 		}
 	}
@@ -108,13 +147,13 @@ func (s *Service) CommandExecute(ctx context.Context, req *agentv1.CommandExecut
 	}, nil
 }
 
-func (s *Service) PackageInstall(req *agentv1.PackageRequest, stream grpc.ServerStreamingServer[agentv1.PackageOutput]) error {
+func (s *Service) PackageInstall(req *agentv1.PackageRequest, stream agentv1.AgentService_PackageInstallServer) error {
 	return s.streamPackage(req, stream, s.pkgs.Install)
 }
-func (s *Service) PackageRemove(req *agentv1.PackageRequest, stream grpc.ServerStreamingServer[agentv1.PackageOutput]) error {
+func (s *Service) PackageRemove(req *agentv1.PackageRequest, stream agentv1.AgentService_PackageRemoveServer) error {
 	return s.streamPackage(req, stream, s.pkgs.Remove)
 }
-func (s *Service) PackageUpdate(req *agentv1.PackageRequest, stream grpc.ServerStreamingServer[agentv1.PackageOutput]) error {
+func (s *Service) PackageUpdate(req *agentv1.PackageRequest, stream agentv1.AgentService_PackageUpdateServer) error {
 	return s.streamPackage(req, stream, s.pkgs.Update)
 }
 

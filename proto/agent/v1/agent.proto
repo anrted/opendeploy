@@ -12,6 +12,7 @@ service AgentService {
     rpc ServiceAction (ServiceActionRequest) returns (ServiceActionResponse);
     rpc ServiceStatus (ServiceStatusRequest) returns (ServiceStatusResponse);
     rpc ServiceLogs   (ServiceLogsRequest)   returns (stream LogLine);
+    rpc FileLogs      (FileLogsRequest)      returns (stream LogLine);
     rpc CommandExecute(CommandExecuteRequest) returns (CommandExecuteResponse);
 
     // ── Package management ─────────────────────────────────────────────────
@@ -95,6 +96,11 @@ message ServiceLogsRequest {
 message LogLine {
     string line      = 1;
     int64  timestamp = 2; // Unix nanoseconds
+}
+
+message FileLogsRequest {
+    string path  = 1;
+    int32  lines = 2;
 }
 
 message CommandExecuteRequest {

@@ -30,6 +30,21 @@ func (m *Module) Description() string {
 	return "Let's Encrypt client and ACME tool for SSL certificates"
 }
 
+func (m *Module) Category() string { return "Security" }
+func (m *Module) Icon() string     { return "shield" }
+func (m *Module) Dependencies() contract.ModuleDependencies {
+	return contract.ModuleDependencies{}
+}
+func (m *Module) Capabilities() contract.ModuleCapabilities {
+	return contract.ModuleCapabilities{
+		SupportsService:  true, // certbot.timer
+		SupportsSettings: false,
+		SupportsLogs:     true,
+		SupportsRestart:  true,
+		SupportsUpdate:   true,
+	}
+}
+
 func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	m.deps = deps
 	m.logger = deps.Logger.With("module", moduleID)
@@ -52,7 +67,7 @@ func (m *Module) RegisterSettings() []contract.SettingSpec {
 			Key: "email", Label: "Let's Encrypt Email",
 			Type: contract.SettingTypeString, DefaultValue: "",
 			Description: "Email address for important account notifications",
-			Required: true,
+			Required:    true,
 		},
 	}
 }
@@ -98,26 +113,27 @@ func (m *Module) Restart(ctx context.Context) error {
 	return m.deps.Agent.ServiceRestart(ctx, "certbot.timer")
 }
 
-func (m *Module) Status(ctx context.Context) (*contract.ModuleStatus, error) {
-	// Check if installed
+func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "certbot")
-	if !installed {
-		return &contract.ModuleStatus{State: contract.StateAvailable}, nil
+	pkgStatus := contract.PackageNotInstalled
+	if installed {
+		pkgStatus = contract.PackageInstalled
 	}
 
-	state := contract.StateInstalled
-	// Check timer status to see if it's "enabled"
 	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "certbot.timer")
-	serviceRunning := false
-	if err == nil && svcStatus.Active {
-		state = contract.StateEnabled
-		serviceRunning = true
+	var srvStatus contract.ServiceStatusState = contract.ServiceStopped
+	if err == nil && svcStatus != nil {
+		if svcStatus.Active {
+			srvStatus = contract.ServiceRunning
+		}
+	} else if err != nil {
+		srvStatus = contract.ServiceFailed
 	}
 
-	return &contract.ModuleStatus{
-		State:            state,
-		InstalledVersion: version,
-		ServiceRunning:   serviceRunning,
+	return &contract.RuntimeStatus{
+		PackageStatus:   pkgStatus,
+		ServiceStatus:   srvStatus,
+		SoftwareVersion: version,
 	}, nil
 }
 
@@ -126,7 +142,7 @@ func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error
 	if !installed {
 		return &contract.HealthReport{Status: contract.HealthWarning, Message: "certbot is not installed"}, nil
 	}
-	
+
 	// Check if timer is active
 	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "certbot.timer")
 	if err != nil || !svcStatus.Active {
@@ -206,7 +222,7 @@ ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
 				// It failed
 				logs, _ := m.deps.Agent.ServiceLogs(ctx, svcName, 30)
 				logStr := strings.Join(logs, "\n")
-				
+
 				errMsg := "Certbot failed to obtain certificate"
 				if strings.Contains(logStr, "Connection refused") {
 					errMsg = "Certbot failed: Connection refused. This usually means the domain has an incorrect A record in DNS, multiple conflicting A records, or the domain is pointing to the wrong IP address."
@@ -223,3 +239,28 @@ ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
 }
 
 var _ contract.CertbotPlugin = (*Module)(nil)
+
+func (m *Module) Actions() []contract.ActionDef { return nil }
+func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
+	return fmt.Errorf("unknown action: %s", actionID)
+}
+func (m *Module) Logs() []contract.LogDef {
+	if m.Capabilities().SupportsService {
+		return []contract.LogDef{{ID: "service", Name: "Systemd Log", Type: "systemd"}}
+	}
+	return nil
+}
+func (m *Module) SettingsSchema() []contract.SettingField { return nil }
+
+func (m *Module) Pages() []contract.ModulePage {
+	pages := []contract.ModulePage{
+		{ID: "overview", Title: "Overview", Type: contract.PageTypeOverview},
+	}
+	if m.Capabilities().SupportsSettings {
+		pages = append(pages, contract.ModulePage{ID: "settings", Title: "Settings", Type: contract.PageTypeSettings})
+	}
+	if m.Capabilities().SupportsLogs {
+		pages = append(pages, contract.ModulePage{ID: "logs", Title: "Logs", Type: contract.PageTypeLogs})
+	}
+	return pages
+}

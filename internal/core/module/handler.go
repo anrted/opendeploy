@@ -40,6 +40,17 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, view)
 }
 
+// Status handles GET /api/v1/modules/{id}/status
+func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	status, err := h.service.Status(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, status)
+}
+
 // Install handles POST /api/v1/modules/{id}/install
 func (h *Handler) Install(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -120,6 +131,23 @@ func (h *Handler) Restart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, map[string]string{"message": "module restarted"})
+}
+
+// ExecuteAction handles POST /api/v1/modules/{id}/actions/{actionId}
+func (h *Handler) ExecuteAction(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	actionId := chi.URLParam(r, "actionId")
+	principal := auth.PrincipalFromContext(r.Context())
+	userID := ""
+	if principal != nil {
+		userID = principal.ID
+	}
+
+	if err := h.service.ExecuteAction(r.Context(), id, actionId, userID, realIP(r)); err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "action executed successfully"})
 }
 
 // GetJob handles GET /api/v1/jobs/{id}

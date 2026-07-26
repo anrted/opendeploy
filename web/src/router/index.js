@@ -24,6 +24,11 @@ const routes = [
         component: () => import('@/views/ModulesView.vue'),
       },
       {
+        path: 'modules/:id',
+        name: 'module_details',
+        component: () => import('@/views/ModuleDetailsView.vue'),
+      },
+      {
         path: 'modules/firewall',
         name: 'module_firewall',
         component: () => import('@/views/modules/FirewallView.vue'),

@@ -105,17 +105,35 @@ func (l *Loader) Bootstrap(ctx context.Context, deps contract.ModuleDeps) error 
 			_ = l.repo.UpdateState(ctx, m.ID(), StateError)
 			continue
 		}
-		if existing.State == StateAvailable {
+		needsSync := existing.State == StateAvailable || existing.Version == nil || *existing.Version == ""
+		if needsSync {
 			status, err := m.Status(ctx)
 			if err != nil {
 				l.logger.Warn("module loader: detect runtime state", "module", m.ID(), "error", err)
 				continue
 			}
 			if status != nil {
-				detected := State(status.State)
+				detected := StateAvailable
+				if status.PackageStatus == contract.PackageInstalled {
+					detected = StateInstalled
+					if m.Capabilities().SupportsService {
+						if status.ServiceStatus == contract.ServiceRunning {
+							detected = StateEnabled
+						} else {
+							detected = StateDisabled
+						}
+					}
+				}
+				
 				switch detected {
 				case StateInstalled, StateEnabled, StateDisabled:
-					if err := l.repo.UpdateState(ctx, m.ID(), detected); err != nil {
+					rec := *existing
+					rec.State = detected
+					if status.SoftwareVersion != "" {
+						v := status.SoftwareVersion
+						rec.Version = &v
+					}
+					if err := l.repo.Upsert(ctx, &rec); err != nil {
 						l.logger.Warn("module loader: persist detected state", "module", m.ID(), "error", err)
 					}
 				}

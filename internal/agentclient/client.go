@@ -99,6 +99,24 @@ func (c *Client) ServiceLogs(ctx context.Context, name string, lines int) ([]str
 	}
 }
 
+func (c *Client) FileLogs(ctx context.Context, path string, lines int) ([]string, error) {
+	stream, err := c.stub.FileLogs(ctx, &agentv1.FileLogsRequest{Path: path, Lines: int32(lines)})
+	if err != nil {
+		return nil, err
+	}
+	var result []string
+	for {
+		line, err := stream.Recv()
+		if err == io.EOF {
+			return result, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, line.Line)
+	}
+}
+
 func (c *Client) CommandExecute(ctx context.Context, command string, args ...string) (int, string, string, error) {
 	resp, err := c.stub.CommandExecute(ctx, &agentv1.CommandExecuteRequest{
 		Command: command,

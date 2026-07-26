@@ -52,19 +52,20 @@ type Dependencies struct {
 
 type chiRouterWrapper struct {
 	chi.Router
+	prefix string
 }
 
 func (w chiRouterWrapper) Get(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Get(pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.Get(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 func (w chiRouterWrapper) Post(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Post(pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.Post(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 func (w chiRouterWrapper) Put(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Put(pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.Put(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 func (w chiRouterWrapper) Delete(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Delete(pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.Delete(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 
 // New constructs a Server with the full middleware chain and route tree.
@@ -136,20 +137,20 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 			if deps.ModuleHandler != nil {
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules", deps.ModuleHandler.List)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}", deps.ModuleHandler.Get)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}/status", deps.ModuleHandler.Status)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleInstall)).Post("/modules/{id}/install", deps.ModuleHandler.Install)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleUninstall)).Post("/modules/{id}/uninstall", deps.ModuleHandler.Uninstall)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleEnable)).Post("/modules/{id}/enable", deps.ModuleHandler.Enable)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleDisable)).Post("/modules/{id}/disable", deps.ModuleHandler.Disable)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/restart", deps.ModuleHandler.Restart)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/actions/{actionId}", deps.ModuleHandler.ExecuteAction)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/jobs/{id}", deps.ModuleHandler.GetJob)
 			}
 
 			// Register custom routes for each module
 			if deps.ModuleRegistry != nil {
 				for _, m := range deps.ModuleRegistry.All() {
-					r.Route("/modules/"+m.ID(), func(r chi.Router) {
-						m.RegisterRoutes(chiRouterWrapper{r})
-					})
+					m.RegisterRoutes(chiRouterWrapper{r, "/modules/" + m.ID()})
 				}
 			}
 

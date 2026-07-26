@@ -64,22 +64,34 @@ func (s *Service) List(ctx context.Context) ([]ModuleView, error) {
 		if !ok {
 			rec = Record{ID: m.ID(), Name: m.Name(), State: StateAvailable}
 		}
-		state, installedVersion, status := s.runtimeState(ctx, m, rec.State)
+		
+		var installedVersion string
+		if rec.Version != nil {
+			installedVersion = *rec.Version
+		}
+
 		views = append(views, ModuleView{
 			ID:               m.ID(),
 			Name:             m.Name(),
-			Version:          m.Version(),
-			InstalledVersion: installedVersion,
+			ModuleVersion:    m.Version(),
+			SoftwareVersion:  installedVersion,
 			Description:      m.Description(),
-			State:            state,
+			Category:         m.Category(),
+			Icon:             m.Icon(),
+			Dependencies:     m.Dependencies(),
+			Capabilities:     m.Capabilities(),
+			State:            rec.State,
 			InstalledAt:      rec.InstalledAt,
-			Status:           status,
+			Pages:            m.Pages(),
+			Actions:          m.Actions(),
+			Logs:             m.Logs(),
+			SettingsSchema:   m.SettingsSchema(),
 		})
 	}
 	return views, nil
 }
 
-// Get returns details for a single module.
+// Get returns details for a single module (without running full dynamic status).
 func (s *Service) Get(ctx context.Context, id string) (*ModuleView, error) {
 	m := s.registry.Find(id)
 	if m == nil {
@@ -90,18 +102,47 @@ func (s *Service) Get(ctx context.Context, id string) (*ModuleView, error) {
 		rec = &Record{ID: id, Name: m.Name(), State: StateAvailable}
 	}
 
-	state, installedVersion, status := s.runtimeState(ctx, m, rec.State)
+	var installedVersion string
+	if rec.Version != nil {
+		installedVersion = *rec.Version
+	}
 
 	return &ModuleView{
 		ID:               m.ID(),
 		Name:             m.Name(),
-		Version:          m.Version(),
-		InstalledVersion: installedVersion,
+		ModuleVersion:    m.Version(),
+		SoftwareVersion:  installedVersion,
 		Description:      m.Description(),
-		State:            state,
+		Category:         m.Category(),
+		Icon:             m.Icon(),
+		Dependencies:     m.Dependencies(),
+		Capabilities:     m.Capabilities(),
+		State:            rec.State,
 		InstalledAt:      rec.InstalledAt,
-		Status:           status,
+		Pages:            m.Pages(),
+		Actions:          m.Actions(),
+		Logs:             m.Logs(),
+		SettingsSchema:   m.SettingsSchema(),
 	}, nil
+}
+
+// Status explicitly fetches the runtime status of a module via the Agent.
+func (s *Service) Status(ctx context.Context, id string) (*contract.RuntimeStatus, error) {
+	m := s.registry.Find(id)
+	if m == nil {
+		return nil, apperrors.New(404, apperrors.CodeModuleNotFound, "module not found: "+id)
+	}
+	
+	status, err := m.Status(ctx)
+	if err != nil {
+		s.logger.Warn("module service: runtime status failed", "module", m.ID(), "error", err)
+		return nil, apperrors.Internal("failed to fetch status", err)
+	}
+
+	// Optionally update the DB with the actual status here, 
+	// e.g. updating rec.State or rec.Version if they have drifted.
+
+	return status, nil
 }
 
 // Install starts the async installation of a module. Returns the Job ID.
@@ -122,8 +163,14 @@ func (s *Service) Install(ctx context.Context, id, userID, ip string) (string, e
 		return m.Install(jobCtx)
 	}, func(ctx context.Context) {
 		now := nowUTC()
+		var version *string
+		if status, err := m.Status(ctx); err == nil && status != nil && status.SoftwareVersion != "" {
+			v := status.SoftwareVersion
+			version = &v
+		}
 		_ = s.repo.Upsert(ctx, &Record{
 			ID: id, Name: m.Name(), State: StateInstalled,
+			Version: version,
 			InstalledAt: &now, UpdatedAt: now,
 		})
 		s.publishEvent(ctx, "module.installed", map[string]string{"module_id": id})
@@ -215,6 +262,19 @@ func (s *Service) Restart(ctx context.Context, id, userID, ip string) error {
 	return nil
 }
 
+// ExecuteAction executes a dynamic module action.
+func (s *Service) ExecuteAction(ctx context.Context, id, actionID, userID, ip string) error {
+	m := s.registry.Find(id)
+	if m == nil {
+		return apperrors.New(404, apperrors.CodeModuleNotFound, "module not found: "+id)
+	}
+	if err := m.ExecuteAction(ctx, actionID); err != nil {
+		return apperrors.Internal(fmt.Sprintf("execute action %s on module %s", actionID, id), err)
+	}
+	s.recordAudit(ctx, userID, "module.action."+actionID, id, ip, audit.StatusSuccess)
+	return nil
+}
+
 // GetJob returns the current state of a background job.
 func (s *Service) GetJob(ctx context.Context, jobID string) (*Job, error) {
 	return s.jobs.FindByID(ctx, jobID)
@@ -224,35 +284,24 @@ func (s *Service) GetJob(ctx context.Context, jobID string) (*Job, error) {
 
 // ModuleView is the API response DTO for a module.
 type ModuleView struct {
-	ID               string                 `json:"id"`
-	Name             string                 `json:"name"`
-	Version          string                 `json:"version"`
-	InstalledVersion string                 `json:"installed_version,omitempty"`
-	Description      string                 `json:"description"`
-	State            State                  `json:"state"`
-	InstalledAt      *time.Time             `json:"installed_at,omitempty"`
-	Status           *contract.ModuleStatus `json:"status,omitempty"`
-}
-
-func (s *Service) runtimeState(ctx context.Context, m contract.Module, stored State) (State, string, *contract.ModuleStatus) {
-	if stored == StateInstalling || stored == StateRemoving {
-		return stored, "", nil
-	}
-	status, err := m.Status(ctx)
-	if err != nil {
-		s.logger.Warn("module service: runtime status failed", "module", m.ID(), "error", err)
-		return stored, "", nil
-	}
-	if status == nil {
-		return stored, "", nil
-	}
-	state := State(status.State)
-	switch state {
-	case StateAvailable, StateInstalled, StateEnabled, StateDisabled, StateError:
-		return state, status.InstalledVersion, status
-	default:
-		return stored, status.InstalledVersion, status
-	}
+	ID               string                      `json:"id"`
+	Name             string                      `json:"name"`
+	ModuleVersion    string                      `json:"module_version"`
+	SoftwareVersion  string                      `json:"software_version,omitempty"`
+	Description      string                      `json:"description"`
+	Category         string                      `json:"category"`
+	Icon             string                      `json:"icon"`
+	Dependencies     contract.ModuleDependencies `json:"dependencies"`
+	Capabilities     contract.ModuleCapabilities `json:"capabilities"`
+	State            State                       `json:"state"`
+	InstalledAt      *time.Time                  `json:"installed_at,omitempty"`
+	Status           *contract.RuntimeStatus     `json:"status,omitempty"`
+	
+	// Dynamic Metadata
+	Pages            []contract.ModulePage       `json:"pages,omitempty"`
+	Actions          []contract.ActionDef        `json:"actions,omitempty"`
+	Logs             []contract.LogDef           `json:"logs,omitempty"`
+	SettingsSchema   []contract.SettingField     `json:"settings_schema,omitempty"`
 }
 
 // ─── internal helpers ──────────────────────────────────────────────────────

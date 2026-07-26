@@ -45,6 +45,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "ln", AllowedArgs: []string{"-s", "-f"}},
 	{Binary: "rm", AllowedArgs: []string{"-f", "-rf"}},
 	{Binary: "mkdir", AllowedArgs: []string{"-p"}},
+	{Binary: "tail", AllowedArgs: []string{"-n"}},
 	{Binary: "chown", AllowedArgs: []string{"-R"}},
 	{Binary: "chmod", AllowedArgs: []string{"-R"}},
 	{Binary: "cat", AllowedArgs: []string{}},

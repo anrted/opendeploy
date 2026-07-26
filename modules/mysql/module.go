@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -18,8 +19,23 @@ func New() *Module { return &Module{} }
 
 func (m *Module) ID() string          { return moduleID }
 func (m *Module) Name() string        { return "MySQL Database" }
-func (m *Module) Version() string     { return "8.0" }
+func (m *Module) Version() string     { return "1.0.0" }
 func (m *Module) Description() string { return "Relational database management system" }
+
+func (m *Module) Category() string { return "Databases" }
+func (m *Module) Icon() string     { return "database" }
+func (m *Module) Dependencies() contract.ModuleDependencies {
+	return contract.ModuleDependencies{}
+}
+func (m *Module) Capabilities() contract.ModuleCapabilities {
+	return contract.ModuleCapabilities{
+		SupportsService:  true,
+		SupportsSettings: false,
+		SupportsLogs:     true,
+		SupportsRestart:  true,
+		SupportsUpdate:   true,
+	}
+}
 
 func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	m.deps = deps
@@ -27,18 +43,18 @@ func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	return nil
 }
 
-func (m *Module) Shutdown(_ context.Context) error { return nil }
-func (m *Module) RegisterRoutes(_ contract.Router) {}
+func (m *Module) Shutdown(_ context.Context) error       { return nil }
+func (m *Module) RegisterRoutes(_ contract.Router)       {}
 func (m *Module) RegisterMenuItems() []contract.MenuItem { return nil }
 
 func (m *Module) RegisterSettings() []contract.SettingSpec {
 	return []contract.SettingSpec{
 		{
-			Key:          "root_password",
-			Label:        "Root Password",
-			Description:  "Database root password",
-			Type:         contract.SettingTypeString,
-			Secret:       true,
+			Key:         "root_password",
+			Label:       "Root Password",
+			Description: "Database root password",
+			Type:        contract.SettingTypeString,
+			Secret:      true,
 		},
 	}
 }
@@ -48,7 +64,8 @@ func (m *Module) Install(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for range ch {}
+	for range ch {
+	}
 	return nil
 }
 
@@ -57,7 +74,8 @@ func (m *Module) Uninstall(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for range ch {}
+	for range ch {
+	}
 	return nil
 }
 
@@ -79,23 +97,27 @@ func (m *Module) Restart(ctx context.Context) error {
 	return m.deps.Agent.ServiceRestart(ctx, "mysql")
 }
 
-func (m *Module) Status(ctx context.Context) (*contract.ModuleStatus, error) {
-	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "mysql")
-	if err != nil {
-		return &contract.ModuleStatus{State: contract.StateError, Details: err.Error()}, nil
-	}
-	state := contract.StateDisabled
-	if svcStatus.Active {
-		state = contract.StateEnabled
-	}
+func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "mysql-server")
-	if !installed {
-		state = contract.StateAvailable
+	pkgStatus := contract.PackageNotInstalled
+	if installed {
+		pkgStatus = contract.PackageInstalled
 	}
-	return &contract.ModuleStatus{
-		State:            state,
-		InstalledVersion: version,
-		ServiceRunning:   svcStatus.Active,
+
+	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "mysql")
+	var srvStatus contract.ServiceStatusState = contract.ServiceStopped
+	if err == nil && svcStatus != nil {
+		if svcStatus.Active {
+			srvStatus = contract.ServiceRunning
+		}
+	} else if err != nil {
+		srvStatus = contract.ServiceFailed
+	}
+
+	return &contract.RuntimeStatus{
+		PackageStatus:   pkgStatus,
+		ServiceStatus:   srvStatus,
+		SoftwareVersion: version,
 	}, nil
 }
 
@@ -122,3 +144,28 @@ func (m *Module) DeleteDatabase(ctx context.Context, dbName, user string) error 
 }
 
 var _ contract.DatabasePlugin = (*Module)(nil)
+
+func (m *Module) Actions() []contract.ActionDef { return nil }
+func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
+	return fmt.Errorf("unknown action: %s", actionID)
+}
+func (m *Module) Logs() []contract.LogDef {
+	if m.Capabilities().SupportsService {
+		return []contract.LogDef{{ID: "service", Name: "Systemd Log", Type: "systemd"}}
+	}
+	return nil
+}
+func (m *Module) SettingsSchema() []contract.SettingField { return nil }
+
+func (m *Module) Pages() []contract.ModulePage {
+	pages := []contract.ModulePage{
+		{ID: "overview", Title: "Overview", Type: contract.PageTypeOverview},
+	}
+	if m.Capabilities().SupportsSettings {
+		pages = append(pages, contract.ModulePage{ID: "settings", Title: "Settings", Type: contract.PageTypeSettings})
+	}
+	if m.Capabilities().SupportsLogs {
+		pages = append(pages, contract.ModulePage{ID: "logs", Title: "Logs", Type: contract.PageTypeLogs})
+	}
+	return pages
+}
