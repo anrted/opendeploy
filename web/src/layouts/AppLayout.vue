@@ -1,7 +1,11 @@
 <template>
   <div class="min-h-screen flex bg-bg-base text-text-main transition-colors duration-200">
+    <div v-if="mobileOpen" class="fixed inset-0 z-40 bg-black/60 lg:hidden" @click="mobileOpen = false"></div>
     <!-- Sidebar -->
-    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-border-subtle bg-bg-card transition-colors duration-200">
+    <aside
+      class="fixed inset-y-0 left-0 z-50 w-72 flex-shrink-0 flex flex-col border-r border-border-subtle bg-bg-card transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0"
+      :class="mobileOpen ? 'translate-x-0' : '-translate-x-full'"
+    >
       <!-- Logo -->
       <div class="p-6 border-b border-border-subtle">
         <div class="flex items-center justify-between">
@@ -24,6 +28,9 @@
               <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
             </button>
             <LanguageSwitcher />
+            <button class="ml-1 rounded-lg p-1 text-text-muted hover:text-text-main lg:hidden" :aria-label="$t('sidebar.menu')" @click="mobileOpen = false">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -34,7 +41,7 @@
           :to="item.to"
           custom
           v-slot="{ isActive, navigate }">
-          <button @click="navigate"
+          <button @click="navigate(); mobileOpen = false"
             :class="['nav-item w-full', isActive ? 'active' : '']">
             <component :is="item.icon" class="w-4 h-4 flex-shrink-0" />
             {{ $t('sidebar.' + item.name) }}
@@ -61,8 +68,15 @@
     </aside>
 
     <!-- Main content -->
-    <main class="flex-1 overflow-y-auto">
-      <div class="p-8">
+    <main class="min-w-0 flex-1 overflow-y-auto">
+      <header class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border-subtle bg-bg-card/95 px-4 backdrop-blur lg:hidden">
+        <button class="rounded-lg p-2 text-text-main hover:bg-slate-100 dark:hover:bg-[#1e2535]" :aria-label="$t('sidebar.menu')" @click="mobileOpen = true">
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="text-sm font-bold">OpenDeploy</span>
+        <LanguageSwitcher />
+      </header>
+      <div class="p-4 sm:p-6 lg:p-8">
         <router-view />
       </div>
     </main>
@@ -70,13 +84,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 
 const themeStore = useThemeStore()
+const mobileOpen = ref(false)
 
 // Icon components (inline SVGs as functional components)
 const DashboardIcon = {
@@ -113,6 +128,7 @@ const navItems = [
 
 const auth = useAuthStore()
 const router = useRouter()
+watch(() => router.currentRoute.value.fullPath, () => { mobileOpen.value = false })
 
 const userInitial = computed(() =>
   (auth.user?.username?.[0] || 'U').toUpperCase()

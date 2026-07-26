@@ -5,14 +5,14 @@
     <!-- Top Bar -->
     <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
       <div>
-        <h1 class="page-title">Modules</h1>
-        <p class="page-subtitle">Install and manage server capabilities</p>
+        <h1 class="page-title">{{ t('modules.title') }}</h1>
+        <p class="page-subtitle">{{ t('modules.subtitle') }}</p>
       </div>
       
       <!-- Stats -->
-      <div class="flex gap-4 text-sm text-[#94a3b8]">
-        <div class="bg-[#1e293b] px-3 py-1.5 rounded-lg border border-[#334155]">Total: <span class="font-bold text-white">{{ stats.total }}</span></div>
-        <div class="bg-[#1e293b] px-3 py-1.5 rounded-lg border border-[#334155]">Installed: <span class="font-bold text-white">{{ stats.installed }}</span></div>
+      <div class="flex w-full gap-2 text-sm text-[#94a3b8] md:w-auto">
+        <div class="flex-1 bg-[#1e293b] px-3 py-1.5 rounded-lg border border-[#334155] md:flex-none">{{ t('modules.total') }}: <span class="font-bold text-white">{{ stats.total }}</span></div>
+        <div class="flex-1 bg-[#1e293b] px-3 py-1.5 rounded-lg border border-[#334155] md:flex-none">{{ t('modules.installed') }}: <span class="font-bold text-white">{{ stats.installed }}</span></div>
       </div>
     </div>
 
@@ -22,7 +22,7 @@
         <input 
           v-model="searchQuery" 
           type="text" 
-          placeholder="Search modules..." 
+          :placeholder="t('modules.search')"
           class="w-full bg-[#1e293b] border border-[#334155] rounded-lg pl-10 pr-4 py-2 text-sm text-[#e2e8f0] focus:outline-none focus:border-indigo-500"
         />
         <svg class="w-4 h-4 text-[#64748b] absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -31,17 +31,17 @@
       </div>
       
       <select v-model="selectedCategory" class="bg-[#1e293b] border border-[#334155] rounded-lg px-4 py-2 text-sm text-[#e2e8f0] focus:outline-none focus:border-indigo-500">
-        <option value="">All Categories</option>
-        <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+        <option value="">{{ t('modules.allCategories') }}</option>
+        <option v-for="cat in categories" :key="cat" :value="cat">{{ t(`categories.${cat}`) }}</option>
       </select>
       
       <select v-model="selectedState" class="bg-[#1e293b] border border-[#334155] rounded-lg px-4 py-2 text-sm text-[#e2e8f0] focus:outline-none focus:border-indigo-500">
-        <option value="">All States</option>
-        <option value="installed">Any Installed</option>
-        <option value="available">Available</option>
-        <option value="enabled">Enabled</option>
-        <option value="disabled">Disabled</option>
-        <option value="error">Error</option>
+        <option value="">{{ t('modules.allStates') }}</option>
+        <option value="installed">{{ t('modules.anyInstalled') }}</option>
+        <option value="available">{{ t('common.available') }}</option>
+        <option value="enabled">{{ t('common.enabled') }}</option>
+        <option value="disabled">{{ t('common.disabled') }}</option>
+        <option value="error">{{ t('common.error') }}</option>
       </select>
     </div>
 
@@ -53,7 +53,7 @@
     </div>
 
     <div v-else-if="filteredModules.length === 0" class="py-20">
-      <EmptyState title="No Modules" description="No modules found matching your criteria. Try adjusting your filters." />
+      <EmptyState :title="t('modules.noModules')" :description="t('modules.noModulesDescription')" />
     </div>
 
     <!-- Grid -->
@@ -69,7 +69,7 @@
             <ModuleIcon :icon="mod.icon || 'box'" size="sm" />
             <div>
               <h3 class="font-semibold text-[#e2e8f0] leading-tight">{{ mod.name }}</h3>
-              <span class="text-xs text-indigo-400 font-medium">{{ mod.category || 'System' }}</span>
+              <span class="text-xs text-indigo-400 font-medium">{{ t(`categories.${mod.category || 'System'}`) }}</span>
             </div>
           </div>
         </div>
@@ -93,11 +93,13 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import api, { apiErrorMessage } from '@/api/client'
 import EmptyState from '@/components/EmptyState.vue'
 import ModuleIcon from '@/components/ModuleIcon.vue'
 
 const modules = ref([])
+const { t } = useI18n()
 const loading = ref(true)
 const errorMessage = ref('')
 const searchQuery = ref('')
@@ -147,7 +149,7 @@ async function loadModules() {
     const { data } = await api.get('/modules')
     modules.value = data || []
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, 'Unable to load modules')
+    errorMessage.value = apiErrorMessage(e, t('modules.loadError'))
   } finally {
     loading.value = false
   }

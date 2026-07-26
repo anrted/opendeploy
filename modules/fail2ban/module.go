@@ -256,6 +256,28 @@ func (m *Module) Logs() []contract.LogDef {
 	}
 }
 
+func (m *Module) ReadLog(ctx context.Context, logID string, lines int) ([]string, error) {
+	switch logID {
+	case "systemd":
+		return m.agent.ServiceLogs(ctx, "fail2ban", lines)
+	case "fail2ban_log":
+		return m.agent.FileLogs(ctx, "/var/log/fail2ban.log", lines)
+	default:
+		return nil, fmt.Errorf("log %s not found", logID)
+	}
+}
+
+func (m *Module) ClearLog(ctx context.Context, logID string) error {
+	if logID == "systemd" {
+		return fmt.Errorf("cannot clear systemd service logs directly")
+	}
+	if logID != "fail2ban_log" {
+		return fmt.Errorf("log %s not found", logID)
+	}
+	_, _, _, err := m.agent.CommandExecute(ctx, "truncate", "-s", "0", "/var/log/fail2ban.log")
+	return err
+}
+
 func (m *Module) SettingsSchema() []contract.SettingField {
 	return []contract.SettingField{
 		// GENERAL

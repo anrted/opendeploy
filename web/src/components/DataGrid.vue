@@ -62,6 +62,7 @@
 import { ref, computed, onMounted } from 'vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useConfirmStore } from '@/stores/confirm'
+import api, { apiErrorMessage } from '@/api/client'
 
 const confirm = useConfirmStore()
 
@@ -76,19 +77,18 @@ const loading = ref(true)
 const searchQuery = ref('')
 
 const fetchSchema = async () => {
-  const res = await fetch(`/api/v1/modules/${props.module.id}/datagrid/${props.page.id}/schema`)
-  if (res.ok) {
-    schema.value = await res.json()
-  }
+  const { data } = await api.get(`/modules/${props.module.id}/datagrid/${props.page.id}/schema`)
+  schema.value = data
 }
 
 const fetchData = async () => {
   loading.value = true
-  const res = await fetch(`/api/v1/modules/${props.module.id}/datagrid/${props.page.id}/data`)
-  if (res.ok) {
-    data.value = await res.json()
+  try {
+    const response = await api.get(`/modules/${props.module.id}/datagrid/${props.page.id}/data`)
+    data.value = Array.isArray(response.data) ? response.data : []
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 const executeGlobalAction = async (action) => {
@@ -101,15 +101,12 @@ const executeGlobalAction = async (action) => {
     })
     if (!confirmed) return
   }
-  const res = await fetch(`/api/v1/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`, {
-    method: 'POST'
-  })
-  if (res.ok) {
+  try {
+    await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`)
     alert(`${action.title} executed successfully`)
     fetchData()
-  } else {
-    const err = await res.text()
-    alert(`Failed to execute ${action.title}: ${err}`)
+  } catch (error) {
+    alert(`Failed to execute ${action.title}: ${apiErrorMessage(error)}`)
   }
 }
 
@@ -123,8 +120,12 @@ const filteredData = computed(() => {
   })
 })
 
-onMounted(() => {
-  fetchSchema()
-  fetchData()
+onMounted(async () => {
+  try {
+    await Promise.all([fetchSchema(), fetchData()])
+  } catch (error) {
+    console.error('Failed to load data grid:', apiErrorMessage(error))
+    loading.value = false
+  }
 })
 </script>

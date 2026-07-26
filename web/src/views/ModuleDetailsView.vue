@@ -1,5 +1,5 @@
 <template>
-  <div class="px-6 py-8 h-full overflow-y-auto custom-scrollbar">
+  <div class="h-full overflow-y-auto py-2 custom-scrollbar sm:py-4">
     <div v-if="loading" class="flex justify-center py-20">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
     </div>
@@ -10,8 +10,8 @@
 
     <div v-else-if="module">
       <!-- Header -->
-      <div class="flex items-start justify-between mb-8">
-        <div class="flex items-center gap-4">
+      <div class="mb-8 flex flex-col items-start justify-between gap-5 lg:flex-row">
+        <div class="flex min-w-0 items-center gap-4">
           <ModuleIcon :icon="module.icon || 'box'" size="lg" />
           <div>
             <div class="flex items-center gap-3 mb-1">
@@ -29,7 +29,7 @@
             <button @click="install" :disabled="actionLoading !== ''" class="btn btn-primary text-sm">
               <i v-if="actionLoading === 'install'" class="feather icon-loader animate-spin mr-2"></i>
               <i v-else class="feather icon-download mr-2"></i>
-              {{ actionLoading === 'install' ? 'Installing…' : 'Install' }}
+              {{ actionLoading === 'install' ? t('moduleDetails.installing') : t('moduleDetails.install') }}
             </button>
           </template>
 
@@ -51,19 +51,19 @@
             <button v-if="module.capabilities.supports_service && module.state !== 'enabled'" @click="enable" :disabled="actionLoading !== ''" class="btn btn-success text-sm">
               <i v-if="actionLoading === 'enable'" class="feather icon-loader animate-spin mr-2"></i>
               <i v-else class="feather icon-play mr-2"></i>
-              Start
+              {{ t('moduleDetails.start') }}
             </button>
             
             <button v-if="module.capabilities.supports_service && module.state === 'enabled'" @click="disable" :disabled="actionLoading !== ''" class="btn btn-secondary text-sm">
               <i v-if="actionLoading === 'disable'" class="feather icon-loader animate-spin mr-2"></i>
               <i v-else class="feather icon-square mr-2"></i>
-              Stop
+              {{ t('moduleDetails.stop') }}
             </button>
             
             <button @click="uninstall" :disabled="actionLoading !== ''" class="btn btn-danger text-sm">
               <i v-if="actionLoading === 'uninstall'" class="feather icon-loader animate-spin mr-2"></i>
               <i v-else class="feather icon-trash mr-2"></i>
-              Remove
+              {{ t('moduleDetails.remove') }}
             </button>
           </template>
         </div>
@@ -72,8 +72,8 @@
       <div v-if="presetGroups.length" class="mb-6">
         <div class="flex items-center justify-between mb-3">
           <div>
-            <h2 class="text-lg font-semibold text-white">Protection Presets</h2>
-            <p class="text-sm text-[#94a3b8]">Safe defaults: 5 matching attempts in 10 minutes trigger a 24-hour ban.</p>
+            <h2 class="text-lg font-semibold text-white">{{ t('moduleDetails.presets') }}</h2>
+            <p class="text-sm text-[#94a3b8]">{{ t('moduleDetails.presetsDescription') }}</p>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -89,10 +89,10 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
               <button @click="executeDynamicAction(preset.enable)" :disabled="actionLoading !== ''" class="btn btn-success text-xs">
-                {{ actionLoading === preset.enable.id ? 'Applying…' : 'Enable' }}
+                {{ actionLoading === preset.enable.id ? t('moduleDetails.applying') : t('moduleDetails.enable') }}
               </button>
               <button @click="executeDynamicAction(preset.disable)" :disabled="actionLoading !== ''" class="btn btn-secondary text-xs">
-                {{ actionLoading === preset.disable.id ? 'Applying…' : 'Disable' }}
+                {{ actionLoading === preset.disable.id ? t('moduleDetails.applying') : t('moduleDetails.disable') }}
               </button>
             </div>
           </div>
@@ -109,21 +109,21 @@
       </div>
 
       <!-- Tab Content -->
-      <div class="bg-[#1e293b] border border-[#334155] rounded-xl p-6">
+      <div class="rounded-xl border border-[#334155] bg-[#1e293b] p-4 sm:p-6">
         
         <!-- Overview Tab -->
         <div v-if="currentPage && currentPage.type === 'overview'" class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h3 class="text-sm font-medium text-[#94a3b8] mb-1">Category</h3>
-              <p class="text-[#e2e8f0]">{{ module.category || 'System' }}</p>
+              <h3 class="text-sm font-medium text-[#94a3b8] mb-1">{{ t('moduleDetails.category') }}</h3>
+              <p class="text-[#e2e8f0]">{{ t(`categories.${module.category || 'System'}`) }}</p>
             </div>
             <div>
-              <h3 class="text-sm font-medium text-[#94a3b8] mb-1">Software Version</h3>
-              <p class="text-[#e2e8f0]">{{ module.software_version || 'Not Installed' }}</p>
+              <h3 class="text-sm font-medium text-[#94a3b8] mb-1">{{ t('moduleDetails.softwareVersion') }}</h3>
+              <p class="break-words text-[#e2e8f0]">{{ module.software_version || t('common.notInstalled') }}</p>
             </div>
             <div v-if="module.installed_at">
-              <h3 class="text-sm font-medium text-[#94a3b8] mb-1">Installed At</h3>
+              <h3 class="text-sm font-medium text-[#94a3b8] mb-1">{{ t('moduleDetails.installedAt') }}</h3>
               <p class="text-[#e2e8f0]">{{ new Date(module.installed_at).toLocaleString() }}</p>
             </div>
           </div>
@@ -131,28 +131,28 @@
           <!-- Dynamic Status -->
           <div class="mt-8 border-t border-[#334155] pt-6">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-white">Runtime Status</h3>
-              <button @click="loadStatus" class="text-xs text-indigo-400 hover:text-indigo-300">Refresh</button>
+              <h3 class="text-lg font-semibold text-white">{{ t('moduleDetails.runtimeStatus') }}</h3>
+              <button @click="loadStatus" class="text-xs text-indigo-400 hover:text-indigo-300">{{ t('common.refresh') }}</button>
             </div>
             
-            <div v-if="statusLoading" class="text-sm text-[#94a3b8]">Checking system status...</div>
+            <div v-if="statusLoading" class="text-sm text-[#94a3b8]">{{ t('moduleDetails.checkingStatus') }}</div>
             <div v-else-if="runtimeStatus" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                <div class="bg-black/20 p-4 rounded-lg">
-                 <div class="text-xs text-[#64748b] mb-1">Package State</div>
+                 <div class="text-xs text-[#64748b] mb-1">{{ t('moduleDetails.packageState') }}</div>
                  <div class="font-medium text-[#e2e8f0]">{{ runtimeStatus.packageStatus }}</div>
                </div>
                <div v-if="module.capabilities.supports_service" class="bg-black/20 p-4 rounded-lg">
-                 <div class="text-xs text-[#64748b] mb-1">Service State</div>
+                 <div class="text-xs text-[#64748b] mb-1">{{ t('moduleDetails.serviceState') }}</div>
                  <div class="font-medium" :class="runtimeStatus.serviceStatus === 'running' ? 'text-green-400' : 'text-red-400'">
                    {{ runtimeStatus.serviceStatus || 'unknown' }}
                  </div>
                </div>
                <div class="bg-black/20 p-4 rounded-lg">
-                 <div class="text-xs text-[#64748b] mb-1">Health</div>
+                 <div class="text-xs text-[#64748b] mb-1">{{ t('moduleDetails.health') }}</div>
                  <div class="font-medium text-[#e2e8f0]">{{ runtimeStatus.health || 'unknown' }}</div>
                </div>
                <div v-if="runtimeStatus.details" class="bg-black/20 p-4 rounded-lg col-span-full">
-                 <div class="text-xs text-[#64748b] mb-1">Details</div>
+                 <div class="text-xs text-[#64748b] mb-1">{{ t('moduleDetails.details') }}</div>
                  <pre class="text-xs text-[#e2e8f0] whitespace-pre-wrap">{{ runtimeStatus.details }}</pre>
                </div>
             </div>
@@ -171,30 +171,30 @@
               </div>
             </div>
             
-            <div v-else-if="!statusLoading && !runtimeStatus" class="text-sm text-[#94a3b8]">Status not available.</div>
+            <div v-else-if="!statusLoading && !runtimeStatus" class="text-sm text-[#94a3b8]">{{ t('moduleDetails.statusUnavailable') }}</div>
           </div>
         </div>
 
         <!-- Dependencies Tab -->
         <div v-else-if="currentPage && currentPage.type === 'dependencies'" class="space-y-6">
           <div v-if="!module.dependencies || (!module.dependencies.required?.length && !module.dependencies.recommended?.length)">
-            <p class="text-[#94a3b8]">No specific dependencies defined.</p>
+            <p class="text-[#94a3b8]">{{ t('moduleDetails.noDependencies') }}</p>
           </div>
           <div v-else class="space-y-4">
             <div v-if="module.dependencies.required?.length">
-              <h3 class="text-sm font-medium text-white mb-2">Required</h3>
+              <h3 class="text-sm font-medium text-white mb-2">{{ t('moduleDetails.required') }}</h3>
               <ul class="list-disc list-inside text-sm text-[#94a3b8]">
                 <li v-for="dep in module.dependencies.required" :key="dep">{{ dep }}</li>
               </ul>
             </div>
             <div v-if="module.dependencies.recommended?.length">
-              <h3 class="text-sm font-medium text-white mb-2">Recommended</h3>
+              <h3 class="text-sm font-medium text-white mb-2">{{ t('moduleDetails.recommended') }}</h3>
               <ul class="list-disc list-inside text-sm text-[#94a3b8]">
                 <li v-for="dep in module.dependencies.recommended" :key="dep">{{ dep }}</li>
               </ul>
             </div>
             <div v-if="module.dependencies.conflicts?.length">
-              <h3 class="text-sm font-medium text-red-400 mb-2">Conflicts</h3>
+              <h3 class="text-sm font-medium text-red-400 mb-2">{{ t('moduleDetails.conflicts') }}</h3>
               <ul class="list-disc list-inside text-sm text-[#94a3b8]">
                 <li v-for="dep in module.dependencies.conflicts" :key="dep">{{ dep }}</li>
               </ul>
@@ -224,6 +224,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import DataGrid from '@/components/DataGrid.vue'
 import SettingsForm from '@/components/SettingsForm.vue'
@@ -233,6 +234,7 @@ import api, { apiErrorMessage } from '@/api/client'
 import { useConfirmStore } from '@/stores/confirm'
 
 const confirm = useConfirmStore()
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -297,7 +299,7 @@ async function loadModule() {
     const { data } = await api.get(`/modules/${id}`)
     module.value = data
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, 'Unable to load module details')
+    errorMessage.value = apiErrorMessage(e, t('moduleDetails.loadError'))
   } finally {
     loading.value = false
   }
@@ -333,7 +335,7 @@ async function executeDynamicAction(act) {
   if (act.requiresConfirmation || act.dangerous) {
     const confirmed = await confirm.require({
       title: act.title,
-      message: `Are you sure you want to ${act.title}?`,
+      message: t('moduleDetails.confirmAction', { action: act.title }),
       confirmText: act.title,
       type: act.dangerous ? 'danger' : 'warning'
     })
@@ -346,7 +348,7 @@ async function executeDynamicAction(act) {
     await api.post(`/modules/${id}/actions/${act.id}`)
     await loadModule()
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, `Unable to ${act.title}`)
+    errorMessage.value = apiErrorMessage(e, t('moduleDetails.unableAction', { action: act.title }))
   } finally {
     actionLoading.value = ''
   }
@@ -354,9 +356,9 @@ async function executeDynamicAction(act) {
 
 async function action(endpoint, label) {
   if (['uninstall', 'disable', 'restart'].includes(endpoint)) {
-    let msg = `Are you sure you want to ${endpoint} the ${module.value.name} module?`
+    let msg = t('moduleDetails.confirmModuleAction', { action: endpoint, name: module.value.name })
     if (endpoint === 'uninstall' && module.value.dependencies?.required?.length) {
-      msg += `\n\nWarning: This may affect dependencies.`
+      msg += `\n\n${t('moduleDetails.dependencyWarning')}`
     }
     const confirmed = await confirm.require({
       title: `${endpoint.charAt(0).toUpperCase() + endpoint.slice(1)} Module`,
