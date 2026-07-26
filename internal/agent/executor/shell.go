@@ -46,7 +46,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "rm", AllowedArgs: []string{"-f", "-rf"}},
 	{Binary: "mkdir", AllowedArgs: []string{"-p"}},
 	{Binary: "tail", AllowedArgs: []string{"-n", "-f"}},
-	{Binary: "fail2ban-client", AllowedArgs: []string{"status", "set", "reload", "stop", "start", "unban", "unbanip", "-v"}},
+	{Binary: "fail2ban-client", AllowedArgs: []string{"status", "set", "reload", "stop", "start", "unban", "unbanip", "--version"}},
 	{Binary: "fail2ban-server", AllowedArgs: []string{"-b"}},
 	{Binary: "chown", AllowedArgs: []string{"-R"}},
 	{Binary: "chmod", AllowedArgs: []string{"-R"}},

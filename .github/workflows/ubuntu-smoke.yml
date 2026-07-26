@@ -27,7 +27,7 @@ jobs:
       - name: Install system dependency
         run: |
           sudo apt-get update
-          sudo apt-get install -y nginx nodejs
+          sudo apt-get install -y fail2ban nginx nodejs
           sudo systemctl enable --now nginx
       - name: Build and install
         run: |
@@ -57,6 +57,15 @@ jobs:
           curl -fsS http://127.0.0.1:5888/api/v1/modules \
             -H "Authorization: Bearer $token" |
             jq -e '.[] | select(.id == "nodejs" and (.state == "installed" or .state == "enabled"))'
+          for preset in sshd nginx_scanners nginx_auth php_probes; do
+            curl --fail-with-body -sS -X POST \
+              "http://127.0.0.1:5888/api/v1/modules/fail2ban/actions/enable_preset_${preset}" \
+              -H "Authorization: Bearer $token"
+          done
+          sudo fail2ban-client status opendeploy-sshd
+          sudo fail2ban-client status opendeploy-nginx-scanners
+          sudo fail2ban-client status opendeploy-nginx-auth
+          sudo fail2ban-client status opendeploy-php-probes
           sudo systemctl is-active --quiet opendeploy-update.path
           sudo test -s /etc/opendeploy/source-dir
           sudo install -d -o www-data -g www-data /var/www/smoke

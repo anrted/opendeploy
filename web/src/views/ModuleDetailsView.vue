@@ -24,7 +24,7 @@
           </div>
         </div>
         
-        <div class="flex gap-2">
+        <div class="flex flex-wrap justify-end gap-2 max-w-4xl">
           <template v-if="module.state === 'available'">
             <button @click="install" :disabled="actionLoading !== ''" class="btn btn-primary text-sm">
               <i v-if="actionLoading === 'install'" class="feather icon-loader animate-spin mr-2"></i>
@@ -35,10 +35,11 @@
 
           <template v-else-if="isInstalled(module.state)">
             
-            <template v-if="module.actions && module.actions.length">
-              <button v-for="act in module.actions" :key="act.id" 
+            <template v-if="generalActions.length">
+              <button v-for="act in generalActions" :key="act.id"
                 @click="executeDynamicAction(act)" 
                 :disabled="actionLoading !== ''" 
+                :title="act.description || act.title"
                 class="btn text-sm"
                 :class="'btn-' + act.color">
                 <i v-if="actionLoading === act.id" class="feather icon-loader animate-spin mr-2"></i>
@@ -65,6 +66,36 @@
               Remove
             </button>
           </template>
+        </div>
+      </div>
+
+      <div v-if="presetGroups.length" class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-lg font-semibold text-white">Protection Presets</h2>
+            <p class="text-sm text-[#94a3b8]">Safe defaults: 5 matching attempts in 10 minutes trigger a 24-hour ban.</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div v-for="preset in presetGroups" :key="preset.id" class="bg-[#1e293b] border border-[#334155] rounded-xl p-4">
+            <div class="flex items-start gap-3 mb-4">
+              <div class="rounded-lg bg-indigo-500/10 text-indigo-400 p-2">
+                <i class="feather icon-shield"></i>
+              </div>
+              <div>
+                <h3 class="font-medium text-white">{{ preset.title }}</h3>
+                <p class="text-xs text-[#94a3b8] mt-1">{{ preset.description }}</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button @click="executeDynamicAction(preset.enable)" :disabled="actionLoading !== ''" class="btn btn-success text-xs">
+                {{ actionLoading === preset.enable.id ? 'Applying…' : 'Enable' }}
+              </button>
+              <button @click="executeDynamicAction(preset.disable)" :disabled="actionLoading !== ''" class="btn btn-secondary text-xs">
+                {{ actionLoading === preset.disable.id ? 'Applying…' : 'Disable' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -220,6 +251,33 @@ const selectedLog = ref('')
 const currentPage = computed(() => {
   if (!module.value || !module.value.pages) return null
   return module.value.pages.find(p => p.id === activeTab.value) || module.value.pages[0]
+})
+
+const generalActions = computed(() => {
+  return (module.value?.actions || []).filter(action => !action.id.includes('_preset_'))
+})
+
+const presetGroups = computed(() => {
+  const actions = module.value?.actions || []
+  const labels = {
+    sshd: 'SSH',
+    nginx_scanners: 'Nginx Scanners',
+    nginx_auth: 'Nginx HTTP Auth',
+    php_probes: 'PHP Probes',
+  }
+
+  return Object.entries(labels).flatMap(([presetID, title]) => {
+    const enable = actions.find(action => action.id === `enable_preset_${presetID}`)
+    const disable = actions.find(action => action.id === `disable_preset_${presetID}`)
+    if (!enable || !disable) return []
+    return [{
+      id: presetID,
+      title,
+      description: enable.description,
+      enable,
+      disable,
+    }]
+  })
 })
 
 onMounted(async () => {
