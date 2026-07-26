@@ -20,7 +20,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.59.1
+          version: latest
           args: --timeout=5m
 
   test-backend:
@@ -31,7 +31,7 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
-      - run: go test -v -race -coverprofile=coverage.out ./...
+      - run: go test -v -race ./...
 
   lint-frontend:
     runs-on: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npm run lint
+      - run: npx eslint . --max-warnings 0
 
   test-frontend:
     runs-on: ubuntu-latest

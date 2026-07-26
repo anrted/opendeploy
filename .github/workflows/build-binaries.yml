@@ -65,16 +65,20 @@ jobs:
           go build -ldflags "-s -w -X github.com/anrted/opendeploy/pkg/version.Version=${{ inputs.version }}" -o build-amd64/opendeploy-cli ./cmd/cli
           tar -czvf opendeploy-linux-amd64.tar.gz -C build-amd64 opendeploy-core opendeploy-agent opendeploy-cli
 
+      - name: Install ARM64 cross-compiler
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build Binaries (arm64)
         env:
           GOOS: linux
           GOARCH: arm64
-          CGO_ENABLED: 0
+          CGO_ENABLED: 1
+          CC: aarch64-linux-gnu-gcc
         run: |
           mkdir -p build-arm64
           go build -ldflags "-s -w -X github.com/anrted/opendeploy/pkg/version.Version=${{ inputs.version }}" -o build-arm64/opendeploy-core ./cmd/core
           go build -ldflags "-s -w -X github.com/anrted/opendeploy/pkg/version.Version=${{ inputs.version }}" -o build-arm64/opendeploy-agent ./cmd/agent
-          go build -ldflags "-s -w -X github.com/anrted/opendeploy/pkg/version.Version=${{ inputs.version }}" -o build-arm64/opendeploy-cli ./cmd/cli
+          CGO_ENABLED=0 go build -ldflags "-s -w -X github.com/anrted/opendeploy/pkg/version.Version=${{ inputs.version }}" -o build-arm64/opendeploy-cli ./cmd/cli
           tar -czvf opendeploy-linux-arm64.tar.gz -C build-arm64 opendeploy-core opendeploy-agent opendeploy-cli
 
       - name: Generate Checksums

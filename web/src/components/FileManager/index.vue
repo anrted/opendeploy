@@ -128,7 +128,6 @@
         </div>
       </div>
     </div>
-    </div>
     
     <!-- Context Menu -->
     <div v-if="contextMenu.show" 
