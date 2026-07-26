@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
@@ -170,19 +171,12 @@ func respondError(w http.ResponseWriter, err error) {
 	})
 }
 
-// realIP returns the client IP from common proxy headers, falling back to RemoteAddr.
+// realIP returns the direct peer IP. Proxy headers are intentionally ignored
+// unless a trusted-proxy policy is introduced at the server boundary.
 func realIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		// X-Forwarded-For may contain a comma-separated list; use the first entry.
-		for i := 0; i < len(ip); i++ {
-			if ip[i] == ',' {
-				return ip[:i]
-			}
-		}
-		return ip
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
 	}
 	return r.RemoteAddr
 }

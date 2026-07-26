@@ -42,7 +42,15 @@ jobs:
       - name: Login and provision Nginx site
         run: |
           password=$(sudo sed -n 's/^OD_ADMIN_PASSWORD=//p' /etc/opendeploy/env)
+          cookie_jar=$(mktemp)
+          trap 'rm -f "$cookie_jar"' EXIT
+          csrf_token=$(curl -fsS -c "$cookie_jar" -D - \
+            http://127.0.0.1:5888/api/v1/auth/csrf -o /dev/null |
+            awk 'tolower($1) == "x-csrf-token:" { sub(/\r$/, "", $2); print $2 }')
+          test -n "$csrf_token"
           token=$(curl -fsS http://127.0.0.1:5888/api/v1/auth/login \
+            -b "$cookie_jar" \
+            -H "X-CSRF-Token: $csrf_token" \
             -H 'Content-Type: application/json' \
             -d "{\"username\":\"admin\",\"password\":\"$password\"}" | jq -r .access_token)
           test -n "$token"
@@ -54,6 +62,8 @@ jobs:
           sudo install -d -o www-data -g www-data /var/www/smoke
           echo smoke | sudo tee /var/www/smoke/index.html >/dev/null
           curl --fail-with-body -sS http://127.0.0.1:5888/api/v1/sites \
+            -b "$cookie_jar" \
+            -H "X-CSRF-Token: $csrf_token" \
             -H "Authorization: Bearer $token" \
             -H 'Content-Type: application/json' \
             -d '{"domain":"smoke.local","root_path":"/var/www/smoke","module_id":"nginx"}'
