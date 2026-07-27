@@ -69,7 +69,7 @@
         </div>
       </div>
 
-      <div v-if="presetGroups.length" class="mb-6">
+      <div v-if="isInstalled(module.state) && presetGroups.length" class="mb-6">
         <div class="flex items-center justify-between mb-3">
           <div>
             <h2 class="text-lg font-semibold text-white">{{ t('moduleDetails.presets') }}</h2>
@@ -100,8 +100,8 @@
       </div>
 
       <!-- Dynamic Tabs -->
-      <div v-if="module.pages && module.pages.length > 0" class="border-b border-[#334155] mb-6 flex overflow-x-auto">
-        <button v-for="page in module.pages" :key="page.id" @click="activeTab = page.id"
+      <div v-if="visiblePages.length > 0" class="border-b border-[#334155] mb-6 flex overflow-x-auto">
+        <button v-for="page in visiblePages" :key="page.id" @click="activeTab = page.id"
           class="px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors"
           :class="activeTab === page.id ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-[#64748b] hover:text-[#e2e8f0]'">
           {{ t(`modulePages.${page.id}`, page.title) }}
@@ -251,9 +251,14 @@ const runtimeStatus = ref(null)
 const activeTab = ref('overview')
 const selectedLog = ref('')
 
+const visiblePages = computed(() => {
+  const pages = module.value?.pages || []
+  if (isInstalled(module.value?.state)) return pages
+  return pages.filter(page => page.id === 'overview' || page.type === 'overview').slice(0, 1)
+})
+
 const currentPage = computed(() => {
-  if (!module.value || !module.value.pages) return null
-  return module.value.pages.find(p => p.id === activeTab.value) || module.value.pages[0]
+  return visiblePages.value.find(page => page.id === activeTab.value) || visiblePages.value[0] || null
 })
 
 const generalActions = computed(() => {
@@ -299,6 +304,9 @@ async function loadModule() {
     errorMessage.value = ''
     const { data } = await api.get(`/modules/${id}`)
     module.value = data
+    if (!isInstalled(data.state)) {
+      activeTab.value = 'overview'
+    }
   } catch (e) {
     errorMessage.value = apiErrorMessage(e, t('moduleDetails.loadError'))
   } finally {
