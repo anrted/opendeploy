@@ -12,15 +12,15 @@
     </div>
     <div class="flex items-center gap-3">
       <div v-if="selectedCount" class="mr-4 flex gap-2 border-r border-slate-700 pr-4">
-        <button class="btn-secondary" @click="$emit('archive')">Archive ({{ selectedCount }})</button>
-        <button class="btn-secondary border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300" @click="$emit('delete')">Delete ({{ selectedCount }})</button>
+        <button class="btn-secondary" @click="$emit('archive')">{{ $t('fileManager.archive', { count: selectedCount }) }}</button>
+        <button class="btn-secondary border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300" @click="$emit('delete')">{{ $t('fileManager.deleteSelected', { count: selectedCount }) }}</button>
       </div>
-      <button class="btn-secondary" @click="$emit('create-folder')">New Folder</button>
-      <input :value="search" class="input w-44" placeholder="Search files…" @input="$emit('update:search', $event.target.value.trim())" />
+      <button class="btn-secondary" @click="$emit('create-folder')">{{ $t('fileManager.newFolder') }}</button>
+      <input :value="search" class="input w-44" :placeholder="$t('fileManager.search')" @input="$emit('update:search', $event.target.value.trim())" />
       <label class="btn-primary cursor-pointer bg-indigo-600 hover:bg-indigo-500">
-        <input type="file" class="hidden" multiple @change="$emit('upload', $event)" />Upload
+        <input type="file" class="hidden" multiple @change="$emit('upload', $event)" />{{ $t('fileManager.upload') }}
       </label>
-      <button class="btn-secondary p-2" title="Refresh" @click="$emit('refresh')">
+      <button class="btn-secondary p-2" :title="$t('common.refresh')" @click="$emit('refresh')">
         <svg class="h-4 w-4" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
       </button>
     </div>

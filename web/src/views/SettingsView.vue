@@ -219,14 +219,14 @@ function validateField(spec) {
   const val = settings[spec.key]
   
   if (spec.required && !val) {
-    validationErrors[spec.key] = 'This field is required.'
+    validationErrors[spec.key] = t('settings.validation.required')
     return
   }
   
   if (val && spec.validation_regex) {
     const regex = new RegExp(spec.validation_regex)
     if (!regex.test(val)) {
-      validationErrors[spec.key] = spec.validation_msg || 'Invalid format.'
+      validationErrors[spec.key] = spec.validation_msg || t('settings.validation.invalid')
       return
     }
   }
@@ -241,7 +241,7 @@ async function checkUpdates() {
     const { data } = await api.get('/updates')
     updateStatus.value = data
   } catch (e) {
-    updateError.value = apiErrorMessage(e, 'Unable to check GitHub releases')
+    updateError.value = apiErrorMessage(e, t('settings.updates.checkFailed'))
   } finally {
     checkingUpdates.value = false
   }
@@ -250,17 +250,17 @@ async function checkUpdates() {
 async function applyUpdate(updateType = 'stable') {
   if (updateType === 'dev') {
     const confirmed = await confirm.require({
-      title: 'Developer Update',
-      message: 'Warning: Dev builds may be unstable. Continue?',
-      confirmText: 'Continue',
+      title: t('settings.updates.developerTitle'),
+      message: t('settings.updates.developerMessage'),
+      confirmText: t('settings.updates.continue'),
       type: 'warning'
     })
     if (!confirmed) return
   } else {
     const confirmed = await confirm.require({
-      title: 'System Update',
-      message: 'Update OpenDeploy from the trusted GitHub repository? Services will restart.',
-      confirmText: 'Update',
+      title: t('settings.updates.systemTitle'),
+      message: t('settings.updates.systemMessage'),
+      confirmText: t('settings.updates.update'),
       type: 'warning'
     })
     if (!confirmed) return
@@ -275,7 +275,7 @@ async function applyUpdate(updateType = 'stable') {
     updateMessage.value = t('settings.updates.started')
     await waitForUpdatedCore(targetCommit)
   } catch (e) {
-    updateError.value = apiErrorMessage(e, 'Unable to start update')
+    updateError.value = apiErrorMessage(e, t('settings.updates.startFailed'))
     applyingUpdate.value = false
   }
 }

@@ -1,9 +1,11 @@
 import { ref } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import { useI18n } from 'vue-i18n'
 
 const editableExtensions = ['.json', '.php', '.txt', '.js', '.vue', '.html', '.css', '.md', '.env', '.sh', '.yml', '.yaml', '.xml']
 
 export function useFileEditor(site, getFilePath, refresh, error) {
+  const { t } = useI18n()
   const editingFile = ref(null)
   const editingContent = ref('')
   const loadingFile = ref(false)
@@ -28,7 +30,7 @@ export function useFileEditor(site, getFilePath, refresh, error) {
       })
       editingContent.value = data
     } catch (e) {
-      error.value = apiErrorMessage(e, `Failed to load ${file.name}`)
+      error.value = apiErrorMessage(e, t('fileManager.loadFileFailed', { name: file.name }))
       editingFile.value = null
     } finally {
       loadingFile.value = false
@@ -46,7 +48,7 @@ export function useFileEditor(site, getFilePath, refresh, error) {
       editingContent.value = newContent
       refresh()
     } catch (e) {
-      error.value = apiErrorMessage(e, `Failed to save ${editingFile.value.name}`)
+      error.value = apiErrorMessage(e, t('fileManager.saveFileFailed', { name: editingFile.value.name }))
     } finally {
       savingFile.value = false
     }

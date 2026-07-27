@@ -20,7 +20,7 @@
                 {{ module.state }}
               </span>
             </div>
-            <p class="text-[#94a3b8] text-sm">{{ module.description }}</p>
+            <p class="text-[#94a3b8] text-sm">{{ t(`moduleCatalog.${module.id}`, module.description) }}</p>
           </div>
         </div>
         
@@ -39,12 +39,12 @@
               <button v-for="act in generalActions" :key="act.id"
                 @click="executeDynamicAction(act)" 
                 :disabled="actionLoading !== ''" 
-                :title="act.description || act.title"
+                :title="translateActionDescription(act)"
                 class="btn text-sm"
                 :class="'btn-' + act.color">
                 <span v-if="actionLoading === act.id" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
                 <AppIcon v-else :name="act.icon" class="mr-2 h-4 w-4" />
-                {{ act.title }}
+                {{ translateActionTitle(act) }}
               </button>
             </template>
 
@@ -83,8 +83,8 @@
                 <AppIcon name="shield" class="h-5 w-5" />
               </div>
               <div>
-                <h3 class="font-medium text-white">{{ preset.title }}</h3>
-                <p class="text-xs text-[#94a3b8] mt-1">{{ preset.description }}</p>
+                <h3 class="font-medium text-white">{{ translateActionTitle(preset.enable) }}</h3>
+                <p class="text-xs text-[#94a3b8] mt-1">{{ translateActionDescription(preset.enable) }}</p>
               </div>
             </div>
             <div class="grid grid-cols-2 gap-2">
@@ -104,7 +104,7 @@
         <button v-for="page in module.pages" :key="page.id" @click="activeTab = page.id"
           class="px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors"
           :class="activeTab === page.id ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-[#64748b] hover:text-[#e2e8f0]'">
-          {{ page.title }}
+          {{ t(`modulePages.${page.id}`, page.title) }}
         </button>
       </div>
 
@@ -332,12 +332,20 @@ function stateBadge(state) {
   return map[state] || 'badge-muted'
 }
 
+function translateActionTitle(action) {
+  return t(`moduleActions.${action.id}.title`, action.title)
+}
+
+function translateActionDescription(action) {
+  return t(`moduleActions.${action.id}.description`, action.description || translateActionTitle(action))
+}
+
 async function executeDynamicAction(act) {
   if (act.requiresConfirmation || act.dangerous) {
     const confirmed = await confirm.require({
-      title: act.title,
-      message: t('moduleDetails.confirmAction', { action: act.title }),
-      confirmText: act.title,
+      title: translateActionTitle(act),
+      message: t('moduleDetails.confirmAction', { action: translateActionTitle(act) }),
+      confirmText: translateActionTitle(act),
       type: act.dangerous ? 'danger' : 'warning'
     })
     if (!confirmed) return
@@ -349,22 +357,23 @@ async function executeDynamicAction(act) {
     await api.post(`/modules/${id}/actions/${act.id}`)
     await loadModule()
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, t('moduleDetails.unableAction', { action: act.title }))
+    errorMessage.value = apiErrorMessage(e, t('moduleDetails.unableAction', { action: translateActionTitle(act) }))
   } finally {
     actionLoading.value = ''
   }
 }
 
 async function action(endpoint, label) {
+  const endpointTitle = t(`moduleActions.${endpoint}.title`, endpoint)
   if (['uninstall', 'disable', 'restart'].includes(endpoint)) {
-    let msg = t('moduleDetails.confirmModuleAction', { action: endpoint, name: module.value.name })
+    let msg = t('moduleDetails.confirmModuleAction', { action: endpointTitle, name: module.value.name })
     if (endpoint === 'uninstall' && module.value.dependencies?.required?.length) {
       msg += `\n\n${t('moduleDetails.dependencyWarning')}`
     }
     const confirmed = await confirm.require({
-      title: `${endpoint.charAt(0).toUpperCase() + endpoint.slice(1)} Module`,
+      title: t('moduleDetails.actionTitle', { action: endpointTitle }),
       message: msg,
-      confirmText: endpoint.charAt(0).toUpperCase() + endpoint.slice(1),
+      confirmText: endpointTitle,
       type: endpoint === 'uninstall' ? 'danger' : 'warning'
     })
     if (!confirmed) return
@@ -379,7 +388,7 @@ async function action(endpoint, label) {
       await loadStatus()
     }
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, `Unable to ${endpoint} module`)
+    errorMessage.value = apiErrorMessage(e, t('moduleDetails.unableAction', { action: endpointTitle }))
   } finally {
     actionLoading.value = ''
   }

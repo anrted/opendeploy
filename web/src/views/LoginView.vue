@@ -18,7 +18,7 @@
         <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
           OpenDeploy
         </h1>
-        <p class="text-[#64748b] text-sm mt-2">Server Management Panel</p>
+        <p class="text-[#64748b] text-sm mt-2">{{ t('login.subtitle') }}</p>
       </div>
 
       <!-- Login form -->
@@ -78,6 +78,9 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const auth = useAuthStore()
 const router = useRouter()

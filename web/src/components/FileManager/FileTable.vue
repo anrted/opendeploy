@@ -6,15 +6,15 @@
         <thead class="sticky top-0 z-10">
           <tr class="bg-slate-800/90 backdrop-blur-md text-slate-300 text-sm font-semibold border-b border-slate-700/50">
             <th class="p-4 w-12 text-center"><input type="checkbox" class="rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-800" :checked="allSelected" @change="$emit('toggle-all', $event)" /></th>
-            <th class="p-4 cursor-pointer hover:text-white" @click="$emit('sort', 'name')">Name</th>
-            <th class="p-4 w-32 cursor-pointer hover:text-white" @click="$emit('sort', 'size')">Size</th>
-            <th class="p-4 w-48 cursor-pointer hover:text-white" @click="$emit('sort', 'mod_time')">Modified</th>
-            <th class="p-4 w-32 text-center">Owner</th>
-            <th class="p-4 w-24 text-center">Perms</th>
+            <th class="p-4 cursor-pointer hover:text-white" @click="$emit('sort', 'name')">{{ $t('fileManager.name') }}</th>
+            <th class="p-4 w-32 cursor-pointer hover:text-white" @click="$emit('sort', 'size')">{{ $t('fileManager.size') }}</th>
+            <th class="p-4 w-48 cursor-pointer hover:text-white" @click="$emit('sort', 'mod_time')">{{ $t('fileManager.modified') }}</th>
+            <th class="p-4 w-32 text-center">{{ $t('fileManager.owner') }}</th>
+            <th class="p-4 w-24 text-center">{{ $t('fileManager.permissionsShort') }}</th>
           </tr>
         </thead>
         <tbody class="text-slate-300 text-sm">
-          <tr v-if="loading"><td colspan="6" class="text-center py-12 text-slate-500">Loading directory contents...</td></tr>
+          <tr v-if="loading"><td colspan="6" class="text-center py-12 text-slate-500">{{ $t('fileManager.loading') }}</td></tr>
           <tr v-else-if="currentPath !== '/'" class="cursor-pointer hover:bg-slate-700/30 border-b border-slate-700/30" @click="$emit('up')">
             <td class="p-4 text-center text-slate-500">
               <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
@@ -24,7 +24,7 @@
             <td colspan="6" class="text-center py-12 text-slate-500">
               <div class="flex flex-col items-center">
                 <svg class="w-16 h-16 text-slate-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-                Directory is empty. Drag and drop files here to upload.
+                {{ $t('fileManager.empty') }}
               </div>
             </td>
           </tr>

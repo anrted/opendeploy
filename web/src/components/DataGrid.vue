@@ -8,11 +8,11 @@
           class="btn text-sm py-1.5"
           :class="action.dangerous ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-indigo-500 text-white hover:bg-indigo-600'">
           <i v-if="action.icon" :class="['feather', 'icon-' + action.icon, 'mr-1']"></i>
-          {{ action.title }}
+          {{ actionTitle(action) }}
         </button>
       </div>
       <div>
-        <input type="text" class="input w-64 text-sm py-1.5" placeholder="Search..." v-model="searchQuery" />
+        <input type="text" class="input w-64 text-sm py-1.5" :placeholder="t('dataGrid.search')" v-model="searchQuery" />
       </div>
     </div>
 
@@ -22,9 +22,9 @@
         <thead class="text-xs uppercase bg-black/20 text-[#64748b]">
           <tr>
             <th v-for="col in schema.columns" :key="col.key" class="px-6 py-3 font-medium">
-              {{ col.title }}
+              {{ t(`dataGrid.columns.${col.key}`, col.title) }}
             </th>
-            <th class="px-6 py-3 font-medium text-right">Actions</th>
+            <th class="px-6 py-3 font-medium text-right">{{ t('common.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -35,7 +35,7 @@
           </tr>
           <tr v-else-if="filteredData.length === 0" class="border-t border-[#334155]">
             <td :colspan="schema.columns.length + 1" class="p-0">
-              <EmptyState title="No Data" description="No data found." />
+              <EmptyState :title="t('dataGrid.noData')" :description="t('dataGrid.noDataDescription')" />
             </td>
           </tr>
           <tr v-for="(row, idx) in filteredData" :key="idx" class="border-t border-[#334155] hover:bg-[#334155]/30 transition-colors">
@@ -49,7 +49,7 @@
             </td>
             <td class="px-6 py-4 text-right">
               <!-- Actions for row would go here if schema supported row actions, for now just global actions -->
-              <span class="text-xs text-[#64748b]">No actions</span>
+              <span class="text-xs text-[#64748b]">{{ t('dataGrid.noActions') }}</span>
             </td>
           </tr>
         </tbody>
@@ -63,8 +63,10 @@ import { ref, computed, onMounted } from 'vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useConfirmStore } from '@/stores/confirm'
 import api, { apiErrorMessage } from '@/api/client'
+import { useI18n } from 'vue-i18n'
 
 const confirm = useConfirmStore()
+const { t } = useI18n()
 
 const props = defineProps({
   module: { type: Object, required: true },
@@ -75,6 +77,8 @@ const schema = ref({ columns: [], actions: [] })
 const data = ref([])
 const loading = ref(true)
 const searchQuery = ref('')
+
+const actionTitle = (action) => t(`moduleActions.${action.id}.title`, action.title)
 
 const fetchSchema = async () => {
   const { data } = await api.get(`/modules/${props.module.id}/datagrid/${props.page.id}/schema`)
@@ -94,19 +98,19 @@ const fetchData = async () => {
 const executeGlobalAction = async (action) => {
   if (action.requires_confirmation) {
     const confirmed = await confirm.require({
-      title: 'Confirm Action',
-      message: `Are you sure you want to ${action.title}?`,
-      confirmText: action.title,
+      title: t('dataGrid.confirm'),
+      message: t('dataGrid.confirmMessage', { action: actionTitle(action) }),
+      confirmText: actionTitle(action),
       type: action.dangerous ? 'danger' : 'warning'
     })
     if (!confirmed) return
   }
   try {
     await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`)
-    alert(`${action.title} executed successfully`)
+    alert(t('dataGrid.success', { action: actionTitle(action) }))
     fetchData()
   } catch (error) {
-    alert(`Failed to execute ${action.title}: ${apiErrorMessage(error)}`)
+    alert(t('dataGrid.failed', { action: actionTitle(action), error: apiErrorMessage(error) }))
   }
 }
 

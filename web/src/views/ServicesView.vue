@@ -3,8 +3,8 @@
     <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{{ errorMessage }}</div>
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="page-title">Services</h1>
-        <p class="page-subtitle">Manage system services</p>
+        <h1 class="page-title">{{ t('servicesPage.title') }}</h1>
+        <p class="page-subtitle">{{ t('servicesPage.subtitle') }}</p>
       </div>
       <button id="add-service-btn" class="btn-primary" @click="showAdd = true">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -18,16 +18,16 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Name</th><th>Unit</th><th>State</th><th>Actions</th>
+            <th>{{ t('servicesPage.name') }}</th><th>{{ t('servicesPage.unit') }}</th><th>{{ t('servicesPage.state') }}</th><th>{{ t('common.actions') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="4" class="text-center py-10 text-[#4a5568]">Loading…</td></tr>
+          <tr v-if="loading"><td colspan="4" class="text-center py-10 text-[#4a5568]">{{ t('common.loading') }}</td></tr>
           <tr v-else-if="!services.length">
             <td colspan="4" class="p-0">
               <EmptyState title="No Services" description="No system services tracked. Track a service to get started.">
                 <template #action>
-                  <button class="btn-primary" @click="showAdd = true">Add Service</button>
+                  <button class="btn-primary" @click="showAdd = true">{{ t('servicesPage.add') }}</button>
                 </template>
               </EmptyState>
             </td>
@@ -38,11 +38,11 @@
             <td><span :class="stateBadge(svc.state)">{{ svc.state }}</span></td>
             <td>
               <div class="flex gap-2">
-                <button v-if="svc.state !== 'running'" @click="startSvc(svc.id)" class="btn-success text-xs px-2 py-1">Start</button>
-                <button v-if="svc.state === 'running'" @click="stopSvc(svc.id)" class="btn-danger text-xs px-2 py-1">Stop</button>
-                <button @click="restartSvc(svc.id)" class="btn-secondary text-xs px-2 py-1">Restart</button>
-                <button @click="openLogs(svc)" class="btn-primary text-xs px-2 py-1">Logs</button>
-                <button @click="removeSvc(svc.id)" class="btn-danger text-xs px-2 py-1">Remove</button>
+                <button v-if="svc.state !== 'running'" @click="startSvc(svc.id)" class="btn-success text-xs px-2 py-1">{{ t('servicesPage.start') }}</button>
+                <button v-if="svc.state === 'running'" @click="stopSvc(svc.id)" class="btn-danger text-xs px-2 py-1">{{ t('servicesPage.stop') }}</button>
+                <button @click="restartSvc(svc.id)" class="btn-secondary text-xs px-2 py-1">{{ t('servicesPage.restart') }}</button>
+                <button @click="openLogs(svc)" class="btn-primary text-xs px-2 py-1">{{ t('servicesPage.logs') }}</button>
+                <button @click="removeSvc(svc.id)" class="btn-danger text-xs px-2 py-1">{{ t('servicesPage.remove') }}</button>
               </div>
             </td>
           </tr>
@@ -53,22 +53,22 @@
     <!-- Add service modal -->
     <div v-if="showAdd" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div class="card w-full max-w-md mx-4">
-        <h2 class="text-lg font-semibold text-white mb-4">Track Service</h2>
+        <h2 class="text-lg font-semibold text-white mb-4">{{ t('servicesPage.track') }}</h2>
         <form @submit.prevent="addService" class="space-y-4">
           <div>
-            <label class="label">Display Name</label>
+            <label class="label">{{ t('servicesPage.displayName') }}</label>
             <input v-model="form.name" class="input" placeholder="Redis" required />
           </div>
           <div>
-            <label class="label">systemd Unit</label>
+            <label class="label">{{ t('servicesPage.systemdUnit') }}</label>
             <input v-model="form.unit" class="input" placeholder="redis.service" required />
           </div>
           <div>
-            <label class="label">Description (optional)</label>
+            <label class="label">{{ t('servicesPage.description') }}</label>
             <input v-model="form.description" class="input" placeholder="In-memory data store" />
           </div>
           <div class="flex gap-3 justify-end">
-            <button type="button" class="btn-secondary" @click="showAdd = false">Cancel</button>
+            <button type="button" class="btn-secondary" @click="showAdd = false">{{ t('common.cancel') }}</button>
             <button type="submit" class="btn-primary" :disabled="adding">
               {{ adding ? 'Adding…' : 'Add' }}
             </button>
@@ -98,8 +98,10 @@ import api, { apiErrorMessage } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import { useConfirmStore } from '@/stores/confirm'
+import { useI18n } from 'vue-i18n'
 
 const confirm = useConfirmStore()
+const { t } = useI18n()
 
 const services = ref([])
 const loading = ref(true)
@@ -129,7 +131,7 @@ async function load() {
     const { data } = await api.get('/services')
     services.value = data || []
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, 'Unable to load services')
+    errorMessage.value = apiErrorMessage(e, t('servicesPage.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -148,7 +150,7 @@ async function addService() {
     form.name = form.unit = form.description = ''
     await load()
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, 'Unable to add service')
+    errorMessage.value = apiErrorMessage(e, t('servicesPage.addFailed'))
   } finally {
     adding.value = false
   }
@@ -157,9 +159,9 @@ async function addService() {
 async function serviceAction(id, action) {
   if (['stop', 'restart'].includes(action)) {
     const confirmed = await confirm.require({
-      title: `${action.charAt(0).toUpperCase() + action.slice(1)} Service`,
-      message: `Are you sure you want to ${action} this service?`,
-      confirmText: action.charAt(0).toUpperCase() + action.slice(1),
+      title: t('servicesPage.actionTitle', { action }),
+      message: t('servicesPage.actionMessage', { action }),
+      confirmText: action,
       type: action === 'stop' ? 'danger' : 'warning'
     })
     if (!confirmed) return
@@ -170,7 +172,7 @@ async function serviceAction(id, action) {
     await api.post(`/services/${id}/${action}`)
     await load()
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, `Unable to ${action} service`)
+    errorMessage.value = apiErrorMessage(e, t('servicesPage.actionFailed', { action }))
   } finally {
     actionID.value = ''
   }
@@ -180,9 +182,9 @@ const stopSvc    = (id) => serviceAction(id, 'stop')
 const restartSvc = (id) => serviceAction(id, 'restart')
 const removeSvc  = async (id) => {
   const confirmed = await confirm.require({
-    title: 'Remove Service',
-    message: 'Are you sure you want to remove this service from tracking?',
-    confirmText: 'Remove',
+    title: t('servicesPage.removeTitle'),
+    message: t('servicesPage.removeMessage'),
+    confirmText: t('servicesPage.remove'),
     type: 'danger'
   })
   if (!confirmed) return
@@ -191,7 +193,7 @@ const removeSvc  = async (id) => {
     await api.delete(`/services/${id}`)
     await load()
   } catch (e) {
-    errorMessage.value = apiErrorMessage(e, 'Unable to remove service')
+    errorMessage.value = apiErrorMessage(e, t('servicesPage.removeFailed'))
   }
 }
 

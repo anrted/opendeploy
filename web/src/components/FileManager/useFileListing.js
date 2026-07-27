@@ -1,7 +1,9 @@
 import { computed, ref } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import { useI18n } from 'vue-i18n'
 
 export function useFileListing(site) {
+  const { t } = useI18n()
   const currentPath = ref('/')
   const files = ref([])
   const loading = ref(true)
@@ -34,7 +36,7 @@ export function useFileListing(site) {
       const { data } = await api.get(`/sites/${site.id}/files`, { params: { path: currentPath.value } })
       files.value = data || []
     } catch (e) {
-      error.value = apiErrorMessage(e, 'Failed to load directory')
+      error.value = apiErrorMessage(e, t('fileManager.loadFailed'))
       files.value = []
     } finally {
       loading.value = false

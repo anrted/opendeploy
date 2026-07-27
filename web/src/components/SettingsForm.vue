@@ -8,13 +8,13 @@
             @click="showAdvanced = false" 
             :class="['px-4 py-1.5 text-sm font-medium rounded-md transition-colors', !showAdvanced ? 'bg-[#3b82f6] text-white' : 'text-[#94a3b8] hover:text-white']"
           >
-            Basic
+            {{ t('settingsForm.basic') }}
           </button>
           <button 
             @click="showAdvanced = true" 
             :class="['px-4 py-1.5 text-sm font-medium rounded-md transition-colors', showAdvanced ? 'bg-[#3b82f6] text-white' : 'text-[#94a3b8] hover:text-white']"
           >
-            Advanced
+            {{ t('settingsForm.advanced') }}
           </button>
         </div>
       </div>
@@ -26,17 +26,17 @@
             class="px-6 py-4 border-b border-[#334155] bg-[#0f172a]/50 flex justify-between items-center cursor-pointer"
             @click="category.collapsed = !category.collapsed"
           >
-            <h3 class="text-lg font-medium text-white">{{ category.name || 'General' }}</h3>
+            <h3 class="text-lg font-medium text-white">{{ categoryTitle(category.name) }}</h3>
             <i :class="['feather', category.collapsed ? 'icon-chevron-down' : 'icon-chevron-up', 'text-[#64748b]']"></i>
           </div>
           
           <div v-show="!category.collapsed" class="p-6 space-y-5">
             <div v-for="setting in category.fields" :key="setting.id" class="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div class="md:col-span-1">
-                <label class="block text-sm font-medium text-white mb-1">{{ setting.label }}</label>
-                <p v-if="setting.description" class="text-xs text-[#94a3b8]">{{ setting.description }}</p>
+                <label class="block text-sm font-medium text-white mb-1">{{ settingTitle(setting) }}</label>
+                <p v-if="setting.description" class="text-xs text-[#94a3b8]">{{ settingDescription(setting) }}</p>
                 <div v-if="setting.requires_restart" class="mt-2 inline-flex items-center text-xs text-amber-400 bg-amber-400/10 px-2 py-1 rounded">
-                  <i class="feather icon-alert-triangle mr-1"></i> Requires Restart
+                  <i class="feather icon-alert-triangle mr-1"></i> {{ t('settingsForm.restartRequired') }}
                 </div>
               </div>
               
@@ -72,7 +72,7 @@
         <button @click="saveSettings" class="btn btn-primary" :disabled="saving || hasErrors">
           <i v-if="saving" class="feather icon-loader animate-spin mr-2"></i>
           <i v-else class="feather icon-save mr-2"></i>
-          Save Settings
+          {{ t('settingsForm.save') }}
         </button>
       </div>
 
@@ -81,14 +81,14 @@
         <div class="bg-[#1e293b] rounded-xl border border-[#334155] p-6 max-w-md w-full shadow-2xl">
           <h3 class="text-xl font-bold text-white mb-2 flex items-center">
             <i class="feather icon-alert-circle text-amber-400 mr-2"></i>
-            Service Restart Required
+            {{ t('settingsForm.restartTitle') }}
           </h3>
           <p class="text-[#94a3b8] mb-6">
-            Some of the settings you modified require a full service restart to take effect. This may cause temporary downtime. Do you want to proceed?
+            {{ t('settingsForm.restartMessage') }}
           </p>
           <div class="flex justify-end space-x-3">
-            <button @click="showConfirmModal = false" class="btn bg-transparent border border-[#334155] text-white hover:bg-[#334155]">Cancel</button>
-            <button @click="executeSave" class="btn bg-amber-500 text-white hover:bg-amber-600">Restart & Save</button>
+            <button @click="showConfirmModal = false" class="btn bg-transparent border border-[#334155] text-white hover:bg-[#334155]">{{ t('common.cancel') }}</button>
+            <button @click="executeSave" class="btn bg-amber-500 text-white hover:bg-amber-600">{{ t('settingsForm.restartSave') }}</button>
           </div>
         </div>
       </div>
@@ -96,8 +96,8 @@
     
     <div v-else class="py-10 text-center text-[#64748b]">
       <i class="feather icon-settings text-4xl mb-4 text-[#475569]"></i>
-      <h3 class="text-lg font-medium text-white mb-2">No Settings</h3>
-      <p>This module does not have any configurable settings.</p>
+      <h3 class="text-lg font-medium text-white mb-2">{{ t('settingsForm.empty') }}</h3>
+      <p>{{ t('settingsForm.emptyDescription') }}</p>
     </div>
   </div>
 </template>
@@ -105,6 +105,9 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   moduleId: {
@@ -122,6 +125,13 @@ const formData = ref({})
 const errors = ref({})
 const saving = ref(false)
 const showConfirmModal = ref(false)
+
+const settingTitle = (setting) =>
+  t(`moduleSettings.${props.moduleId}.fields.${setting.id}.label`, setting.label)
+const settingDescription = (setting) =>
+  t(`moduleSettings.${props.moduleId}.fields.${setting.id}.description`, setting.description)
+const categoryTitle = (category) =>
+  t(`moduleSettings.categories.${category || 'General'}`, category || t('settingsForm.general'))
 
 // Organize fields into categories, filtering out advanced if needed
 const categories = computed(() => {
@@ -182,7 +192,7 @@ function validateField(setting) {
   try {
     const regex = new RegExp(setting.validation_regex)
     if (!regex.test(String(val))) {
-      errors.value[setting.id] = 'Invalid format'
+      errors.value[setting.id] = t('settings.validation.invalid')
     } else {
       delete errors.value[setting.id]
     }
@@ -234,9 +244,9 @@ async function executeSave() {
       }
     })
     
-    alert('Settings saved successfully')
+    alert(t('settings.saved'))
   } catch (err) {
-    alert('Failed to save settings: ' + apiErrorMessage(err))
+    alert(`${t('common.error')}: ${apiErrorMessage(err)}`)
   } finally {
     saving.value = false
   }

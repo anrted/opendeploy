@@ -8,7 +8,7 @@
           <DocumentTextIcon class="w-6 h-6 text-gray-400" />
           <h3 class="text-lg font-medium text-white truncate max-w-lg">
             {{ filename }}
-            <span v-if="isDirty" class="text-indigo-400 ml-2 text-sm">* unsaved</span>
+            <span v-if="isDirty" class="text-indigo-400 ml-2 text-sm">* {{ t('fileManager.unsaved') }}</span>
           </h3>
         </div>
         <div class="flex items-center space-x-3">
@@ -19,7 +19,7 @@
             :class="{ 'opacity-50 cursor-not-allowed': !isDirty || isSaving }"
           >
             <ArrowDownTrayIcon class="w-5 h-5" />
-            <span>{{ isSaving ? 'Saving...' : 'Save' }}</span>
+            <span>{{ isSaving ? t('fileManager.saving') : t('fileManager.save') }}</span>
           </button>
           <button @click="handleClose" class="text-gray-400 hover:text-gray-300 p-1">
             <XMarkIcon class="w-6 h-6" />
@@ -43,7 +43,7 @@
       <!-- Footer / Status Bar -->
       <div class="bg-[#007acc] text-white text-xs px-4 py-1 flex justify-between items-center select-none">
         <div class="flex space-x-4">
-          <span>{{ lineCount }} lines</span>
+          <span>{{ t('fileManager.lines', { count: lineCount }) }}</span>
           <span>{{ fileSizeStr }}</span>
         </div>
         <div class="flex space-x-4">
@@ -61,6 +61,7 @@ import { DocumentTextIcon, XMarkIcon, ArrowDownTrayIcon } from '@heroicons/vue/2
 import VueMonacoEditor from '@guolao/vue-monaco-editor'
 import { useConfirmStore } from '@/stores/confirm'
 import { formatBytes } from '@/utils/formatters'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
   filename: {
@@ -80,6 +81,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const confirm = useConfirmStore()
+const { t } = useI18n()
 const content = ref(props.initialContent)
 const originalContent = ref(props.initialContent)
 const isDirty = computed(() => content.value !== originalContent.value)
@@ -165,9 +167,9 @@ watch(() => props.isSaving, (newVal, oldVal) => {
 const handleClose = async () => {
   if (isDirty.value) {
     const isConfirmed = await confirm.require({
-      title: 'Unsaved Changes',
-      message: 'You have unsaved changes. Are you sure you want to close this file? Your changes will be lost.',
-      confirmText: 'Discard Changes',
+      title: t('fileManager.unsavedTitle'),
+      message: t('fileManager.unsavedMessage'),
+      confirmText: t('fileManager.discard'),
       type: 'danger'
     })
     

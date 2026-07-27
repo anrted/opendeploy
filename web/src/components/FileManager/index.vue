@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between px-6 py-4 border-b border-[#2d3748]/50 bg-[#161b27]/80">
       <div class="flex items-center gap-4">
-        <h2 class="text-xl font-bold text-white tracking-wide">File Manager</h2>
+        <h2 class="text-xl font-bold text-white tracking-wide">{{ t('fileManager.title') }}</h2>
         <span class="text-sm font-mono text-indigo-300 bg-indigo-900/30 border border-indigo-500/30 px-3 py-1 rounded-full shadow-inner">{{ site.domain }}</span>
       </div>
       <button @click="$emit('close')" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-all">
@@ -62,6 +62,7 @@
 import { ref, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
 import { useConfirmStore } from '@/stores/confirm'
+import { useI18n } from 'vue-i18n'
 import FileToolbar from './FileToolbar.vue'
 import FileTable from './FileTable.vue'
 import FileContextMenu from './FileContextMenu.vue'
@@ -71,6 +72,7 @@ import { useFileEditor } from './useFileEditor'
 const FileEditor = defineAsyncComponent(() => import('./FileEditor.vue'))
 
 const confirm = useConfirmStore()
+const { t } = useI18n()
 
 const props = defineProps({
   site: { type: Object, required: true }
@@ -131,7 +133,7 @@ async function processUploads(fileList) {
         params: { path: uploadPath }
       })
     } catch (e) {
-      error.value = apiErrorMessage(e, `Upload failed for ${file.name}`)
+      error.value = apiErrorMessage(e, t('fileManager.uploadFailed', { name: file.name }))
       break
     }
   }
@@ -139,7 +141,7 @@ async function processUploads(fileList) {
 }
 
 async function createFolder() {
-  const folderName = prompt('Enter new folder name:')
+  const folderName = prompt(t('fileManager.folderPrompt'))
   if (!folderName || !folderName.trim()) return
   error.value = ''
   const createPath = getFilePath(folderName.trim())
@@ -148,7 +150,7 @@ async function createFolder() {
     await api.post(`/sites/${props.site.id}/directory`, { path: createPath })
     refresh()
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Failed to create directory')
+    error.value = apiErrorMessage(e, t('fileManager.createFailed'))
   }
 }
 
@@ -168,9 +170,9 @@ function closeContextMenu() {
 async function deleteFile(file) {
   closeContextMenu()
   const confirmed = await confirm.require({
-    title: 'Delete File',
-    message: `Are you sure you want to delete ${file.name}?`,
-    confirmText: 'Delete',
+    title: t('fileManager.deleteTitle'),
+    message: t('fileManager.deleteMessage', { name: file.name }),
+    confirmText: t('common.delete'),
     type: 'danger'
   })
   if (!confirmed) return
@@ -183,16 +185,16 @@ async function deleteFile(file) {
     })
     refresh()
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Delete failed')
+    error.value = apiErrorMessage(e, t('fileManager.deleteFailed'))
   }
 }
 
 async function batchDelete() {
   if (!selectedFiles.value.length) return
   const confirmed = await confirm.require({
-    title: 'Delete Files',
-    message: `Are you sure you want to delete ${selectedFiles.value.length} selected items?`,
-    confirmText: 'Delete',
+    title: t('fileManager.batchDeleteTitle'),
+    message: t('fileManager.batchDeleteMessage', { count: selectedFiles.value.length }),
+    confirmText: t('common.delete'),
     type: 'danger'
   })
   if (!confirmed) return
@@ -205,13 +207,13 @@ async function batchDelete() {
     })
     refresh()
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Batch delete failed')
+    error.value = apiErrorMessage(e, t('fileManager.batchDeleteFailed'))
   }
 }
 
 async function renameFile(file) {
   closeContextMenu()
-  const newName = prompt('Enter new name:', file.name)
+  const newName = prompt(t('fileManager.renamePrompt'), file.name)
   if (!newName || newName === file.name) return
   
   try {
@@ -222,29 +224,29 @@ async function renameFile(file) {
     })
     refresh()
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Rename failed')
+    error.value = apiErrorMessage(e, t('fileManager.renameFailed'))
   }
 }
 
 async function copyFile(file) {
   closeContextMenu()
-  const destination = prompt('Copy to path:', getFilePath(`${file.name}.copy`))
+  const destination = prompt(t('fileManager.copyPrompt'), getFilePath(`${file.name}.copy`))
   if (!destination) return
   try {
     await api.post(`/sites/${props.site.id}/files/batch`, { action: 'copy', paths: [getFilePath(file.name)], dst_path: destination })
     refresh()
-  } catch (e) { error.value = apiErrorMessage(e, 'Copy failed') }
+  } catch (e) { error.value = apiErrorMessage(e, t('fileManager.copyFailed')) }
 }
 
 async function moveFile(file) {
   closeContextMenu()
   const source = getFilePath(file.name)
-  const destination = prompt('Move to path:', source)
+  const destination = prompt(t('fileManager.movePrompt'), source)
   if (!destination || destination === source) return
   try {
     await api.post(`/sites/${props.site.id}/files/batch`, { action: 'move', paths: [source], dst_path: destination })
     refresh()
-  } catch (e) { error.value = apiErrorMessage(e, 'Move failed') }
+  } catch (e) { error.value = apiErrorMessage(e, t('fileManager.moveFailed')) }
 }
 
 function isArchive(name = '') {
@@ -253,7 +255,7 @@ function isArchive(name = '') {
 
 async function batchArchive() {
   if (!selectedFiles.value.length) return
-  const archiveName = prompt('Archive filename:', 'archive.zip')
+  const archiveName = prompt(t('fileManager.archivePrompt'), 'archive.zip')
   if (!archiveName) return
   try {
     await api.post(`/sites/${props.site.id}/files/batch`, {
@@ -262,22 +264,22 @@ async function batchArchive() {
       dst_path: getFilePath(archiveName)
     })
     refresh()
-  } catch (e) { error.value = apiErrorMessage(e, 'Archive creation failed') }
+  } catch (e) { error.value = apiErrorMessage(e, t('fileManager.archiveFailed')) }
 }
 
 async function extractFile(file) {
   closeContextMenu()
-  const confirmed = await confirm.require({ title: 'Extract archive', message: `Extract ${file.name} into the current directory?`, confirmText: 'Extract', type: 'warning' })
+  const confirmed = await confirm.require({ title: t('fileManager.extractTitle'), message: t('fileManager.extractMessage', { name: file.name }), confirmText: t('fileManager.extract'), type: 'warning' })
   if (!confirmed) return
   try {
     await api.post(`/sites/${props.site.id}/files/batch`, { action: 'extract', paths: [getFilePath(file.name)], dst_path: currentPath.value })
     refresh()
-  } catch (e) { error.value = apiErrorMessage(e, 'Archive extraction failed') }
+  } catch (e) { error.value = apiErrorMessage(e, t('fileManager.extractFailed')) }
 }
 
 async function chmodFile(file) {
   closeContextMenu()
-  const perms = prompt('Enter new permissions (e.g. 644 or 755):', formatPerms(file.mode))
+  const perms = prompt(t('fileManager.permissionsPrompt'), formatPerms(file.mode))
   if (!perms) return
   
   try {
@@ -288,7 +290,7 @@ async function chmodFile(file) {
     })
     refresh()
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Chmod failed')
+    error.value = apiErrorMessage(e, t('fileManager.chmodFailed'))
   }
 }
 

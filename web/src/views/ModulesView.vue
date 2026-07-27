@@ -76,7 +76,7 @@
 
         <!-- Description -->
         <p class="text-xs text-[#64748b] flex-grow line-clamp-3">
-          {{ mod.description }}
+          {{ t(`moduleCatalog.${mod.id}`, mod.description) }}
         </p>
 
         <!-- Footer -->
