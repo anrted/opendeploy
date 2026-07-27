@@ -474,9 +474,7 @@ func parseFail2BanList(output, label string) []string {
 		parts := strings.Split(value, ",")
 		result := make([]string, 0, len(parts))
 		for _, part := range parts {
-			for _, item := range strings.Fields(strings.TrimSpace(part)) {
-				result = append(result, item)
-			}
+			result = append(result, strings.Fields(strings.TrimSpace(part))...)
 		}
 		return result
 	}
