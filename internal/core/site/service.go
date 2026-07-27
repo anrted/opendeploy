@@ -219,6 +219,8 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 	if site.SSL != nil {
 		if req.SSLProvider != nil {
 			site.SSL.Provider = *req.SSLProvider
+		} else if req.SSLCert != nil && strings.HasPrefix(*req.SSLCert, "/etc/letsencrypt") && site.SSL.Provider == "custom" {
+			site.SSL.Provider = "certbot"
 		}
 		if req.SSLCert != nil {
 			clean, err := normalizeCertificatePath(*req.SSLCert)
@@ -236,6 +238,37 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		}
 		if req.ForceHTTPS != nil {
 			site.SSL.ForceHTTPS = *req.ForceHTTPS
+		}
+	}
+
+	needsCertbot := false
+	if site.SSL != nil && site.SSL.Provider == "certbot" {
+		if previous.SSL == nil || previous.SSL.Provider != "certbot" {
+			needsCertbot = true
+		}
+	}
+
+	if needsCertbot {
+		var primaryDomain string
+		for _, d := range site.Domains {
+			if d.Type == DomainPrimary {
+				primaryDomain = d.Domain
+				break
+			}
+		}
+
+		tmpSpec := *site
+		tmpSpec.SSL = nil
+		if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, &tmpSpec); err != nil {
+			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
+		}
+		time.Sleep(2 * time.Second)
+		if err := s.obtainCertbotSSL(ctx, primaryDomain, site.RootPath); err != nil {
+			_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
+			if _, ok := err.(*apperrors.AppError); ok {
+				return nil, err
+			}
+			return nil, apperrors.Internal("failed to obtain SSL certificate", err)
 		}
 	}
 
