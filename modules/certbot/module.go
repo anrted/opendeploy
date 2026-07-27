@@ -164,6 +164,11 @@ func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
 		return apperrors.InvalidInput("Certbot is not installed on the server. Please install the Certbot module first.")
 	}
 
+	// Ensure the webroot exists and is readable by the web server
+	if err := m.deps.Agent.DirCreate(ctx, webroot, 0o755); err != nil {
+		m.logger.WarnContext(ctx, "failed to create webroot for certbot", "webroot", webroot, "error", err)
+	}
+
 	email := m.deps.Config.Get("email", "")
 	args := []string{"certonly", "--webroot", "-w", webroot, "-d", domain, "--agree-tos", "-n"}
 	if email == "" {
