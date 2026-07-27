@@ -14,6 +14,12 @@ Fail2Ban v1.0.2 reads log files and bans offending IPs`
 	}
 }
 
+func TestNormalizeFail2BanMachineVersion(t *testing.T) {
+	if got, want := normalizeFail2BanVersion("1.0.2\n"), "Fail2Ban v1.0.2"; got != want {
+		t.Fatalf("normalizeFail2BanVersion() = %q, want %q", got, want)
+	}
+}
+
 func TestProtectionPresetsHaveJailsAndSafeThresholds(t *testing.T) {
 	for _, presetID := range []string{"sshd", "nginx_scanners", "nginx_auth", "php_probes"} {
 		preset, ok := protectionPresets[presetID]

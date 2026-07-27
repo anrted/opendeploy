@@ -27,8 +27,8 @@
         <div class="flex flex-wrap justify-end gap-2 max-w-4xl">
           <template v-if="module.state === 'available'">
             <button @click="install" :disabled="actionLoading !== ''" class="btn btn-primary text-sm">
-              <i v-if="actionLoading === 'install'" class="feather icon-loader animate-spin mr-2"></i>
-              <i v-else class="feather icon-download mr-2"></i>
+              <span v-if="actionLoading === 'install'" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
+              <AppIcon v-else name="download" class="mr-2 h-4 w-4" />
               {{ actionLoading === 'install' ? t('moduleDetails.installing') : t('moduleDetails.install') }}
             </button>
           </template>
@@ -42,27 +42,27 @@
                 :title="act.description || act.title"
                 class="btn text-sm"
                 :class="'btn-' + act.color">
-                <i v-if="actionLoading === act.id" class="feather icon-loader animate-spin mr-2"></i>
-                <i v-else :class="'feather icon-' + act.icon + ' mr-2'"></i>
+                <span v-if="actionLoading === act.id" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
+                <AppIcon v-else :name="act.icon" class="mr-2 h-4 w-4" />
                 {{ act.title }}
               </button>
             </template>
 
             <button v-if="module.capabilities.supports_service && module.state !== 'enabled'" @click="enable" :disabled="actionLoading !== ''" class="btn btn-success text-sm">
-              <i v-if="actionLoading === 'enable'" class="feather icon-loader animate-spin mr-2"></i>
-              <i v-else class="feather icon-play mr-2"></i>
+              <span v-if="actionLoading === 'enable'" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
+              <AppIcon v-else name="play" class="mr-2 h-4 w-4" />
               {{ t('moduleDetails.start') }}
             </button>
             
             <button v-if="module.capabilities.supports_service && module.state === 'enabled'" @click="disable" :disabled="actionLoading !== ''" class="btn btn-secondary text-sm">
-              <i v-if="actionLoading === 'disable'" class="feather icon-loader animate-spin mr-2"></i>
-              <i v-else class="feather icon-square mr-2"></i>
+              <span v-if="actionLoading === 'disable'" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
+              <AppIcon v-else name="square" class="mr-2 h-4 w-4" />
               {{ t('moduleDetails.stop') }}
             </button>
             
             <button @click="uninstall" :disabled="actionLoading !== ''" class="btn btn-danger text-sm">
-              <i v-if="actionLoading === 'uninstall'" class="feather icon-loader animate-spin mr-2"></i>
-              <i v-else class="feather icon-trash mr-2"></i>
+              <span v-if="actionLoading === 'uninstall'" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
+              <AppIcon v-else name="trash" class="mr-2 h-4 w-4" />
               {{ t('moduleDetails.remove') }}
             </button>
           </template>
@@ -80,7 +80,7 @@
           <div v-for="preset in presetGroups" :key="preset.id" class="bg-[#1e293b] border border-[#334155] rounded-xl p-4">
             <div class="flex items-start gap-3 mb-4">
               <div class="rounded-lg bg-indigo-500/10 text-indigo-400 p-2">
-                <i class="feather icon-shield"></i>
+                <AppIcon name="shield" class="h-5 w-5" />
               </div>
               <div>
                 <h3 class="font-medium text-white">{{ preset.title }}</h3>
@@ -120,7 +120,7 @@
             </div>
             <div>
               <h3 class="text-sm font-medium text-[#94a3b8] mb-1">{{ t('moduleDetails.softwareVersion') }}</h3>
-              <p class="break-words text-[#e2e8f0]">{{ module.software_version || t('common.notInstalled') }}</p>
+              <p class="break-words text-[#e2e8f0]">{{ runtimeStatus?.softwareVersion || module.software_version || t('common.notInstalled') }}</p>
             </div>
             <div v-if="module.installed_at">
               <h3 class="text-sm font-medium text-[#94a3b8] mb-1">{{ t('moduleDetails.installedAt') }}</h3>
@@ -230,6 +230,7 @@ import DataGrid from '@/components/DataGrid.vue'
 import SettingsForm from '@/components/SettingsForm.vue'
 import LogsViewer from '@/components/LogsViewer.vue'
 import ModuleIcon from '@/components/ModuleIcon.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import api, { apiErrorMessage } from '@/api/client'
 import { useConfirmStore } from '@/stores/confirm'
 

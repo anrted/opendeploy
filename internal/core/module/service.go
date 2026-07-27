@@ -145,6 +145,13 @@ func (s *Service) Status(ctx context.Context, id string) (*contract.RuntimeStatu
 		s.logger.Warn("module service: runtime status failed", "module", m.ID(), "error", err)
 		return nil, apperrors.Internal("failed to fetch status", err)
 	}
+	report, healthErr := m.HealthCheck(ctx)
+	if healthErr != nil {
+		s.logger.Warn("module service: health check failed", "module", m.ID(), "error", healthErr)
+		status.Health = contract.HealthError
+	} else if report != nil {
+		status.Health = report.Status
+	}
 
 	// Optionally update the DB with the actual status here,
 	// e.g. updating rec.State or rec.Version if they have drifted.

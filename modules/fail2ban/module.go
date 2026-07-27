@@ -87,7 +87,7 @@ func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, stdout, stderr, _ := m.agent.CommandExecute(ctx, "fail2ban-client", "--version")
+	_, stdout, stderr, _ := m.agent.CommandExecute(ctx, "fail2ban-client", "-V")
 	versionOutput := stdout
 	if strings.TrimSpace(versionOutput) == "" {
 		versionOutput = stderr
@@ -123,6 +123,9 @@ func normalizeFail2BanVersion(output string) string {
 	version := strings.TrimSpace(output)
 	if version == "" {
 		return "unknown"
+	}
+	if !strings.ContainsAny(version, " \t\r\n") {
+		return "Fail2Ban v" + strings.TrimPrefix(version, "v")
 	}
 	return version
 }

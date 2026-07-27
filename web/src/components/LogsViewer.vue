@@ -27,17 +27,17 @@
               placeholder="Search in logs..." 
               class="input pl-9 w-full md:w-64"
             />
-            <i class="feather icon-search absolute left-3 top-2.5 text-[#64748b]"></i>
+            <AppIcon name="search" class="absolute left-3 top-2.5 h-4 w-4 text-[#64748b]" />
           </div>
           <button @click="autoRefresh = !autoRefresh" :class="['btn', autoRefresh ? 'btn-primary' : 'bg-[#1e293b] border border-[#334155] text-[#94a3b8]']" title="Auto-refresh">
-            <i class="feather icon-refresh-cw" :class="{'animate-spin-slow': autoRefresh}"></i>
+            <AppIcon name="refresh-cw" class="h-4 w-4" :class="{'animate-spin-slow': autoRefresh}" />
           </button>
           <button @click="clearLog" class="btn btn-danger" title="Clear Log" :disabled="clearing">
-            <i v-if="clearing" class="feather icon-loader animate-spin"></i>
-            <i v-else class="feather icon-trash-2"></i>
+            <span v-if="clearing" class="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
+            <AppIcon v-else name="trash-2" class="h-4 w-4" />
           </button>
           <button @click="downloadLog" class="btn bg-[#1e293b] border border-[#334155] text-[#94a3b8] hover:text-white" title="Download Log">
-            <i class="feather icon-download"></i>
+            <AppIcon name="download" class="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -48,7 +48,7 @@
       <div class="relative bg-[#0f172a] rounded-xl border border-[#334155] overflow-hidden">
         <div v-if="loading && !lines.length" class="absolute inset-0 z-10 flex items-center justify-center bg-[#0f172a]/80 backdrop-blur-sm">
           <div class="flex flex-col items-center">
-            <i class="feather icon-loader animate-spin text-3xl text-indigo-500 mb-2"></i>
+            <span class="mb-2 h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-r-transparent"></span>
             <span class="text-[#94a3b8] text-sm">Loading logs...</span>
           </div>
         </div>
@@ -74,13 +74,13 @@
           @click="scrollToBottom" 
           class="absolute bottom-4 right-6 bg-[#3b82f6]/20 text-[#3b82f6] hover:bg-[#3b82f6] hover:text-white border border-[#3b82f6]/50 rounded-full w-10 h-10 flex items-center justify-center transition-all shadow-lg"
         >
-          <i class="feather icon-arrow-down"></i>
+          <AppIcon name="arrow-down" class="h-5 w-5" />
         </button>
       </div>
     </div>
     
     <div v-else class="py-10 text-center text-[#64748b]">
-      <i class="feather icon-file-text text-4xl mb-4 text-[#475569]"></i>
+      <AppIcon name="file-text" class="mx-auto mb-4 h-10 w-10 text-[#475569]" />
       <h3 class="text-lg font-medium text-white mb-2">No Logs Available</h3>
       <p>This module does not expose any logs.</p>
     </div>
@@ -91,6 +91,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
 import { useConfirmStore } from '@/stores/confirm'
+import AppIcon from '@/components/AppIcon.vue'
 
 const confirm = useConfirmStore()
 

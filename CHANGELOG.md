@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.13] - 2026-07-27
+
+### Fixed
+
+- Restored all log-viewer and module-action icons with bundled SVG components.
+- Kept the mobile sidebar close control hidden until the sidebar is open and
+  constrained the language selector within narrow headers.
+- Read the Fail2Ban machine-readable version instead of rendering its CLI help.
+- Populated runtime health for every module from its health report instead of
+  displaying `unknown`.
+
 ## [0.1.12] - 2026-07-27
 
 ### Added
@@ -71,3 +82,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 [0.1.0-alpha]: https://github.com/anrted/opendeploy/releases/tag/v0.1.0-alpha
 [0.1.12]: https://github.com/anrted/opendeploy/releases/tag/v0.1.12
+[0.1.13]: https://github.com/anrted/opendeploy/releases/tag/v0.1.13

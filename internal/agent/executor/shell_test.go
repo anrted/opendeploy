@@ -62,7 +62,7 @@ func TestCommandTimeoutIsApplied(t *testing.T) {
 }
 
 func TestValidatorAllowsFail2BanVersion(t *testing.T) {
-	err := NewValidator().Validate("fail2ban-client", []string{"--version"})
+	err := NewValidator().Validate("fail2ban-client", []string{"-V"})
 	if err != nil {
 		t.Fatalf("fail2ban version query rejected: %v", err)
 	}

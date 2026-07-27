@@ -28,7 +28,7 @@
               <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
             </button>
             <LanguageSwitcher />
-            <button class="ml-1 rounded-lg p-1 text-text-muted hover:text-text-main lg:hidden" :aria-label="$t('sidebar.menu')" @click="mobileOpen = false">
+            <button v-if="mobileOpen" class="ml-1 rounded-lg p-1 text-text-muted hover:text-text-main lg:hidden" :aria-label="$t('sidebar.menu')" @click="mobileOpen = false">
               <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
