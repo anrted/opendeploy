@@ -113,6 +113,9 @@ func (m *Module) enableProtectionPreset(ctx context.Context, presetID string) er
 		return fmt.Errorf("apply %s protection: %w", presetID, err)
 	}
 	if err := m.agent.ServiceEnable(ctx, "fail2ban"); err != nil {
+		m.restoreConfig(ctx, filterSnapshot)
+		m.restoreConfig(ctx, jailSnapshot)
+		_ = m.agent.ServiceRestart(ctx, "fail2ban")
 		return fmt.Errorf("enable fail2ban at boot: %w", err)
 	}
 	return nil

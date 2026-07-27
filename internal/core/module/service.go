@@ -114,6 +114,16 @@ func (s *Service) Get(ctx context.Context, id string) (*ModuleView, error) {
 		installedVersion = *rec.Version
 	}
 
+	actions := m.Actions()
+	if provider, ok := m.(contract.ActionAvailabilityProvider); ok {
+		availability := provider.ActionAvailability(ctx)
+		for i := range actions {
+			if available, exists := availability[actions[i].ID]; exists {
+				actions[i].Disabled = !available
+			}
+		}
+	}
+
 	return &ModuleView{
 		ID:              m.ID(),
 		Name:            m.Name(),
@@ -127,7 +137,7 @@ func (s *Service) Get(ctx context.Context, id string) (*ModuleView, error) {
 		State:           rec.State,
 		InstalledAt:     rec.InstalledAt,
 		Pages:           m.Pages(),
-		Actions:         m.Actions(),
+		Actions:         actions,
 		Logs:            m.Logs(),
 		SettingsSchema:  m.SettingsSchema(),
 	}, nil

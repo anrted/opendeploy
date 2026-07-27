@@ -3,6 +3,7 @@ package fail2ban
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -224,6 +225,19 @@ func (m *Module) Actions() []contract.ActionDef {
 	}
 }
 
+// ActionAvailability derives preset state from the managed jail files. A
+// preset is enabled only when its jail configuration is present.
+func (m *Module) ActionAvailability(ctx context.Context) map[string]bool {
+	availability := make(map[string]bool, len(protectionPresets)*2)
+	for presetID, preset := range protectionPresets {
+		_, err := m.agent.FileRead(ctx, preset.jailPath)
+		enabled := err == nil
+		availability["enable_preset_"+presetID] = !enabled
+		availability["disable_preset_"+presetID] = enabled
+	}
+	return availability
+}
+
 func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
 	switch actionID {
 	case "enable_preset_sshd":
@@ -337,8 +351,8 @@ func (m *Module) DataGridSchema(pageID string) (contract.DataGridSchema, error) 
 				{Key: "ip", Title: "IP Address", Type: "text", Sortable: true},
 				{Key: "jail", Title: "Jail", Type: "badge", Sortable: true},
 			},
-			Actions: []contract.ActionDef{
-				{ID: "unban", Title: "Unban", Icon: "unlock"},
+			RowActions: []contract.ActionDef{
+				{ID: "unban", Title: "Unban", Icon: "unlock", Color: "warning", RequiresConfirmation: true},
 			},
 		}, nil
 	default:
@@ -347,23 +361,124 @@ func (m *Module) DataGridSchema(pageID string) (contract.DataGridSchema, error) 
 }
 
 func (m *Module) DataGridData(ctx context.Context, pageID string) ([]map[string]any, error) {
-	if pageID == "jails" {
-		// Example data for now
-		return []map[string]any{
-			{"name": "sshd", "status": "Active", "banned": 12},
-			{"name": "nginx-http-auth", "status": "Active", "banned": 0},
-		}, nil
+	jails, err := m.activeJails(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if pageID == "banned_ips" {
-		// Example data
-		return []map[string]any{
-			{"ip": "192.168.1.100", "jail": "sshd"},
-			{"ip": "10.0.0.5", "jail": "nginx-http-auth"},
-		}, nil
+
+	switch pageID {
+	case "jails":
+		rows := make([]map[string]any, 0, len(jails))
+		for _, jail := range jails {
+			banned, err := m.bannedIPs(ctx, jail)
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, map[string]any{
+				"name": jail, "status": "Active", "banned": len(banned),
+			})
+		}
+		return rows, nil
+	case "banned_ips":
+		var rows []map[string]any
+		for _, jail := range jails {
+			banned, err := m.bannedIPs(ctx, jail)
+			if err != nil {
+				return nil, err
+			}
+			for _, ip := range banned {
+				rows = append(rows, map[string]any{"ip": ip, "jail": jail})
+			}
+		}
+		return rows, nil
+	default:
+		return nil, fmt.Errorf("unknown datagrid page: %s", pageID)
 	}
-	return nil, fmt.Errorf("unknown datagrid page: %s", pageID)
 }
 
 func (m *Module) DataGridAction(ctx context.Context, pageID string, actionID string, payload map[string]any) error {
-	return nil
+	switch {
+	case pageID == "jails" && actionID == "unban_all":
+		return m.runFail2BanClient(ctx, "unban", "--all")
+	case pageID == "banned_ips" && actionID == "unban":
+		ip, ipOK := payload["ip"].(string)
+		jail, jailOK := payload["jail"].(string)
+		if !ipOK || !jailOK || strings.TrimSpace(ip) == "" || strings.TrimSpace(jail) == "" {
+			return fmt.Errorf("jail and IP address are required")
+		}
+		if net.ParseIP(ip) == nil {
+			return fmt.Errorf("invalid IP address")
+		}
+		jails, err := m.activeJails(ctx)
+		if err != nil {
+			return err
+		}
+		knownJail := false
+		for _, activeJail := range jails {
+			if jail == activeJail {
+				knownJail = true
+				break
+			}
+		}
+		if !knownJail {
+			return fmt.Errorf("unknown jail: %s", jail)
+		}
+		return m.runFail2BanClient(ctx, "set", jail, "unbanip", ip)
+	default:
+		return fmt.Errorf("unknown datagrid action %s for page %s", actionID, pageID)
+	}
+}
+
+func (m *Module) activeJails(ctx context.Context) ([]string, error) {
+	output, err := m.fail2BanClientOutput(ctx, "status")
+	if err != nil {
+		return nil, err
+	}
+	return parseFail2BanList(output, "Jail list:"), nil
+}
+
+func (m *Module) bannedIPs(ctx context.Context, jail string) ([]string, error) {
+	output, err := m.fail2BanClientOutput(ctx, "status", jail)
+	if err != nil {
+		return nil, err
+	}
+	return parseFail2BanList(output, "Banned IP list:"), nil
+}
+
+func (m *Module) fail2BanClientOutput(ctx context.Context, args ...string) (string, error) {
+	exitCode, stdout, stderr, err := m.agent.CommandExecute(ctx, "fail2ban-client", args...)
+	if err != nil {
+		return "", err
+	}
+	if exitCode != 0 {
+		return "", fmt.Errorf("fail2ban-client %s failed: %s", strings.Join(args, " "), strings.TrimSpace(stderr))
+	}
+	return stdout, nil
+}
+
+func (m *Module) runFail2BanClient(ctx context.Context, args ...string) error {
+	_, err := m.fail2BanClientOutput(ctx, args...)
+	return err
+}
+
+func parseFail2BanList(output, label string) []string {
+	for _, line := range strings.Split(output, "\n") {
+		index := strings.Index(line, label)
+		if index < 0 {
+			continue
+		}
+		value := strings.TrimSpace(line[index+len(label):])
+		if value == "" {
+			return []string{}
+		}
+		parts := strings.Split(value, ",")
+		result := make([]string, 0, len(parts))
+		for _, part := range parts {
+			for _, item := range strings.Fields(strings.TrimSpace(part)) {
+				result = append(result, item)
+			}
+		}
+		return result
+	}
+	return []string{}
 }

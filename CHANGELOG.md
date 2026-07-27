@@ -5,6 +5,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.14] - 2026-07-28
+
+### Added
+
+- Complete Russian localization for the user, firewall, module, log, task,
+  service, site, settings, dashboard, and File Manager interfaces.
+- Runtime availability metadata for module actions.
+
+### Fixed
+
+- Limited uninstalled module pages to the Overview section until installation.
+- Reflected the actual enabled state of Fail2Ban protection presets and disabled
+  actions that do not apply to the current state.
+- Replaced placeholder Fail2Ban jail and banned-IP rows with live
+  `fail2ban-client` data.
+- Added working per-IP unban actions and global unban-all handling.
+- Reloaded the correct data-grid schema and rows when switching between the
+  Fail2Ban Jails and Banned IP sections.
+- Rolled back preset configuration if enabling Fail2Ban at boot fails.
+
 ## [0.1.13] - 2026-07-27
 
 ### Fixed
@@ -83,3 +103,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.1.0-alpha]: https://github.com/anrted/opendeploy/releases/tag/v0.1.0-alpha
 [0.1.12]: https://github.com/anrted/opendeploy/releases/tag/v0.1.12
 [0.1.13]: https://github.com/anrted/opendeploy/releases/tag/v0.1.13
+[0.1.14]: https://github.com/anrted/opendeploy/releases/tag/v0.1.14

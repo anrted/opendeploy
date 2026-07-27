@@ -48,8 +48,16 @@
               </span>
             </td>
             <td class="px-6 py-4 text-right">
-              <!-- Actions for row would go here if schema supported row actions, for now just global actions -->
-              <span class="text-xs text-[#64748b]">{{ t('dataGrid.noActions') }}</span>
+              <div v-if="schema.row_actions?.length" class="flex justify-end gap-2">
+                <button v-for="action in schema.row_actions" :key="action.id"
+                  class="btn btn-secondary px-2 py-1 text-xs"
+                  :disabled="actionLoading === `${action.id}:${idx}`"
+                  @click="executeAction(action, row, idx)">
+                  <i v-if="action.icon" :class="['feather', 'icon-' + action.icon, 'mr-1']"></i>
+                  {{ actionTitle(action) }}
+                </button>
+              </div>
+              <span v-else class="text-xs text-[#64748b]">{{ t('dataGrid.noActions') }}</span>
             </td>
           </tr>
         </tbody>
@@ -73,9 +81,10 @@ const props = defineProps({
   page: { type: Object, required: true }
 })
 
-const schema = ref({ columns: [], actions: [] })
+const schema = ref({ columns: [], actions: [], row_actions: [] })
 const data = ref([])
 const loading = ref(true)
+const actionLoading = ref('')
 const searchQuery = ref('')
 
 const actionTitle = (action) => t(`moduleActions.${action.id}.title`, action.title)
@@ -96,7 +105,11 @@ const fetchData = async () => {
 }
 
 const executeGlobalAction = async (action) => {
-  if (action.requires_confirmation) {
+  await executeAction(action)
+}
+
+const executeAction = async (action, row = null, rowIndex = null) => {
+  if (action.requiresConfirmation || action.requires_confirmation || action.dangerous) {
     const confirmed = await confirm.require({
       title: t('dataGrid.confirm'),
       message: t('dataGrid.confirmMessage', { action: actionTitle(action) }),
@@ -105,12 +118,16 @@ const executeGlobalAction = async (action) => {
     })
     if (!confirmed) return
   }
+  const loadingKey = rowIndex === null ? action.id : `${action.id}:${rowIndex}`
+  actionLoading.value = loadingKey
   try {
-    await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`)
+    await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`, row || {})
     alert(t('dataGrid.success', { action: actionTitle(action) }))
-    fetchData()
+    await fetchData()
   } catch (error) {
     alert(t('dataGrid.failed', { action: actionTitle(action), error: apiErrorMessage(error) }))
+  } finally {
+    actionLoading.value = ''
   }
 }
 

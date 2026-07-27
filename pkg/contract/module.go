@@ -86,10 +86,17 @@ type ActionDef struct {
 	ID                   string `json:"id"`
 	Title                string `json:"title"`
 	Description          string `json:"description,omitempty"`
-	Icon                 string `json:"icon"`      // e.g. "play", "stop", "refresh", "trash"
-	Color                string `json:"color"`     // e.g. "primary", "danger", "warning", "success"
+	Icon                 string `json:"icon"`  // e.g. "play", "stop", "refresh", "trash"
+	Color                string `json:"color"` // e.g. "primary", "danger", "warning", "success"
 	RequiresConfirmation bool   `json:"requiresConfirmation"`
 	Dangerous            bool   `json:"dangerous"`
+	Disabled             bool   `json:"disabled,omitempty"`
+}
+
+// ActionAvailabilityProvider lets a module expose runtime availability for
+// metadata-driven actions. Missing action IDs remain available by default.
+type ActionAvailabilityProvider interface {
+	ActionAvailability(ctx context.Context) map[string]bool
 }
 
 // PageType defines the type of page in the UI.
@@ -113,7 +120,7 @@ type ModulePage struct {
 type LogDef struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	Type string `json:"type"` // "systemd" or "file"
+	Type string `json:"type"`           // "systemd" or "file"
 	Path string `json:"path,omitempty"` // For file type logs
 }
 
@@ -205,9 +212,9 @@ const (
 type ServiceStatusState string
 
 const (
-	ServiceRunning  ServiceStatusState = "running"
-	ServiceStopped  ServiceStatusState = "stopped"
-	ServiceFailed   ServiceStatusState = "failed"
+	ServiceRunning ServiceStatusState = "running"
+	ServiceStopped ServiceStatusState = "stopped"
+	ServiceFailed  ServiceStatusState = "failed"
 )
 
 // Property represents a generic key-value metric or status property.
@@ -542,8 +549,9 @@ type DataGridProvider interface {
 
 // DataGridSchema describes the layout and available actions of a datagrid page.
 type DataGridSchema struct {
-	Columns []DataGridColumn `json:"columns"`
-	Actions []ActionDef      `json:"actions"`
+	Columns    []DataGridColumn `json:"columns"`
+	Actions    []ActionDef      `json:"actions"`
+	RowActions []ActionDef      `json:"row_actions,omitempty"`
 }
 
 // DataGridColumn describes a single column in the datagrid.

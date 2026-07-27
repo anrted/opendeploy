@@ -88,10 +88,14 @@
               </div>
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <button @click="executeDynamicAction(preset.enable)" :disabled="actionLoading !== ''" class="btn btn-success text-xs">
+              <button @click="executeDynamicAction(preset.enable)"
+                :disabled="actionLoading !== '' || preset.enable.disabled"
+                class="btn btn-success text-xs disabled:cursor-not-allowed disabled:opacity-40">
                 {{ actionLoading === preset.enable.id ? t('moduleDetails.applying') : t('moduleDetails.enable') }}
               </button>
-              <button @click="executeDynamicAction(preset.disable)" :disabled="actionLoading !== ''" class="btn btn-secondary text-xs">
+              <button @click="executeDynamicAction(preset.disable)"
+                :disabled="actionLoading !== '' || preset.disable.disabled"
+                class="btn btn-secondary text-xs disabled:cursor-not-allowed disabled:opacity-40">
                 {{ actionLoading === preset.disable.id ? t('moduleDetails.applying') : t('moduleDetails.disable') }}
               </button>
             </div>
@@ -214,7 +218,7 @@
 
         <!-- DataGrid Tab -->
         <div v-else-if="currentPage && currentPage.type === 'datagrid'" class="space-y-6">
-          <DataGrid :module="module" :page="currentPage" />
+          <DataGrid :key="currentPage.id" :module="module" :page="currentPage" />
         </div>
         
       </div>
@@ -349,6 +353,8 @@ function translateActionDescription(action) {
 }
 
 async function executeDynamicAction(act) {
+  if (act.disabled || actionLoading.value !== '') return
+
   if (act.requiresConfirmation || act.dangerous) {
     const confirmed = await confirm.require({
       title: translateActionTitle(act),

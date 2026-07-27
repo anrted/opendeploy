@@ -34,3 +34,24 @@ func TestProtectionPresetsHaveJailsAndSafeThresholds(t *testing.T) {
 		}
 	}
 }
+
+func TestParseFail2BanList(t *testing.T) {
+	status := `Status
+|- Number of jail:	3
+` + "`- Jail list:\tsshd, opendeploy-nginx-auth, opendeploy-php-probes"
+
+	got := parseFail2BanList(status, "Jail list:")
+	want := []string{"sshd", "opendeploy-nginx-auth", "opendeploy-php-probes"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected jail list: got %v, want %v", got, want)
+	}
+
+	jailStatus := `Status for the jail: sshd
+|- Filter
+` + "`- Actions\n   |- Currently banned:\t2\n   `- Banned IP list:\t192.0.2.10 2001:db8::5"
+	got = parseFail2BanList(jailStatus, "Banned IP list:")
+	want = []string{"192.0.2.10", "2001:db8::5"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected banned IP list: got %v, want %v", got, want)
+	}
+}
