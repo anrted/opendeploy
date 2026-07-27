@@ -94,7 +94,10 @@ func (m *Module) Disable(_ context.Context) error { return nil }
 func (m *Module) Restart(_ context.Context) error { return nil }
 
 func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
-	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "nodejs")
+	installed, version, err := m.deps.Agent.PackageInstalled(ctx, "nodejs")
+	if err != nil {
+		return nil, err
+	}
 	pkgStatus := contract.PackageNotInstalled
 	if installed {
 		pkgStatus = contract.PackageInstalled
@@ -106,7 +109,10 @@ func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 }
 
 func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
-	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "nodejs")
+	installed, version, err := m.deps.Agent.PackageInstalled(ctx, "nodejs")
+	if err != nil {
+		return &contract.HealthReport{Status: contract.HealthError, Message: "cannot query Node.js package state"}, nil
+	}
 	if !installed {
 		return &contract.HealthReport{
 			Status:  contract.HealthWarning,

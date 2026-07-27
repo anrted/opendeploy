@@ -201,7 +201,7 @@ func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 // CreateDirectory handles POST /api/v1/sites/{id}/directory
 func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	
+
 	// We read path from JSON body {"path": "/foo"} or query params
 	var req struct {
 		Path string `json:"path"`
@@ -210,12 +210,12 @@ func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, apperrors.InvalidInput("invalid json body"))
 		return
 	}
-	
+
 	if req.Path == "" {
 		writeError(w, apperrors.InvalidInput("path is required"))
 		return
 	}
-	
+
 	if err := h.service.CreateDirectory(r.Context(), id, req.Path); err != nil {
 		writeError(w, err)
 		return
@@ -235,7 +235,7 @@ func principalOrEmpty(r *http.Request) *auth.Principal {
 // BatchOperations handles POST /api/v1/sites/{id}/files/batch
 func (h *Handler) BatchOperations(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	
+
 	var req struct {
 		Action  string   `json:"action"` // "delete", "copy", "move", "chmod", "chown"
 		Paths   []string `json:"paths"`
@@ -246,6 +246,26 @@ func (h *Handler) BatchOperations(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, apperrors.InvalidInput("invalid json body"))
+		return
+	}
+	if req.Action == "archive" {
+		if err := h.service.CreateArchive(r.Context(), id, req.Paths, req.DstPath); err != nil {
+			writeError(w, err)
+			return
+		}
+		respond(w, http.StatusOK, map[string]string{"message": "archive created"})
+		return
+	}
+	if req.Action == "extract" {
+		if len(req.Paths) != 1 {
+			writeError(w, apperrors.InvalidInput("extract requires exactly one archive"))
+			return
+		}
+		if err := h.service.ExtractArchive(r.Context(), id, req.Paths[0], req.DstPath); err != nil {
+			writeError(w, err)
+			return
+		}
+		respond(w, http.StatusOK, map[string]string{"message": "archive extracted"})
 		return
 	}
 

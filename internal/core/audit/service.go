@@ -108,3 +108,29 @@ func (s *Service) List(ctx context.Context, limit, offset int) ([]Entry, error) 
 	}
 	return entries, rows.Err()
 }
+
+func (s *Service) ListForUser(ctx context.Context, userID string, limit, offset int) ([]Entry, error) {
+	const q = `SELECT id, user_id, action, resource, metadata, ip_address, status, created_at
+	           FROM audit_log WHERE user_id = ? OR resource = ?
+	           ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	rows, err := s.db.QueryContext(ctx, q, userID, "user:"+userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("audit: list for user: %w", err)
+	}
+	defer rows.Close()
+	entries := make([]Entry, 0)
+	for rows.Next() {
+		var e Entry
+		var createdAt string
+		var meta *string
+		if err := rows.Scan(&e.ID, &e.UserID, &e.Action, &e.Resource, &meta, &e.IPAddress, &e.Status, &createdAt); err != nil {
+			return nil, fmt.Errorf("audit: scan for user: %w", err)
+		}
+		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		if meta != nil {
+			_ = json.Unmarshal([]byte(*meta), &e.Metadata)
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}

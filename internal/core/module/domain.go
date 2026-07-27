@@ -50,21 +50,39 @@ const (
 type JobState string
 
 const (
-	JobPending JobState = "pending"
-	JobRunning JobState = "running"
-	JobSuccess JobState = "success"
-	JobError   JobState = "error"
+	JobPending  JobState = "pending"
+	JobRunning  JobState = "running"
+	JobSuccess  JobState = "success"
+	JobError    JobState = "error"
+	JobCanceled JobState = "canceled"
 )
 
 // Job represents a background operation.
 type Job struct {
 	ID         string     `json:"id"`
+	Name       string     `json:"name"`
 	Type       JobType    `json:"type"`
 	Payload    string     `json:"payload"` // JSON
 	State      JobState   `json:"state"`
+	Progress   int        `json:"progress"`
 	Output     string     `json:"output"`
 	Error      string     `json:"error,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
+}
+
+type JobFilter struct {
+	Query  string
+	State  JobState
+	Type   JobType
+	Limit  int
+	Offset int
+}
+
+type JobPage struct {
+	Items  []Job `json:"items"`
+	Total  int   `json:"total"`
+	Limit  int   `json:"limit"`
+	Offset int   `json:"offset"`
 }

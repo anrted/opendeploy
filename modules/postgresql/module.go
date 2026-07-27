@@ -130,16 +130,23 @@ func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 }
 
 func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
+	installed, version, packageErr := m.deps.Agent.PackageInstalled(ctx, "postgresql")
+	if packageErr != nil {
+		return &contract.HealthReport{Status: contract.HealthError, Message: "cannot query PostgreSQL package state"}, nil
+	}
+	if !installed {
+		return &contract.HealthReport{Status: contract.HealthWarning, Message: "PostgreSQL is not installed"}, nil
+	}
 	st, err := m.deps.Agent.ServiceStatus(ctx, "postgresql")
 	if err != nil || !st.Active {
 		return &contract.HealthReport{
 			Status:  contract.HealthWarning,
-			Message: "PostgreSQL is not running",
+			Message: fmt.Sprintf("PostgreSQL %s is installed but not running", version),
 		}, nil
 	}
 	return &contract.HealthReport{
 		Status:  contract.HealthOK,
-		Message: "PostgreSQL is running",
+		Message: fmt.Sprintf("PostgreSQL %s is installed and running", version),
 	}, nil
 }
 

@@ -274,8 +274,7 @@ func (m *Module) ClearLog(ctx context.Context, logID string) error {
 	if logID != "fail2ban_log" {
 		return fmt.Errorf("log %s not found", logID)
 	}
-	_, _, _, err := m.agent.CommandExecute(ctx, "truncate", "-s", "0", "/var/log/fail2ban.log")
-	return err
+	return m.agent.FileWrite(ctx, "/var/log/fail2ban.log", nil, 0o640)
 }
 
 func (m *Module) SettingsSchema() []contract.SettingField {

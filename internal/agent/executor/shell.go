@@ -1,121 +1,185 @@
-// Package executor provides safe, audited shell command execution for the Agent.
-//
-// Only commands on the explicit allowlist can be executed. Arguments are
-// sanitised to prevent injection. Every execution is logged.
+// Package executor provides bounded, audited process execution for the Agent.
 package executor
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os/exec"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
-// AllowedCommand defines a command that the Agent is permitted to execute.
+const (
+	defaultCommandTimeout = 2 * time.Minute
+	maxCommandOutput      = 1 << 20
+	maxCommandArgument    = 4096
+)
+
+// AllowedCommand defines an executable and its accepted flags/keywords.
 type AllowedCommand struct {
-	// Binary is the exact basename of the executable (e.g. "apt-get").
-	Binary string
-	// AllowedArgs are prefixes or exact values that arguments must match.
-	// If empty, no arguments are allowed.
+	Binary      string
 	AllowedArgs []string
 }
 
-// allowlist is the complete set of commands the Agent may execute.
-// Changing this list requires a code change — intentional by design.
+// Mutating file operations are deliberately absent. They must use typed Agent
+// filesystem RPCs where roots, modes and ownership can be validated.
 var allowlist = []AllowedCommand{
-	{Binary: "apt-get", AllowedArgs: []string{"install", "remove", "update", "upgrade", "autoremove", "-y", "-q", "--no-install-recommends"}},
-	{Binary: "apt", AllowedArgs: []string{"install", "remove", "update", "upgrade", "list", "search", "--installed", "-y", "-q"}},
-	{Binary: "dnf", AllowedArgs: []string{"install", "remove", "update", "list", "-y", "-q"}},
-	{Binary: "yum", AllowedArgs: []string{"install", "remove", "update", "list", "-y", "-q"}},
+	{Binary: "apt-get", AllowedArgs: []string{"install", "remove", "update", "upgrade", "autoremove", "-y", "-q", "--no-install-recommends", "--upgrade", "--purge"}},
+	{Binary: "apt", AllowedArgs: []string{"install", "remove", "update", "upgrade", "list", "search", "show", "--installed", "-y", "-q"}},
+	{Binary: "dnf", AllowedArgs: []string{"install", "remove", "update", "upgrade", "list", "search", "info", "--installed", "-y", "-q"}},
+	{Binary: "yum", AllowedArgs: []string{"install", "remove", "update", "upgrade", "list", "search", "info", "--installed", "-y", "-q"}},
 	{Binary: "systemctl", AllowedArgs: []string{
-		"start", "stop", "restart", "reload", "enable", "disable",
-		"status", "is-active", "is-enabled", "daemon-reload",
-		"show", "-p", "SubState", "--value",
+		"start", "stop", "restart", "reload", "enable", "disable", "status",
+		"is-active", "is-enabled", "daemon-reload", "show", "-p", "--property",
+		"SubState", "--value",
 	}},
 	{Binary: "journalctl", AllowedArgs: []string{"-u", "-n", "-f", "--no-pager", "-o", "short", "short-precise"}},
-	{Binary: "ufw", AllowedArgs: []string{"allow", "deny", "delete", "status", "numbered", "enable", "disable"}},
+	{Binary: "ufw", AllowedArgs: []string{"allow", "deny", "reject", "delete", "status", "numbered", "enable", "disable", "reset", "--force"}},
 	{Binary: "nginx", AllowedArgs: []string{"-t", "-s", "reload", "stop", "quit", "-v"}},
 	{Binary: "php", AllowedArgs: []string{"-v", "-m"}},
 	{Binary: "node", AllowedArgs: []string{"--version"}},
 	{Binary: "npm", AllowedArgs: []string{"--version"}},
 	{Binary: "git", AllowedArgs: []string{"clone", "pull", "fetch", "checkout", "rev-parse", "--version"}},
-	{Binary: "ln", AllowedArgs: []string{"-s", "-f"}},
-	{Binary: "rm", AllowedArgs: []string{"-f", "-rf"}},
-	{Binary: "mkdir", AllowedArgs: []string{"-p"}},
 	{Binary: "tail", AllowedArgs: []string{"-n", "-f"}},
 	{Binary: "fail2ban-client", AllowedArgs: []string{"status", "set", "reload", "stop", "start", "unban", "unbanip", "--version"}},
-	{Binary: "fail2ban-server", AllowedArgs: []string{"-b"}},
-	{Binary: "chown", AllowedArgs: []string{"-R"}},
-	{Binary: "chmod", AllowedArgs: []string{"-R"}},
-	{Binary: "cat", AllowedArgs: []string{}},
-	{Binary: "hostname", AllowedArgs: []string{}},
+	{Binary: "fail2ban-server", AllowedArgs: []string{"-b", "-t"}},
+	{Binary: "hostname"},
 	{Binary: "timedatectl", AllowedArgs: []string{"set-timezone", "status"}},
-	{Binary: "useradd", AllowedArgs: []string{"-m", "-s", "-r", "-d"}},
-	{Binary: "userdel", AllowedArgs: []string{"-r", "-f"}},
 	{Binary: "certbot", AllowedArgs: []string{"certonly", "--webroot", "-w", "-d", "-n", "--agree-tos", "-m", "--expand", "--register-unsafely-without-email"}},
 }
 
-// Validator checks whether a requested command is permitted.
 type Validator struct{}
 
-// NewValidator creates a Validator.
 func NewValidator() *Validator { return &Validator{} }
 
-// Validate returns nil if the command is on the allowlist.
-// It checks the binary name and verifies each argument has an allowed prefix.
+var (
+	safeOperand = regexp.MustCompile(`^[A-Za-z0-9_@%+.,:/=-]+$`)
+	safeService = regexp.MustCompile(`^[A-Za-z0-9_.@-]+$`)
+	safePackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+._:-]*$`)
+	decimal     = regexp.MustCompile(`^[0-9]+$`)
+)
+
 func (v *Validator) Validate(binary string, args []string) error {
+	if binary == "" || binary != strings.TrimSpace(binary) || strings.ContainsAny(binary, `/\`) {
+		return fmt.Errorf("validator: invalid binary name")
+	}
 	var allowed *AllowedCommand
-	for _, cmd := range allowlist {
-		if cmd.Binary == binary {
-			allowed = &cmd
+	for i := range allowlist {
+		if allowlist[i].Binary == binary {
+			allowed = &allowlist[i]
 			break
 		}
 	}
 	if allowed == nil {
 		return fmt.Errorf("validator: binary %q is not on the allowlist", binary)
 	}
-
 	for _, arg := range args {
+		if arg == "" || len(arg) > maxCommandArgument || strings.ContainsAny(arg, "\x00\r\n") {
+			return fmt.Errorf("validator: malformed argument for %q", binary)
+		}
 		if !isAllowedArg(arg, allowed.AllowedArgs) {
 			return fmt.Errorf("validator: argument %q is not permitted for %q", arg, binary)
 		}
 	}
-	return nil
+	return validateOperands(binary, args)
 }
 
-// isAllowedArg returns true if arg matches any allowed prefix or exact value.
-// Arguments that are not flags (don't start with "-") are considered data
-// arguments (package names, paths) and are passed through after sanitisation.
 func isAllowedArg(arg string, allowed []string) bool {
-	// Data arguments (no leading dash) are always allowed — they are sanitised
-	// at the exec level by never passing through a shell.
 	if !strings.HasPrefix(arg, "-") {
-		return true
+		return safeOperand.MatchString(arg) && !strings.Contains(arg, "..")
 	}
-	for _, a := range allowed {
-		if arg == a || strings.HasPrefix(arg, a) {
+	for _, accepted := range allowed {
+		if arg == accepted || strings.HasPrefix(arg, accepted+"=") {
 			return true
 		}
 	}
 	return false
 }
 
-// ─── Shell ─────────────────────────────────────────────────────────────────
+func validateOperands(binary string, args []string) error {
+	switch binary {
+	case "apt-get", "apt", "dnf", "yum":
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "-") || isPackageAction(arg) {
+				continue
+			}
+			if !safePackage.MatchString(arg) {
+				return fmt.Errorf("validator: invalid package operand")
+			}
+		}
+	case "systemctl":
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "-") || isSystemdAction(arg) || arg == "SubState" {
+				continue
+			}
+			if !safeService.MatchString(arg) {
+				return fmt.Errorf("validator: invalid service operand")
+			}
+		}
+	case "journalctl":
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "-") || arg == "short" || arg == "short-precise" || decimal.MatchString(arg) {
+				continue
+			}
+			if !safeService.MatchString(arg) {
+				return fmt.Errorf("validator: invalid journal operand")
+			}
+		}
+	case "tail":
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "-") || decimal.MatchString(arg) {
+				continue
+			}
+			if !pathWithin(arg, "/var/log") {
+				return fmt.Errorf("validator: log path is outside /var/log")
+			}
+		}
+	case "git":
+		// Generic Git mutation is intentionally unavailable until repository
+		// roots and remote URLs are carried by a typed RPC.
+		for _, arg := range args {
+			if arg != "--version" && arg != "rev-parse" {
+				return fmt.Errorf("validator: git mutation requires a typed Agent operation")
+			}
+		}
+	}
+	return nil
+}
 
-// Shell executes validated commands without a shell intermediary.
-// Using exec.Command directly (not sh -c) prevents shell injection.
+func isPackageAction(value string) bool {
+	switch value {
+	case "install", "remove", "update", "upgrade", "autoremove", "list", "search", "show", "info":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSystemdAction(value string) bool {
+	switch value {
+	case "start", "stop", "restart", "reload", "enable", "disable", "status", "is-active", "is-enabled", "daemon-reload", "show":
+		return true
+	default:
+		return false
+	}
+}
+
+func pathWithin(path, root string) bool {
+	return path == root || (strings.HasPrefix(path, root+"/") && !strings.Contains(path, ".."))
+}
+
 type Shell struct {
-	validator *Validator
-	logger    *slog.Logger
-	// restrictedPath is the PATH passed to subprocesses.
-	// Limiting PATH prevents PATH hijacking attacks.
+	validator      *Validator
+	logger         *slog.Logger
 	restrictedPath string
 }
 
-// NewShell creates a Shell with the provided Validator.
 func NewShell(validator *Validator, logger *slog.Logger) *Shell {
 	return &Shell{
 		validator:      validator,
@@ -124,7 +188,6 @@ func NewShell(validator *Validator, logger *slog.Logger) *Shell {
 	}
 }
 
-// Result holds the output of a completed command.
 type Result struct {
 	Stdout   string
 	Stderr   string
@@ -132,118 +195,166 @@ type Result struct {
 	Duration time.Duration
 }
 
-// Run executes binary with args after validation.
-// It enforces a maximum execution timeout via the context.
 func (s *Shell) Run(ctx context.Context, binary string, args ...string) (*Result, error) {
 	if err := s.validator.Validate(binary, args); err != nil {
 		return nil, fmt.Errorf("shell: %w", err)
 	}
+	ctx, cancel := withCommandTimeout(ctx, binary)
+	defer cancel()
 
-	s.logger.InfoContext(ctx, "shell: execute", "binary", binary, "args", args)
-
+	s.logger.InfoContext(ctx, "agent process start", "binary", binary, "arg_count", len(args))
 	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Env = []string{
-		"PATH=" + s.restrictedPath,
-		"HOME=/root",
-		"LANG=en_US.UTF-8",
-		"DEBIAN_FRONTEND=noninteractive",
-	}
+	cmd.Env = restrictedEnvironment(s.restrictedPath)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	start := time.Now()
+	var stdout, stderr limitedBuffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	started := time.Now()
 	err := cmd.Run()
-	duration := time.Since(start)
-
-	result := &Result{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		Duration: duration,
-	}
-
+	result := &Result{Stdout: stdout.String(), Stderr: stderr.String(), Duration: time.Since(started)}
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
 	}
-
 	if err != nil {
-		s.logger.WarnContext(ctx, "shell: command failed",
-			"binary", binary,
-			"exit_code", result.ExitCode,
-			"stderr", result.Stderr,
-			"duration_ms", duration.Milliseconds(),
-		)
+		s.logger.WarnContext(ctx, "agent process failed", "binary", binary, "exit_code", result.ExitCode, "duration_ms", result.Duration.Milliseconds())
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return result, fmt.Errorf("shell: %s exceeded deadline: %w", binary, ctx.Err())
+		}
 		return result, fmt.Errorf("shell: %s: %w", binary, err)
 	}
-
-	s.logger.InfoContext(ctx, "shell: command succeeded",
-		"binary", binary,
-		"duration_ms", duration.Milliseconds(),
-	)
+	s.logger.InfoContext(ctx, "agent process complete", "binary", binary, "duration_ms", result.Duration.Milliseconds())
 	return result, nil
 }
 
-// Stream executes binary with args and sends each output line to outCh.
-// The channel is closed when the command finishes. Returns an error only if
-// the command fails to start; runtime errors appear as lines prefixed with
-// "[stderr] ".
 func (s *Shell) Stream(ctx context.Context, outCh chan<- string, binary string, args ...string) error {
 	if err := s.validator.Validate(binary, args); err != nil {
 		return fmt.Errorf("shell: %w", err)
 	}
-
+	ctx, cancel := withCommandTimeout(ctx, binary)
 	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Env = []string{
-		"PATH=" + s.restrictedPath,
-		"HOME=/root",
-		"LANG=en_US.UTF-8",
-		"DEBIAN_FRONTEND=noninteractive",
-	}
-
-	stdoutPipe, err := cmd.StdoutPipe()
+	cmd.Env = restrictedEnvironment(s.restrictedPath)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		cancel()
 		return fmt.Errorf("shell: stdout pipe: %w", err)
 	}
-	stderrPipe, err := cmd.StderrPipe()
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		cancel()
 		return fmt.Errorf("shell: stderr pipe: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
+		cancel()
 		return fmt.Errorf("shell: start %s: %w", binary, err)
 	}
 
-	readLines := func(r interface{ Read([]byte) (int, error) }, prefix string) {
-		buf := make([]byte, 4096)
-		var line strings.Builder
-		for {
-			n, readErr := r.Read(buf)
-			if n > 0 {
-				for _, b := range buf[:n] {
-					if b == '\n' {
-						outCh <- prefix + line.String()
-						line.Reset()
-					} else {
-						line.WriteByte(b)
-					}
-				}
-			}
-			if readErr != nil {
-				if line.Len() > 0 {
-					outCh <- prefix + line.String()
-				}
-				return
+	var readers sync.WaitGroup
+	readers.Add(2)
+	go func() {
+		defer readers.Done()
+		streamLines(ctx, stdout, outCh, "")
+	}()
+	go func() {
+		defer readers.Done()
+		streamLines(ctx, stderr, outCh, "[stderr] ")
+	}()
+	go func() {
+		waitErr := cmd.Wait()
+		readers.Wait()
+		cancel()
+		if waitErr != nil {
+			select {
+			case outCh <- "[stderr] process exited unsuccessfully":
+			default:
 			}
 		}
-	}
-
-	go readLines(stdoutPipe, "")
-	go func() {
-		readLines(stderrPipe, "[stderr] ")
-		defer close(outCh)
-		cmd.Wait() //nolint:errcheck
+		close(outCh)
 	}()
-
 	return nil
+}
+
+func streamLines(ctx context.Context, reader io.Reader, output chan<- string, prefix string) {
+	buffer := make([]byte, 4096)
+	var line strings.Builder
+	emitted := 0
+	for {
+		n, err := reader.Read(buffer)
+		for _, b := range buffer[:n] {
+			if b == '\n' {
+				emitted += line.Len()
+				if emitted > maxCommandOutput {
+					select {
+					case output <- "[output truncated]":
+					case <-ctx.Done():
+					}
+					return
+				}
+				select {
+				case output <- prefix + line.String():
+				case <-ctx.Done():
+					return
+				}
+				line.Reset()
+			} else if line.Len() < maxCommandOutput {
+				line.WriteByte(b)
+			}
+		}
+		if err != nil {
+			if line.Len() > 0 && emitted+line.Len() <= maxCommandOutput {
+				select {
+				case output <- prefix + line.String():
+				case <-ctx.Done():
+				}
+			}
+			return
+		}
+	}
+}
+
+type limitedBuffer struct {
+	buffer    bytes.Buffer
+	truncated bool
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	original := len(p)
+	remaining := maxCommandOutput - b.buffer.Len()
+	if remaining > 0 {
+		if len(p) > remaining {
+			p = p[:remaining]
+			b.truncated = true
+		}
+		_, _ = b.buffer.Write(p)
+	} else {
+		b.truncated = true
+	}
+	return original, nil
+}
+
+func (b *limitedBuffer) String() string {
+	if b.truncated {
+		return b.buffer.String() + "\n[output truncated]"
+	}
+	return b.buffer.String()
+}
+
+func restrictedEnvironment(path string) []string {
+	return []string{
+		"PATH=" + path,
+		"HOME=/root",
+		"LANG=C.UTF-8",
+		"LC_ALL=C.UTF-8",
+		"DEBIAN_FRONTEND=noninteractive",
+	}
+}
+
+func withCommandTimeout(ctx context.Context, binary string) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return context.WithCancel(ctx)
+	}
+	timeout := defaultCommandTimeout
+	switch binary {
+	case "apt", "apt-get", "dnf", "yum", "certbot":
+		timeout = 30 * time.Minute
+	}
+	return context.WithTimeout(ctx, timeout)
 }

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
@@ -23,28 +24,28 @@ func NewSQLiteUserRepository(db *sql.DB) UserRepository {
 }
 
 func (r *sqliteUserRepository) FindByID(ctx context.Context, id string) (*User, error) {
-	const q = `SELECT id, username, email, password, role, created_at, updated_at, last_login
+	const q = `SELECT id, username, email, password, role, is_active, created_at, updated_at, last_login
 	           FROM users WHERE id = ?`
 	return r.scanOne(r.db.QueryRowContext(ctx, q, id))
 }
 
 func (r *sqliteUserRepository) FindByUsername(ctx context.Context, username string) (*User, error) {
-	const q = `SELECT id, username, email, password, role, created_at, updated_at, last_login
+	const q = `SELECT id, username, email, password, role, is_active, created_at, updated_at, last_login
 	           FROM users WHERE username = ?`
 	return r.scanOne(r.db.QueryRowContext(ctx, q, username))
 }
 
 func (r *sqliteUserRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
-	const q = `SELECT id, username, email, password, role, created_at, updated_at, last_login
+	const q = `SELECT id, username, email, password, role, is_active, created_at, updated_at, last_login
 	           FROM users WHERE email = ?`
 	return r.scanOne(r.db.QueryRowContext(ctx, q, email))
 }
 
 func (r *sqliteUserRepository) Create(ctx context.Context, u *User) error {
-	const q = `INSERT INTO users (id, username, email, password, role, created_at, updated_at)
-	           VALUES (?, ?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO users (id, username, email, password, role, is_active, created_at, updated_at)
+	           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.ExecContext(ctx, q,
-		u.ID, u.Username, u.Email, u.Password, string(u.Role),
+		u.ID, u.Username, u.Email, u.Password, string(u.Role), u.IsActive,
 		u.CreatedAt.UTC().Format(time.RFC3339),
 		u.UpdatedAt.UTC().Format(time.RFC3339),
 	)
@@ -58,7 +59,7 @@ func (r *sqliteUserRepository) Create(ctx context.Context, u *User) error {
 }
 
 func (r *sqliteUserRepository) Update(ctx context.Context, u *User) error {
-	const q = `UPDATE users SET username=?, email=?, password=?, role=?, updated_at=?, last_login=?
+	const q = `UPDATE users SET username=?, email=?, password=?, role=?, is_active=?, updated_at=?, last_login=?
 	           WHERE id=?`
 	var lastLogin *string
 	if u.LastLogin != nil {
@@ -66,7 +67,7 @@ func (r *sqliteUserRepository) Update(ctx context.Context, u *User) error {
 		lastLogin = &s
 	}
 	res, err := r.db.ExecContext(ctx, q,
-		u.Username, u.Email, u.Password, string(u.Role),
+		u.Username, u.Email, u.Password, string(u.Role), u.IsActive,
 		u.UpdatedAt.UTC().Format(time.RFC3339),
 		lastLogin,
 		u.ID,
@@ -93,6 +94,54 @@ func (r *sqliteUserRepository) Count(ctx context.Context) (int, error) {
 	return n, err
 }
 
+func (r *sqliteUserRepository) List(ctx context.Context, filter UserFilter) (*UserPage, error) {
+	where := []string{"1=1"}
+	args := make([]any, 0, 5)
+	if filter.Query != "" {
+		where = append(where, "(LOWER(username) LIKE ? OR LOWER(email) LIKE ?)")
+		q := "%" + strings.ToLower(filter.Query) + "%"
+		args = append(args, q, q)
+	}
+	if filter.Role.IsValid() {
+		where = append(where, "role = ?")
+		args = append(args, string(filter.Role))
+	}
+	if filter.Status == "active" || filter.Status == "blocked" {
+		where = append(where, "is_active = ?")
+		args = append(args, filter.Status == "active")
+	}
+	clause := strings.Join(where, " AND ")
+	var total int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE "+clause, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("user repository: count list: %w", err)
+	}
+	args = append(args, filter.Limit, filter.Offset)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, username, email, password, role, is_active, created_at, updated_at, last_login
+		FROM users WHERE `+clause+` ORDER BY username LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("user repository: list: %w", err)
+	}
+	defer rows.Close()
+	items := make([]User, 0)
+	for rows.Next() {
+		var u User
+		var role, createdAt, updatedAt string
+		var lastLogin *string
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &role, &u.IsActive, &createdAt, &updatedAt, &lastLogin); err != nil {
+			return nil, fmt.Errorf("user repository: list scan: %w", err)
+		}
+		u.Role = Role(role)
+		u.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		u.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		if lastLogin != nil {
+			t, _ := time.Parse(time.RFC3339, *lastLogin)
+			u.LastLogin = &t
+		}
+		items = append(items, u)
+	}
+	return &UserPage{Items: items, Total: total, Limit: filter.Limit, Offset: filter.Offset}, rows.Err()
+}
+
 func (r *sqliteUserRepository) scanOne(row *sql.Row) (*User, error) {
 	u := &User{}
 	var role string
@@ -101,7 +150,7 @@ func (r *sqliteUserRepository) scanOne(row *sql.Row) (*User, error) {
 
 	err := row.Scan(
 		&u.ID, &u.Username, &u.Email, &u.Password,
-		&role, &createdAt, &updatedAt, &lastLogin,
+		&role, &u.IsActive, &createdAt, &updatedAt, &lastLogin,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

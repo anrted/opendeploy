@@ -14,6 +14,12 @@ const routes = [
     meta: { requiresAuth: true },
     children: [
       {
+        path: 'users',
+        name: 'users',
+        component: () => import('@/views/UsersView.vue'),
+        meta: { adminOnly: true },
+      },
+      {
         path: '',
         name: 'dashboard',
         component: () => import('@/views/DashboardView.vue'),
@@ -49,6 +55,11 @@ const routes = [
         component: () => import('@/views/SettingsView.vue'),
       },
       {
+        path: 'tasks',
+        name: 'tasks',
+        component: () => import('@/views/TasksView.vue'),
+      },
+      {
         path: 'processes',
         name: 'processes',
         component: () => import('@/views/ProcessesView.vue'),
@@ -70,6 +81,9 @@ router.beforeEach((to) => {
     return { name: 'login' }
   }
   if (to.name === 'login' && auth.isAuthenticated) {
+    return { name: 'dashboard' }
+  }
+  if (to.meta.adminOnly && auth.user?.role !== 'admin') {
     return { name: 'dashboard' }
   }
 })

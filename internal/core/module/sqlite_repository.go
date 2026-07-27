@@ -122,17 +122,17 @@ func (r *sqliteJobRepository) Create(ctx context.Context, job *Job) error {
 	if job.ID == "" {
 		job.ID = uuid.New().String()
 	}
-	const q = `INSERT INTO jobs (id, type, payload, state, output, created_at)
-	           VALUES (?, ?, ?, ?, '', ?)`
+	const q = `INSERT INTO jobs (id, name, type, payload, state, progress, output, created_at)
+	           VALUES (?, ?, ?, ?, ?, ?, '', ?)`
 	_, err := r.db.ExecContext(ctx, q,
-		job.ID, string(job.Type), job.Payload, string(job.State),
+		job.ID, job.Name, string(job.Type), job.Payload, string(job.State), job.Progress,
 		job.CreatedAt.UTC().Format(time.RFC3339),
 	)
 	return err
 }
 
 func (r *sqliteJobRepository) FindByID(ctx context.Context, id string) (*Job, error) {
-	const q = `SELECT id, type, payload, state, output, error, created_at, started_at, finished_at
+	const q = `SELECT id, name, type, payload, state, progress, output, error, created_at, started_at, finished_at
 	           FROM jobs WHERE id = ?`
 	row := r.db.QueryRowContext(ctx, q, id)
 	return r.scanJob(row)
@@ -144,9 +144,12 @@ func (r *sqliteJobRepository) UpdateState(ctx context.Context, id string, state 
 
 	switch state {
 	case JobRunning:
-		q = `UPDATE jobs SET state=?, started_at=? WHERE id=?`
+		q = `UPDATE jobs SET state=?, progress=10, started_at=? WHERE id=?`
 		args = []interface{}{string(state), time.Now().UTC().Format(time.RFC3339), id}
-	case JobSuccess, JobError:
+	case JobSuccess:
+		q = `UPDATE jobs SET state=?, progress=100, output=?, error=?, finished_at=? WHERE id=?`
+		args = []interface{}{string(state), output, errMsg, time.Now().UTC().Format(time.RFC3339), id}
+	case JobError, JobCanceled:
 		q = `UPDATE jobs SET state=?, output=?, error=?, finished_at=? WHERE id=?`
 		args = []interface{}{string(state), output, errMsg, time.Now().UTC().Format(time.RFC3339), id}
 	default:
@@ -164,7 +167,7 @@ func (r *sqliteJobRepository) AppendOutput(ctx context.Context, id, line string)
 }
 
 func (r *sqliteJobRepository) ListByState(ctx context.Context, state JobState) ([]Job, error) {
-	const q = `SELECT id, type, payload, state, output, error, created_at, started_at, finished_at
+	const q = `SELECT id, name, type, payload, state, progress, output, error, created_at, started_at, finished_at
 	           FROM jobs WHERE state = ? ORDER BY created_at DESC LIMIT 100`
 	rows, err := r.db.QueryContext(ctx, q, string(state))
 	if err != nil {
@@ -183,13 +186,64 @@ func (r *sqliteJobRepository) ListByState(ctx context.Context, state JobState) (
 	return jobs, rows.Err()
 }
 
+func (r *sqliteJobRepository) List(ctx context.Context, filter JobFilter) (*JobPage, error) {
+	where := []string{"1=1"}
+	args := make([]any, 0, 5)
+	if filter.Query != "" {
+		where = append(where, "(LOWER(name) LIKE ? OR LOWER(id) LIKE ?)")
+		query := "%" + strings.ToLower(filter.Query) + "%"
+		args = append(args, query, query)
+	}
+	if filter.State != "" {
+		where = append(where, "state = ?")
+		args = append(args, string(filter.State))
+	}
+	if filter.Type != "" {
+		where = append(where, "type = ?")
+		args = append(args, string(filter.Type))
+	}
+	clause := strings.Join(where, " AND ")
+	var total int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM jobs WHERE "+clause, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("job repo: list count: %w", err)
+	}
+	args = append(args, filter.Limit, filter.Offset)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, type, payload, state, progress, output, error, created_at, started_at, finished_at
+		FROM jobs WHERE `+clause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("job repo: list: %w", err)
+	}
+	defer rows.Close()
+	items := make([]Job, 0)
+	for rows.Next() {
+		job, err := r.scanJobFromRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *job)
+	}
+	return &JobPage{Items: items, Total: total, Limit: filter.Limit, Offset: filter.Offset}, rows.Err()
+}
+
+func (r *sqliteJobRepository) Delete(ctx context.Context, id string) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM jobs WHERE id = ? AND state IN ('success','error','canceled')`, id)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return apperrors.New(409, apperrors.CodeConflict, "only completed task history can be deleted")
+	}
+	return nil
+}
+
 func (r *sqliteJobRepository) scanJob(row *sql.Row) (*Job, error) {
 	var job Job
 	var jobType, state, createdAt string
 	var startedAt, finishedAt, errMsg *string
 
 	err := row.Scan(
-		&job.ID, &jobType, &job.Payload, &state,
+		&job.ID, &job.Name, &jobType, &job.Payload, &state, &job.Progress,
 		&job.Output, &errMsg, &createdAt, &startedAt, &finishedAt,
 	)
 	if err != nil {
@@ -221,7 +275,7 @@ func (r *sqliteJobRepository) scanJobFromRows(rows *sql.Rows) (*Job, error) {
 	var startedAt, finishedAt, errMsg *string
 
 	err := rows.Scan(
-		&job.ID, &jobType, &job.Payload, &state,
+		&job.ID, &job.Name, &jobType, &job.Payload, &state, &job.Progress,
 		&job.Output, &errMsg, &createdAt, &startedAt, &finishedAt,
 	)
 	if err != nil {
@@ -243,6 +297,3 @@ func (r *sqliteJobRepository) scanJobFromRows(rows *sql.Rows) (*Job, error) {
 	}
 	return &job, nil
 }
-
-// unusedImport keeps the strings import (used in future filter methods).
-var _ = strings.Contains

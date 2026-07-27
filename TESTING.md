@@ -2,6 +2,16 @@
 
 This guide explains how to run tests, linters, and checks locally for both the backend (Go) and frontend (Vue) parts of OpenDeploy.
 
+The release gate is Linux CI. The 2026-07-27 audit verified the frontend build,
+lint and three unit tests locally. Backend verification on the Windows audit
+host exposed a compile portability defect in filesystem ownership metadata; run
+the authoritative Go suite on Linux or WSL until that issue is resolved.
+
+Before a stable release, coverage must include route-permission matrices; Agent
+operand, symlink and archive traversal tests; supported-distribution install and
+upgrade tests; end-to-end site/service/firewall/certificate/database workflows;
+and rollback, restart-recovery and load/stream tests.
+
 ## Backend (Go)
 
 ### Running Tests

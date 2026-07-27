@@ -14,6 +14,12 @@
 
         <!-- Controls -->
         <div class="flex items-center space-x-3">
+          <select v-model.number="lineLimit" class="input w-28" @change="fetchLogs()">
+            <option :value="100">100 lines</option><option :value="500">500 lines</option><option :value="1000">1,000 lines</option><option :value="5000">5,000 lines</option>
+          </select>
+          <select v-model="levelFilter" class="input w-28">
+            <option value="">All levels</option><option value="error">Error</option><option value="warn">Warning</option><option value="info">Info</option><option value="debug">Debug</option>
+          </select>
           <div class="relative">
             <input 
               type="text" 
@@ -35,6 +41,8 @@
           </button>
         </div>
       </div>
+      <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{{ errorMessage }}</div>
+      <div v-if="successMessage" class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">{{ successMessage }}</div>
 
       <!-- Log Terminal -->
       <div class="relative bg-[#0f172a] rounded-xl border border-[#334155] overflow-hidden">
@@ -54,7 +62,7 @@
             {{ searchQuery ? 'No lines match your search.' : 'Log is empty.' }}
           </div>
           <div v-else>
-            <div v-for="(line, idx) in filteredLines" :key="idx" class="hover:bg-white/5 px-2 py-0.5 rounded break-all whitespace-pre-wrap">
+            <div v-for="(line, idx) in filteredLines" :key="idx" :class="['hover:bg-white/5 px-2 py-0.5 rounded break-all whitespace-pre-wrap', lineClass(line)]">
               {{ line }}
             </div>
           </div>
@@ -103,14 +111,23 @@ const loading = ref(false)
 const clearing = ref(false)
 const searchQuery = ref('')
 const autoRefresh = ref(true)
+const lineLimit = ref(500)
+const levelFilter = ref('')
+const errorMessage = ref('')
+const successMessage = ref('')
 const logContainer = ref(null)
 const isAtBottom = ref(true)
 let refreshInterval = null
 
 const filteredLines = computed(() => {
-  if (!searchQuery.value) return lines.value
+  let result = lines.value
+  if (levelFilter.value) {
+    const level = levelFilter.value.toLowerCase()
+    result = result.filter(line => line.toLowerCase().includes(level))
+  }
+  if (!searchQuery.value) return result
   const q = searchQuery.value.toLowerCase()
-  return lines.value.filter(line => line.toLowerCase().includes(q))
+  return result.filter(line => line.toLowerCase().includes(q))
 })
 
 onMounted(() => {
@@ -143,7 +160,8 @@ async function fetchLogs(isBackground = false) {
   if (!isBackground) loading.value = true
   
   try {
-    const res = await api.get(`/modules/${props.moduleId}/logs/${selectedLogId.value}/read?lines=500`)
+    errorMessage.value = ''
+    const res = await api.get(`/modules/${props.moduleId}/logs/${selectedLogId.value}/read?lines=${lineLimit.value}`)
     lines.value = res.data || []
     
     // If we are at the bottom, stay at the bottom after new lines arrive
@@ -153,7 +171,7 @@ async function fetchLogs(isBackground = false) {
       })
     }
   } catch (err) {
-    console.error('Failed to fetch logs:', err)
+    errorMessage.value = apiErrorMessage(err, 'Failed to fetch logs')
   } finally {
     if (!isBackground) loading.value = false
   }
@@ -173,11 +191,21 @@ async function clearLog() {
   try {
     await api.post(`/modules/${props.moduleId}/logs/${selectedLogId.value}/clear`)
     lines.value = []
+    successMessage.value = 'Log cleared.'
   } catch (err) {
-    alert('Failed to clear log: ' + apiErrorMessage(err))
+    errorMessage.value = apiErrorMessage(err, 'Failed to clear log')
   } finally {
     clearing.value = false
   }
+}
+
+function lineClass(line) {
+  const value = line.toLowerCase()
+  if (value.includes('error') || value.includes('fatal') || value.includes('panic')) return 'text-red-400'
+  if (value.includes('warn')) return 'text-amber-400'
+  if (value.includes('debug') || value.includes('trace')) return 'text-slate-500'
+  if (value.includes('info')) return 'text-emerald-300'
+  return 'text-[#e2e8f0]'
 }
 
 function downloadLog() {

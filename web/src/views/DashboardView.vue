@@ -171,6 +171,8 @@ async function connectWebSocket() {
       const msg = JSON.parse(evt.data)
       if (msg.type === 'stats_update') {
         stats.value = msg.payload
+      } else if (msg.type === 'site_changed') {
+        loadOverview()
       }
     } catch { /* ignore */ }
   }

@@ -2,6 +2,21 @@ package auth
 
 import "context"
 
+type UserFilter struct {
+	Query  string
+	Role   Role
+	Status string
+	Limit  int
+	Offset int
+}
+
+type UserPage struct {
+	Items  []User `json:"items"`
+	Total  int    `json:"total"`
+	Limit  int    `json:"limit"`
+	Offset int    `json:"offset"`
+}
+
 // UserRepository defines the persistence contract for User entities.
 // Implementations may use SQLite (default) or any other database.
 type UserRepository interface {
@@ -12,6 +27,7 @@ type UserRepository interface {
 	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id string) error
 	Count(ctx context.Context) (int, error)
+	List(ctx context.Context, filter UserFilter) (*UserPage, error)
 }
 
 // SessionRepository defines the persistence contract for Session entities.

@@ -94,7 +94,10 @@ func (m *Module) Disable(_ context.Context) error { return nil }
 func (m *Module) Restart(_ context.Context) error { return nil }
 
 func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
-	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "git")
+	installed, version, err := m.deps.Agent.PackageInstalled(ctx, "git")
+	if err != nil {
+		return nil, err
+	}
 	status := contract.PackageNotInstalled
 	if installed {
 		status = contract.PackageInstalled
@@ -106,7 +109,10 @@ func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 }
 
 func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
-	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "git")
+	installed, version, err := m.deps.Agent.PackageInstalled(ctx, "git")
+	if err != nil {
+		return &contract.HealthReport{Status: contract.HealthError, Message: "cannot query Git package state"}, nil
+	}
 	if !installed {
 		return &contract.HealthReport{Status: contract.HealthWarning, Message: "git is not installed"}, nil
 	}

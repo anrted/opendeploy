@@ -5,10 +5,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.12] - 2026-07-27
+
 ### Added
 
 - Runtime reconciliation for software installed outside OpenDeploy.
 - Administrator-triggered GitHub updates through a dedicated systemd path unit.
+- Full repository readiness/security audit and release-gated roadmap.
+- Stage 1 security foundation: granular module RBAC, bounded process execution,
+  restricted filesystem roots, safe archive extraction, configuration
+  transactions, job restart reconciliation and OS-family detection.
+
+### Security
+
+- Removed JWT query-string authentication and generic destructive Agent commands.
+- Prevented archive traversal/link extraction and broad `/etc`/`/home` writes.
+- Installed gRPC panic recovery and stopped leaking privileged Agent errors.
+- Removed hardcoded UID/GID fallback, temporary Certbot systemd units and
+  interpolated MySQL passwords.
+
+### Documentation
+
+- Rewrote architecture documentation around the implemented request, task,
+  site, installation and update lifecycles.
+- Corrected overstated production, setup-wizard, module and portability claims.
+- Documented the refactored service boundaries, domain event flow and remaining
+  architecture follow-up items.
+
+### Changed
+
+- Split the site, module-manager and Nginx implementations into cohesive
+  services while preserving their public API and behavior.
+- Reduced the File Manager screen to a coordinator backed by reusable Vue
+  components and composables.
+- Added typed domain events and isolated subscribers for site lifecycle,
+  dashboard updates and audit integration.
 
 ## [0.1.0-alpha] - 2026-07-25
 
@@ -39,3 +70,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   releases after reviewing GitHub security advisories.
 
 [0.1.0-alpha]: https://github.com/anrted/opendeploy/releases/tag/v0.1.0-alpha
+[0.1.12]: https://github.com/anrted/opendeploy/releases/tag/v0.1.12

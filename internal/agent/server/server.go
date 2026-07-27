@@ -290,7 +290,18 @@ func (s *Service) FileChown(_ context.Context, req *agentv1.FileChownRequest) (*
 	return &agentv1.FileChownResponse{Success: true}, nil
 }
 func (s *Service) ArchiveCreate(ctx context.Context, req *agentv1.ArchiveCreateRequest) (*agentv1.ArchiveCreateResponse, error) {
-	dest := req.GetDstPath()
+	dest, err := s.fs.Resolve(req.GetDstPath())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid archive destination")
+	}
+	paths := make([]string, 0, len(req.GetPaths()))
+	for _, path := range req.GetPaths() {
+		resolved, resolveErr := s.fs.Resolve(path)
+		if resolveErr != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid archive source")
+		}
+		paths = append(paths, resolved)
+	}
 	var format string
 	switch {
 	case strings.HasSuffix(dest, ".zip"):
@@ -309,14 +320,22 @@ func (s *Service) ArchiveCreate(ctx context.Context, req *agentv1.ArchiveCreateR
 		return nil, status.Error(codes.InvalidArgument, "unsupported archive format")
 	}
 
-	err := archive.Create(ctx, format, dest, req.GetPaths())
+	err = archive.Create(ctx, format, dest, paths)
 	if err != nil {
 		return nil, internalError(err)
 	}
 	return &agentv1.ArchiveCreateResponse{Success: true}, nil
 }
 func (s *Service) ArchiveExtract(ctx context.Context, req *agentv1.ArchiveExtractRequest) (*agentv1.ArchiveExtractResponse, error) {
-	err := archive.Extract(ctx, req.GetSrcPath(), req.GetDstDir())
+	source, err := s.fs.Resolve(req.GetSrcPath())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid archive source")
+	}
+	destination, err := s.fs.Resolve(req.GetDstDir())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid archive destination")
+	}
+	err = archive.Extract(ctx, source, destination)
 	if err != nil {
 		return nil, internalError(err)
 	}
@@ -424,5 +443,6 @@ func (s *Service) ProcessKill(_ context.Context, req *agentv1.ProcessKillRequest
 }
 
 func internalError(err error) error {
-	return status.Error(codes.Internal, fmt.Sprintf("agent operation failed: %v", err))
+	_ = err // subsystem logs retain details; gRPC clients receive no root-level paths/output.
+	return status.Error(codes.Internal, "agent operation failed")
 }

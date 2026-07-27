@@ -115,18 +115,27 @@ const FirewallIcon = {
 const ProcessesIcon = {
   template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>`
 }
+const UsersIcon = {
+  template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H2v-2a4 4 0 014-4h3m7-6a4 4 0 11-8 0 4 4 0 018 0z"/></svg>`
+}
+const TasksIcon = {
+  template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12h14V7a2 2 0 00-2-2h-2M9 5a3 3 0 006 0M9 12l2 2 4-4"/></svg>`
+}
 
-const navItems = [
+const allNavItems = [
   { name: 'dashboard', label: 'Dashboard', to: '/', icon: DashboardIcon },
   { name: 'modules',   label: 'Modules',   to: '/modules', icon: ModulesIcon },
   { name: 'sites',     label: 'Sites',     to: '/sites', icon: SitesIcon },
   { name: 'services',  label: 'Services',  to: '/services', icon: ServicesIcon },
+  { name: 'tasks',     label: 'Tasks',     to: '/tasks', icon: TasksIcon },
   { name: 'processes', label: 'Processes', to: '/processes', icon: ProcessesIcon },
+  { name: 'users',     label: 'Users',     to: '/users', icon: UsersIcon, adminOnly: true },
   { name: 'firewall',  label: 'Firewall',  to: '/modules/firewall', icon: FirewallIcon },
   { name: 'settings',  label: 'Settings',  to: '/settings', icon: SettingsIcon },
 ]
 
 const auth = useAuthStore()
+const navItems = computed(() => allNavItems.filter(item => !item.adminOnly || auth.user?.role === 'admin'))
 const router = useRouter()
 watch(() => router.currentRoute.value.fullPath, () => { mobileOpen.value = false })
 

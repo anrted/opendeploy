@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 // Logger logs every HTTP request with method, path, status, and latency.
@@ -20,6 +22,7 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(lw, r)
 
 			log.Info("http",
+				"request_id", chiMiddleware.GetReqID(r.Context()),
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", lw.statusCode,

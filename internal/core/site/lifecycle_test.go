@@ -16,31 +16,37 @@ type mockWebServer struct {
 	fail    error
 }
 
-func (m *mockWebServer) ID() string          { return "nginx" }
-func (m *mockWebServer) Name() string        { return "Mock Nginx" }
-func (m *mockWebServer) Version() string     { return "1.0" }
-func (m *mockWebServer) Description() string { return "Mock" }
+func (m *mockWebServer) ID() string                               { return "nginx" }
+func (m *mockWebServer) Name() string                             { return "Mock Nginx" }
+func (m *mockWebServer) Version() string                          { return "1.0" }
+func (m *mockWebServer) Description() string                      { return "Mock" }
 func (m *mockWebServer) Bootstrap(deps contract.ModuleDeps) error { return nil }
-func (m *mockWebServer) Shutdown(ctx context.Context) error { return nil }
-func (m *mockWebServer) RegisterRoutes(r contract.Router) {}
-func (m *mockWebServer) RegisterMenuItems() []contract.MenuItem { return nil }
+func (m *mockWebServer) Shutdown(ctx context.Context) error       { return nil }
+func (m *mockWebServer) RegisterRoutes(r contract.Router)         {}
+func (m *mockWebServer) RegisterMenuItems() []contract.MenuItem   { return nil }
 func (m *mockWebServer) RegisterSettings() []contract.SettingSpec { return nil }
-func (m *mockWebServer) Install(ctx context.Context) error { return nil }
-func (m *mockWebServer) Uninstall(ctx context.Context) error { return nil }
-func (m *mockWebServer) Enable(ctx context.Context) error { return nil }
-func (m *mockWebServer) Disable(ctx context.Context) error { return nil }
-func (m *mockWebServer) Restart(ctx context.Context) error { return nil }
-func (m *mockWebServer) Category() string { return "Web" }
-func (m *mockWebServer) Icon() string { return "server" }
-func (m *mockWebServer) Dependencies() contract.ModuleDependencies { return contract.ModuleDependencies{} }
-func (m *mockWebServer) Capabilities() contract.ModuleCapabilities { return contract.ModuleCapabilities{} }
-func (m *mockWebServer) Actions() []contract.ActionDef { return nil }
-func (m *mockWebServer) ExecuteAction(ctx context.Context, actionID string) error { return nil }
-func (m *mockWebServer) Logs() []contract.LogDef { return nil }
-func (m *mockWebServer) SettingsSchema() []contract.SettingField { return nil }
-func (m *mockWebServer) Pages() []contract.ModulePage { return nil }
+func (m *mockWebServer) Install(ctx context.Context) error        { return nil }
+func (m *mockWebServer) Uninstall(ctx context.Context) error      { return nil }
+func (m *mockWebServer) Enable(ctx context.Context) error         { return nil }
+func (m *mockWebServer) Disable(ctx context.Context) error        { return nil }
+func (m *mockWebServer) Restart(ctx context.Context) error        { return nil }
+func (m *mockWebServer) Category() string                         { return "Web" }
+func (m *mockWebServer) Icon() string                             { return "server" }
+func (m *mockWebServer) Dependencies() contract.ModuleDependencies {
+	return contract.ModuleDependencies{}
+}
+func (m *mockWebServer) Capabilities() contract.ModuleCapabilities {
+	return contract.ModuleCapabilities{}
+}
+func (m *mockWebServer) Actions() []contract.ActionDef                               { return nil }
+func (m *mockWebServer) ExecuteAction(ctx context.Context, actionID string) error    { return nil }
+func (m *mockWebServer) Logs() []contract.LogDef                                     { return nil }
+func (m *mockWebServer) SettingsSchema() []contract.SettingField                     { return nil }
+func (m *mockWebServer) Pages() []contract.ModulePage                                { return nil }
 func (m *mockWebServer) Status(ctx context.Context) (*contract.RuntimeStatus, error) { return nil, nil }
-func (m *mockWebServer) HealthCheck(ctx context.Context) (*contract.HealthReport, error) { return nil, nil }
+func (m *mockWebServer) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
+	return nil, nil
+}
 
 func (m *mockWebServer) ApplySite(_ context.Context, action contract.SiteAction, _ contract.SiteSpec) error {
 	m.actions = append(m.actions, action)
@@ -67,7 +73,8 @@ func (r *lifecycleRepo) Create(_ context.Context, site *Site) error {
 type mockAgent struct {
 	contract.AgentClient
 }
-func (m *mockAgent) DirCreate(ctx context.Context, path string, mode uint32) error { return nil }
+
+func (m *mockAgent) DirCreate(ctx context.Context, path string, mode uint32) error  { return nil }
 func (m *mockAgent) FileChown(ctx context.Context, path string, uid, gid int) error { return nil }
 
 func TestCreateCompensatesNginxWhenPersistenceFails(t *testing.T) {
@@ -76,7 +83,7 @@ func TestCreateCompensatesNginxWhenPersistenceFails(t *testing.T) {
 	mockWeb := &mockWebServer{}
 	registry := module.NewRegistry()
 	registry.Register(mockWeb)
-	service := NewService(repo, nil, agent, registry, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	service := NewService(repo, nil, agent, registry, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	_, err := service.Create(context.Background(), CreateRequest{
 		Domain: "example.com", RootPath: "/var/www/example", ModuleID: "nginx",
@@ -95,7 +102,7 @@ func TestCreateDoesNotPersistWhenNginxValidationFails(t *testing.T) {
 	mockWeb := &mockWebServer{fail: errors.New("nginx -t failed")}
 	registry := module.NewRegistry()
 	registry.Register(mockWeb)
-	service := NewService(repo, nil, agent, registry, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	service := NewService(repo, nil, agent, registry, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	_, err := service.Create(context.Background(), CreateRequest{
 		Domain: "example.com", RootPath: "/var/www/example", ModuleID: "nginx",

@@ -35,6 +35,9 @@ func (r *seedUserRepository) Delete(context.Context, string) error {
 func (r *seedUserRepository) Count(context.Context) (int, error) {
 	return r.count, nil
 }
+func (r *seedUserRepository) List(context.Context, UserFilter) (*UserPage, error) {
+	return nil, errors.New("not implemented")
+}
 
 func TestSeedAdminRequiresStrongInitialPassword(t *testing.T) {
 	repo := &seedUserRepository{}
@@ -45,6 +48,7 @@ func TestSeedAdminRequiresStrongInitialPassword(t *testing.T) {
 		0,
 		0,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
 	)
 
 	for _, password := range []string{"", "changeme", "short"} {
@@ -66,6 +70,7 @@ func TestSeedAdminDoesNotRequireEnvironmentPasswordAfterBootstrap(t *testing.T) 
 		0,
 		0,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
 	)
 
 	if err := service.SeedAdminIfEmpty(context.Background(), "admin", ""); err != nil {

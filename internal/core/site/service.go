@@ -2,10 +2,10 @@ package site
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/user"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -13,22 +13,29 @@ import (
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/internal/core/module"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/anrted/opendeploy/internal/platform/events"
 	"github.com/anrted/opendeploy/internal/platform/osprovider"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
 // Service implements site management business logic.
 type Service struct {
-	repo     Repository
-	audit    *audit.Service
-	agent    contract.AgentClient
-	registry *module.Registry
-	logger   *slog.Logger
+	repo   Repository
+	audit  *audit.Service
+	agent  contract.AgentClient
+	logger *slog.Logger
+	events events.Bus
+	files  *FileService
+	deploy *DeployService
 }
 
 // NewService constructs a site Service.
-func NewService(repo Repository, auditSvc *audit.Service, agent contract.AgentClient, registry *module.Registry, logger *slog.Logger) *Service {
-	return &Service{repo: repo, audit: auditSvc, agent: agent, registry: registry, logger: logger}
+func NewService(repo Repository, auditSvc *audit.Service, agent contract.AgentClient, registry *module.Registry, eventBus events.Bus, logger *slog.Logger) *Service {
+	return &Service{
+		repo: repo, audit: auditSvc, agent: agent,
+		events: eventBus, files: NewFileService(repo, agent),
+		deploy: NewDeployService(registry), logger: logger,
+	}
 }
 
 // List returns all sites.
@@ -66,11 +73,11 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	}
 
 	site := &Site{
-		Name:      req.Name,
-		ModuleID:  req.ModuleID,
-		RootPath:  rootPath,
-		State:     StateActive,
-		OwnerID:   &userID,
+		Name:     req.Name,
+		ModuleID: req.ModuleID,
+		RootPath: rootPath,
+		State:    StateActive,
+		OwnerID:  &userID,
 		Domains: []Domain{
 			{Domain: strings.ToLower(strings.TrimSpace(req.Domain)), Type: DomainPrimary},
 		},
@@ -88,7 +95,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		} else if req.SSLCert != nil && strings.HasPrefix(*req.SSLCert, "/etc/letsencrypt") {
 			provider = "certbot"
 		}
-		
+
 		site.SSL = &SSL{
 			Provider:   provider,
 			CertPath:   req.SSLCert,
@@ -101,21 +108,29 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	if err := s.agent.DirCreate(ctx, site.RootPath, 0o755); err != nil {
 		return nil, apperrors.Internal("failed to create site root directory", err)
 	}
-	
-	// Get web user dynamically
+
+	// Resolve the OS web identity. There is deliberately no numeric fallback:
+	// UID/GID values are host-specific and a wrong chown is a privilege bug.
 	provider, err := osprovider.NewProvider()
-	var webUid, webGid int = 33, 33 // fallback
 	if err == nil {
-		if u, err := user.Lookup(provider.WebUser()); err == nil {
-			if parsedUid, err := strconv.Atoi(u.Uid); err == nil {
-				webUid = parsedUid
-			}
-			if parsedGid, err := strconv.Atoi(u.Gid); err == nil {
-				webGid = parsedGid
-			}
+		webAccount, lookupErr := user.Lookup(provider.WebUser())
+		if lookupErr != nil {
+			_ = s.agent.FileDelete(ctx, site.RootPath)
+			return nil, apperrors.Internal("failed to resolve the OS web user", lookupErr)
 		}
+		webUID, uidErr := strconv.Atoi(webAccount.Uid)
+		webGID, gidErr := strconv.Atoi(webAccount.Gid)
+		if uidErr != nil || gidErr != nil {
+			_ = s.agent.FileDelete(ctx, site.RootPath)
+			return nil, apperrors.Internal("invalid OS web user identity", errors.Join(uidErr, gidErr))
+		}
+		if chownErr := s.agent.FileChown(ctx, site.RootPath, webUID, webGID); chownErr != nil {
+			_ = s.agent.FileDelete(ctx, site.RootPath)
+			return nil, apperrors.Internal("failed to assign site root ownership", chownErr)
+		}
+	} else {
+		s.logger.WarnContext(ctx, "OS provider unavailable; preserving site directory ownership", "error", err)
 	}
-	_ = s.agent.FileChown(ctx, site.RootPath, webUid, webGid)
 
 	needsCertbot := site.SSL != nil && site.SSL.Provider == "certbot"
 
@@ -146,7 +161,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		return nil, err
 	}
 
-	s.recordAudit(ctx, userID, "site.create", req.Domain, ip, audit.StatusSuccess)
+	s.publishLifecycle(ctx, EventCreated, site, userID, ip)
 	s.logger.InfoContext(ctx, "site: created", "id", site.ID, "domain", req.Domain)
 	return site, nil
 }
@@ -234,7 +249,7 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		return nil, err
 	}
 
-	s.recordAudit(ctx, userID, "site.update", site.ID, ip, audit.StatusSuccess)
+	s.publishLifecycle(ctx, EventUpdated, site, userID, ip)
 	return site, nil
 }
 
@@ -250,7 +265,7 @@ func (s *Service) Delete(ctx context.Context, id string, userID, ip string) erro
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
-	s.recordAudit(ctx, userID, "site.delete", site.ID, ip, audit.StatusSuccess)
+	s.publishLifecycle(ctx, EventDeleted, site, userID, ip)
 	return nil
 }
 
@@ -266,7 +281,7 @@ func (s *Service) Enable(ctx context.Context, id string, userID, ip string) erro
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteEnable, site); err != nil {
 		s.logger.ErrorContext(ctx, "failed to enable web server config", "error", err, "site_id", id)
 	}
-	s.recordAudit(ctx, userID, "site.enable", site.ID, ip, audit.StatusSuccess)
+	s.publishLifecycle(ctx, EventEnabled, site, userID, ip)
 	return nil
 }
 
@@ -282,345 +297,20 @@ func (s *Service) Disable(ctx context.Context, id string, userID, ip string) err
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteDisable, site); err != nil {
 		s.logger.ErrorContext(ctx, "failed to disable web server config", "error", err, "site_id", id)
 	}
-	s.recordAudit(ctx, userID, "site.disable", site.ID, ip, audit.StatusSuccess)
+	s.publishLifecycle(ctx, EventDisabled, site, userID, ip)
 	return nil
 }
 
 // applySiteConfig passes the current domain model state to the web server module.
 func (s *Service) applySiteConfig(ctx context.Context, moduleID string, action contract.SiteAction, site *Site) error {
-	m := s.registry.Find(moduleID)
-	if m == nil {
-		return fmt.Errorf("module not found: %s", moduleID)
-	}
-	plug, ok := m.(contract.WebServerPlugin)
-	if !ok {
-		return fmt.Errorf("module %s does not implement WebServerPlugin", moduleID)
-	}
-
-	var primary string
-	var aliases []string
-	for _, d := range site.Domains {
-		if d.Type == DomainPrimary {
-			primary = d.Domain
-		} else {
-			aliases = append(aliases, d.Domain)
-		}
-	}
-
-	var appVer, proxy string
-	if site.App.AppVersion != nil {
-		appVer = *site.App.AppVersion
-	}
-	if site.App.ProxyTarget != nil {
-		proxy = *site.App.ProxyTarget
-	}
-
-	sslEnabled := site.SSL != nil
-	var cert, key string
-	var force bool
-	if sslEnabled {
-		if site.SSL.CertPath != nil {
-			cert = *site.SSL.CertPath
-		}
-		if site.SSL.KeyPath != nil {
-			key = *site.SSL.KeyPath
-		}
-		force = site.SSL.ForceHTTPS
-	}
-
-	spec := contract.SiteSpec{
-		ID:            site.ID,
-		Name:          site.Name,
-		PrimaryDomain: primary,
-		Aliases:       aliases,
-		RootPath:      site.RootPath,
-		AppType:       site.App.AppType,
-		AppVersion:    appVer,
-		ProxyTarget:   proxy,
-		SSLEnabled:    sslEnabled,
-		SSLCert:       cert,
-		SSLKey:        key,
-		ForceHTTPS:    force,
-	}
-
-	return plug.ApplySite(ctx, action, spec)
+	return s.deploy.Apply(ctx, moduleID, action, site)
 }
 
 func (s *Service) obtainCertbotSSL(ctx context.Context, domain, rootPath string) error {
-	m := s.registry.Find("certbot")
-	if m == nil {
-		return apperrors.Internal("certbot module is not installed", nil)
-	}
-	plug, ok := m.(contract.CertbotPlugin)
-	if !ok {
-		return apperrors.Internal("certbot module does not implement CertbotPlugin", nil)
-	}
-
-	// Wait, certbot needs domains. In Phase 1 we just pass the primary domain to CertbotPlugin.Obtain
-	return plug.ObtainCert(ctx, domain, rootPath)
+	return s.deploy.ObtainCertificate(ctx, domain, rootPath)
 }
-
-// ─── File Management Methods ───────────────────────────────────────────────
-
-func (s *Service) resolveFilePath(ctx context.Context, siteID, relativePath string) (string, error) {
-	site, err := s.repo.FindByID(ctx, siteID)
-	if err != nil {
-		return "", err
-	}
-	cleanRelative := path.Clean("/" + relativePath)
-	absPath := path.Join(site.RootPath, cleanRelative)
-
-	if !strings.HasPrefix(absPath, site.RootPath) {
-		return "", apperrors.InvalidInput("invalid file path")
-	}
-	return absPath, nil
-}
-
-func (s *Service) ListFiles(ctx context.Context, siteID, relativePath string) ([]contract.FileInfo, error) {
-	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
-	if err != nil {
-		return nil, err
-	}
-	if s.agent == nil {
-		return nil, fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.DirList(ctx, absPath)
-}
-
-func (s *Service) ReadFile(ctx context.Context, siteID, relativePath string) ([]byte, error) {
-	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
-	if err != nil {
-		return nil, err
-	}
-	if s.agent == nil {
-		return nil, fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.FileRead(ctx, absPath)
-}
-
-func (s *Service) WriteFile(ctx context.Context, siteID, relativePath string, content []byte) error {
-	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
-	if err != nil {
-		return err
-	}
-	if s.agent == nil {
-		return fmt.Errorf("agent is unavailable")
-	}
-	// Use 0644 for files.
-	return s.agent.FileWrite(ctx, absPath, content, 0o644)
-}
-
-func (s *Service) CreateDirectory(ctx context.Context, siteID, relativePath string) error {
-	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
-	if err != nil {
-		return err
-	}
-	if s.agent == nil {
-		return fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.DirCreate(ctx, absPath, 0o755)
-}
-
-func (s *Service) DeleteFile(ctx context.Context, siteID, relativePath string) error {
-	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
-	if err != nil {
-		return err
-	}
-	// Protect the root directory itself.
-	site, _ := s.repo.FindByID(ctx, siteID)
-	if absPath == site.RootPath {
-		return apperrors.InvalidInput("cannot delete site root directory")
-	}
-	if s.agent == nil {
-		return fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.FileDelete(ctx, absPath)
-}
-
-func (s *Service) RenameFile(ctx context.Context, siteID, oldPath, newPath string) error {
-	absOld, err := s.resolveFilePath(ctx, siteID, oldPath)
-	if err != nil {
-		return err
-	}
-	absNew, err := s.resolveFilePath(ctx, siteID, newPath)
-	if err != nil {
-		return err
-	}
-	if s.agent == nil {
-		return fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.FileRename(ctx, absOld, absNew)
-}
-
-func (s *Service) CopyFile(ctx context.Context, siteID, srcPath, dstPath string) error {
-	absSrc, err := s.resolveFilePath(ctx, siteID, srcPath)
-	if err != nil {
-		return err
-	}
-	absDst, err := s.resolveFilePath(ctx, siteID, dstPath)
-	if err != nil {
-		return err
-	}
-	if s.agent == nil {
-		return fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.FileCopy(ctx, absSrc, absDst)
-}
-
-func (s *Service) ChmodFile(ctx context.Context, siteID, relativePath string, mode uint32) error {
-	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
-	if err != nil {
-		return err
-	}
-	if s.agent == nil {
-		return fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.FileChmod(ctx, absPath, mode)
-}
-
-func (s *Service) ChownFile(ctx context.Context, siteID, relativePath string, uid, gid int) error {
-	absPath, err := s.resolveFilePath(ctx, siteID, relativePath)
-	if err != nil {
-		return err
-	}
-	if s.agent == nil {
-		return fmt.Errorf("agent is unavailable")
-	}
-	return s.agent.FileChown(ctx, absPath, uid, gid)
-}
-
 
 // ─── helpers ───────────────────────────────────────────────────────────────
-
-func validateDomain(domain string) error {
-	domain = strings.TrimSpace(domain)
-	if domain == "" {
-		return apperrors.InvalidInput("domain is required")
-	}
-	if len(domain) > 253 {
-		return apperrors.InvalidInput("domain must be ≤ 253 characters")
-	}
-	if strings.HasSuffix(domain, ".") {
-		domain = strings.TrimSuffix(domain, ".")
-	}
-	labels := strings.Split(domain, ".")
-	for _, label := range labels {
-		if label == "" || len(label) > 63 {
-			return apperrors.InvalidInput("domain contains an invalid DNS label")
-		}
-		if label[0] == '-' || label[len(label)-1] == '-' {
-			return apperrors.InvalidInput("domain labels cannot start or end with a hyphen")
-		}
-		for _, ch := range label {
-			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-				(ch >= '0' && ch <= '9') || ch == '-') {
-				return apperrors.InvalidInput(fmt.Sprintf("domain contains invalid character: %q", ch))
-			}
-		}
-	}
-	return nil
-}
-
-func normalizeRootPath(root string) (string, error) {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return "", apperrors.InvalidInput("root_path is required")
-	}
-	if strings.ContainsRune(root, '\\') || !strings.HasPrefix(root, "/") {
-		return "", apperrors.InvalidInput("root_path must be an absolute Linux path")
-	}
-	clean := path.Clean(root)
-	if !isSafeLinuxPath(clean) {
-		return "", apperrors.InvalidInput("root_path contains unsupported characters")
-	}
-	allowed := false
-	for _, prefix := range []string{"/var/www/", "/srv/"} {
-		if clean != strings.TrimSuffix(prefix, "/") && strings.HasPrefix(clean+"/", prefix) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		return "", apperrors.InvalidInput("root_path must be located below /var/www or /srv")
-	}
-	return clean, nil
-}
-
-func validatePHPVersion(version *string) error {
-	if version == nil {
-		return nil
-	}
-	value := strings.TrimSpace(*version)
-	parts := strings.Split(value, ".")
-	if len(parts) != 2 || !allDigits(parts[0]) || !allDigits(parts[1]) {
-		return apperrors.InvalidInput("php_version must use major.minor format")
-	}
-	*version = value
-	return nil
-}
-
-func validateSSL(enabled bool, cert, key *string) error {
-	if !enabled {
-		return nil
-	}
-	if cert == nil || key == nil || strings.TrimSpace(*cert) == "" || strings.TrimSpace(*key) == "" {
-		return apperrors.InvalidInput("ssl_cert and ssl_key are required when SSL is enabled")
-	}
-	for name, value := range map[string]string{"ssl_cert": *cert, "ssl_key": *key} {
-		clean, err := normalizeCertificatePath(value)
-		if err != nil {
-			return apperrors.InvalidInput(name + " must be an absolute path below /etc/letsencrypt or /var/lib/opendeploy")
-		}
-		if name == "ssl_cert" {
-			*cert = clean
-		} else {
-			*key = clean
-		}
-	}
-	return nil
-}
-
-func normalizeCertificatePath(value string) (string, error) {
-	if strings.ContainsRune(value, '\\') || !strings.HasPrefix(value, "/") {
-		return "", fmt.Errorf("not an absolute Linux path")
-	}
-	clean := path.Clean(strings.TrimSpace(value))
-	if !isSafeLinuxPath(clean) {
-		return "", fmt.Errorf("path contains unsupported characters")
-	}
-	for _, prefix := range []string{"/etc/letsencrypt/", "/var/lib/opendeploy/"} {
-		if strings.HasPrefix(clean, prefix) {
-			return clean, nil
-		}
-	}
-	return "", fmt.Errorf("path is outside managed certificate roots")
-}
-
-func isSafeLinuxPath(value string) bool {
-	if value == "" || value[0] != '/' {
-		return false
-	}
-	for _, ch := range value {
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-			(ch >= '0' && ch <= '9') || ch == '/' || ch == '.' ||
-			ch == '_' || ch == '-') {
-			return false
-		}
-	}
-	return true
-}
-
-func allDigits(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, ch := range value {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	return true
-}
 
 func (s *Service) recordAudit(ctx context.Context, userID, action, resource, ip string, status audit.Status) {
 	if s.audit == nil {
@@ -636,4 +326,15 @@ func (s *Service) recordAudit(ctx context.Context, userID, action, resource, ip 
 		IPAddress: ipPtr,
 		Status:    status,
 	})
+}
+
+func (s *Service) publishLifecycle(ctx context.Context, eventType string, current *Site, actorID, ipAddress string) {
+	if s.events == nil {
+		return
+	}
+	event := newLifecycleEvent(eventType, current, actorID, ipAddress)
+	if err := s.events.Publish(ctx, event); err != nil {
+		s.logger.ErrorContext(ctx, "site lifecycle event delivery failed",
+			"event", eventType, "event_id", event.ID(), "site_id", current.ID, "error", err)
+	}
 }

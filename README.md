@@ -1,24 +1,27 @@
 # OpenDeploy
 
-> **Early-alpha, open-source Linux server management platform**
+> **Early-alpha, open-source single-host Linux server management platform**
 
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Architecture](https://img.shields.io/badge/Architecture-Modular-brightgreen)](#architecture)
 [![CI/CD](https://github.com/anrted/opendeploy/actions/workflows/ci.yml/badge.svg)](https://github.com/anrted/opendeploy/actions)
 
-OpenDeploy is a **modular server management platform** — not just a control panel. It provides a beautiful, modern web interface to fully manage your Linux server without SSH, while every component remains independent and extensible.
+OpenDeploy is a modular server-management foundation with a Vue web interface,
+an unprivileged Core and a privileged local Agent. It implements useful alpha
+workflows, but does not yet fully manage a Linux server and is not production
+ready. See the evidence-based [audit](AUDIT.md).
 
 ---
 
 ## ✨ Features
 
-- 🔒 **Secure by design** — Backend never runs as root; all system operations go through an isolated Agent
+- 🔒 **Privilege separated** — Core is unprivileged; supported OS mutations go through a local root Agent
 - 🧩 **Truly modular** — Core knows nothing about Nginx, PHP or Docker; modules register themselves
 - ⚡ **Fast & lightweight** — Pure Go backend, Vue 3 + TailwindCSS frontend, embedded as single binary
 - 📡 **Real-time** — WebSocket-powered live metrics, job output streaming
-- 🔌 **Self-contained** — No Nginx/Apache/Node.js/MySQL dependency; runs on port 5888 out of the box
-- 🛡️ **JWT + RBAC** — Access tokens, refresh rotation, role-based permissions (admin/operator/viewer)
+- 🔌 **Self-contained control plane** — SQLite and the web UI are embedded; managed services remain optional host dependencies
+- 🛡️ **JWT + RBAC foundation** — Access tokens, refresh rotation and roles; authorization hardening remains before v1.0
 
 ---
 
@@ -56,13 +59,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design decisions.
 
 ### Install
 
-OpenDeploy can be installed on Ubuntu 22.04+ with a single command:
+OpenDeploy can be evaluated on a disposable Ubuntu 22.04+ host:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | sudo bash
 ```
 
-After installation, open `http://YOUR_SERVER_IP:5888` in your browser. You will be greeted by the initial setup wizard to create your administrator account and configure the server.
+Set the initial administrator credentials as described in
+[INSTALL.md](INSTALL.md), then open `http://YOUR_SERVER_IP:5888`.
 
 > ⚠️ OpenDeploy is early alpha software. Use it on a test server and place it
 > behind HTTPS before exposing it outside a trusted network.
@@ -105,6 +109,7 @@ make dev-core
 | MySQL | Relational database management | Planned |
 | PostgreSQL | Relational database management | Planned |
 | Apache | Web server | Planned |
+| Fail2ban | Intrusion-prevention jail management | Alpha |
 
 ---
 
@@ -133,6 +138,8 @@ See [configs/opendeploy.yaml](configs/opendeploy.yaml) for all options.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 - [ROADMAP.md](ROADMAP.md) — Future plans
 - [CHANGELOG.md](CHANGELOG.md) — Version history
+- [AUDIT.md](AUDIT.md) — Readiness, security findings and priority backlog
+- [PRODUCTION_STAGE1.md](PRODUCTION_STAGE1.md) — First security-foundation remediation report
 
 ---
 

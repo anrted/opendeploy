@@ -20,6 +20,7 @@ import (
 	agentSystemd "github.com/anrted/opendeploy/internal/agent/systemd"
 	"github.com/anrted/opendeploy/internal/platform/config"
 	"github.com/anrted/opendeploy/internal/platform/logger"
+	"github.com/anrted/opendeploy/internal/platform/recovery"
 )
 
 // Agent is the fully wired OpenDeploy Agent.
@@ -85,8 +86,10 @@ func (a *Agent) Start() error {
 	}
 
 	a.grpcServer = grpc.NewServer(
-		grpc.MaxRecvMsgSize(50 << 20),
-		grpc.MaxSendMsgSize(50 << 20),
+		grpc.MaxRecvMsgSize(8<<20),
+		grpc.MaxSendMsgSize(8<<20),
+		grpc.ChainUnaryInterceptor(recovery.GRPCUnaryInterceptor()),
+		grpc.ChainStreamInterceptor(recovery.GRPCStreamInterceptor()),
 	)
 	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector(), a.shell).Register(a.grpcServer)
 

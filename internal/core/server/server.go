@@ -54,20 +54,22 @@ type Dependencies struct {
 
 type chiRouterWrapper struct {
 	chi.Router
-	prefix string
+	prefix             string
+	readPermission     auth.Permission
+	mutationPermission auth.Permission
 }
 
 func (w chiRouterWrapper) Get(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Get(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.With(coreMiddleware.RequirePermission(w.readPermission)).Get(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 func (w chiRouterWrapper) Post(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Post(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.With(coreMiddleware.RequirePermission(w.mutationPermission)).Post(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 func (w chiRouterWrapper) Put(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Put(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.With(coreMiddleware.RequirePermission(w.mutationPermission)).Put(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 func (w chiRouterWrapper) Delete(pattern string, handlerFn func(interface{}, interface{})) {
-	w.Router.Delete(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
+	w.Router.With(coreMiddleware.RequirePermission(w.mutationPermission)).Delete(w.prefix+pattern, func(rw http.ResponseWriter, r *http.Request) { handlerFn(rw, r) })
 }
 
 // New constructs a Server with the full middleware chain and route tree.
@@ -76,11 +78,12 @@ func New(deps Dependencies, logger *slog.Logger) *Server {
 
 	addr := deps.Config.Addr()
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  deps.Config.Server.ReadTimeout,
-		WriteTimeout: deps.Config.Server.WriteTimeout,
-		IdleTimeout:  120 * time.Second,
+		Addr:           addr,
+		Handler:        r,
+		ReadTimeout:    deps.Config.Server.ReadTimeout,
+		WriteTimeout:   deps.Config.Server.WriteTimeout,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	return &Server{httpServer: srv, logger: logger}
@@ -108,8 +111,9 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 
 	// ── Global middleware ─────────────────────────────────────────────────
 	r.Use(coreMiddleware.Recover)
-	r.Use(coreMiddleware.Logger(logger))
 	r.Use(middleware.RequestID)
+	r.Use(coreMiddleware.Logger(logger))
+	r.Use(limitRequestBody(2 << 20))
 
 	if deps.Config.Security.RateLimit.Enabled {
 		r.Use(coreMiddleware.RateLimit(deps.Config.Security.RateLimit.RequestsPerMinute))
@@ -175,6 +179,13 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 
 			r.Post("/auth/logout", deps.AuthHandler.Logout)
 			r.Get("/auth/me", deps.AuthHandler.Me)
+			r.With(coreMiddleware.RequirePermission(auth.PermUserManage)).Get("/users", deps.AuthHandler.ListUsers)
+			r.With(coreMiddleware.RequirePermission(auth.PermUserManage)).Post("/users", deps.AuthHandler.CreateUser)
+			r.With(coreMiddleware.RequirePermission(auth.PermUserManage)).Put("/users/{id}", deps.AuthHandler.UpdateUser)
+			r.With(coreMiddleware.RequirePermission(auth.PermUserManage)).Put("/users/{id}/password", deps.AuthHandler.ChangeUserPassword)
+			r.With(coreMiddleware.RequirePermission(auth.PermUserManage)).Get("/users/{id}/audit", deps.AuthHandler.UserAudit)
+			r.With(coreMiddleware.RequirePermission(auth.PermUserManage)).Post("/users/{id}/{action:block|unblock}", deps.AuthHandler.SetUserActive)
+			r.With(coreMiddleware.RequirePermission(auth.PermUserManage)).Delete("/users/{id}", deps.AuthHandler.DeleteUser)
 
 			// Module routes
 			if deps.ModuleHandler != nil {
@@ -187,23 +198,32 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleDisable)).Post("/modules/{id}/disable", deps.ModuleHandler.Disable)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/restart", deps.ModuleHandler.Restart)
 
-				r.Get("/modules/{id}/datagrid/{pageId}/schema", deps.ModuleHandler.HandleGetDataGridSchema)
-				r.Get("/modules/{id}/datagrid/{pageId}/data", deps.ModuleHandler.HandleGetDataGridData)
-				r.Post("/modules/{id}/datagrid/{pageId}/action/{actionId}", deps.ModuleHandler.HandleExecuteDataGridAction)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}/datagrid/{pageId}/schema", deps.ModuleHandler.HandleGetDataGridSchema)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}/datagrid/{pageId}/data", deps.ModuleHandler.HandleGetDataGridData)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/datagrid/{pageId}/action/{actionId}", deps.ModuleHandler.HandleExecuteDataGridAction)
 
-				r.Post("/modules/{id}/settings", deps.ModuleHandler.HandleSaveSettings)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/settings", deps.ModuleHandler.HandleSaveSettings)
 
-				r.Get("/modules/{id}/logs/{logId}/read", deps.ModuleHandler.HandleReadLog)
-				r.Post("/modules/{id}/logs/{logId}/clear", deps.ModuleHandler.HandleClearLog)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}/logs/{logId}/read", deps.ModuleHandler.HandleReadLog)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/logs/{logId}/clear", deps.ModuleHandler.HandleClearLog)
 
-				r.Post("/modules/{id}/actions/{actionId}", deps.ModuleHandler.ExecuteAction)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/actions/{actionId}", deps.ModuleHandler.ExecuteAction)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/jobs/{id}", deps.ModuleHandler.GetJob)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/tasks", deps.ModuleHandler.ListJobs)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/tasks/{id}/cancel", deps.ModuleHandler.CancelJob)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/tasks/{id}/retry", deps.ModuleHandler.RetryJob)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Delete("/tasks/{id}", deps.ModuleHandler.DeleteJob)
 			}
 
 			// Register custom routes for each module
 			if deps.ModuleRegistry != nil {
 				for _, m := range deps.ModuleRegistry.All() {
-					m.RegisterRoutes(chiRouterWrapper{r, "/modules/" + m.ID()})
+					m.RegisterRoutes(chiRouterWrapper{
+						Router:             r,
+						prefix:             "/modules/" + m.ID(),
+						readPermission:     auth.PermModuleView,
+						mutationPermission: auth.PermModuleConfigure,
+					})
 				}
 			}
 
@@ -263,6 +283,17 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 	r.Handle("/*", webui.Handler())
 
 	return r
+}
+
+func limitRequestBody(limit int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api/") && r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // csrfExemptRequest skips cookie-based CSRF checks where authentication does

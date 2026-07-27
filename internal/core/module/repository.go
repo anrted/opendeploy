@@ -17,4 +17,6 @@ type JobRepository interface {
 	UpdateState(ctx context.Context, id string, state JobState, output, errMsg string) error
 	AppendOutput(ctx context.Context, id, line string) error
 	ListByState(ctx context.Context, state JobState) ([]Job, error)
+	List(ctx context.Context, filter JobFilter) (*JobPage, error)
+	Delete(ctx context.Context, id string) error
 }

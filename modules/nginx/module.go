@@ -1,24 +1,14 @@
 package nginx
 
 import (
-	"bytes"
 	"context"
-	_ "embed"
 	"fmt"
 	"log/slog"
 	"strings"
-	"text/template"
+	"time"
 
 	"github.com/anrted/opendeploy/pkg/contract"
 )
-
-//go:embed templates/site.conf.tmpl
-var siteConfigTmpl string
-var tmpl *template.Template
-
-func init() {
-	tmpl = template.Must(template.New("site").Parse(siteConfigTmpl))
-}
 
 const moduleID = "nginx"
 
@@ -86,270 +76,9 @@ func (m *Module) RegisterSettings() []contract.SettingSpec {
 	return nil
 }
 
-func (m *Module) Install(ctx context.Context) error {
-	m.log.InfoContext(ctx, "installing nginx")
-	out, err := m.deps.Agent.PackageInstall(ctx, "nginx")
-	if err != nil {
-		return err
-	}
-	for line := range out {
-		m.log.DebugContext(ctx, "apt-get: "+line)
-	}
-	return m.deps.Agent.ServiceEnable(ctx, "nginx")
-}
-
-func (m *Module) Uninstall(ctx context.Context) error {
-	m.log.InfoContext(ctx, "uninstalling nginx")
-	_ = m.deps.Agent.ServiceStop(ctx, "nginx")
-	out, err := m.deps.Agent.PackageRemove(ctx, "nginx")
-	if err != nil {
-		return err
-	}
-	for line := range out {
-		m.log.DebugContext(ctx, "apt-get: "+line)
-	}
-	return nil
-}
-
-func (m *Module) Enable(ctx context.Context) error {
-	if err := m.deps.Agent.ServiceEnable(ctx, "nginx"); err != nil {
-		return err
-	}
-	return m.deps.Agent.ServiceStart(ctx, "nginx")
-}
-
-func (m *Module) Disable(ctx context.Context) error {
-	if err := m.deps.Agent.ServiceStop(ctx, "nginx"); err != nil {
-		return err
-	}
-	return m.deps.Agent.ServiceDisable(ctx, "nginx")
-}
-
-func (m *Module) Restart(ctx context.Context) error {
-	return m.deps.Agent.ServiceRestart(ctx, "nginx")
-}
-
-func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
-	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "nginx")
-
-	installed, version, _ := m.deps.Agent.PackageInstalled(ctx, "nginx")
-	pkgStatus := contract.PackageNotInstalled
-	if installed {
-		pkgStatus = contract.PackageInstalled
-	}
-
-	var srvStatus contract.ServiceStatusState = contract.ServiceStopped
-	if err == nil {
-		if svcStatus.Active {
-			srvStatus = contract.ServiceRunning
-		}
-	} else {
-		srvStatus = contract.ServiceFailed
-	}
-
-	var props []contract.Property
-	if srvStatus == contract.ServiceRunning {
-		// Try to get MainPID
-		_, stdout, _, _ := m.deps.Agent.CommandExecute(ctx, "systemctl", "show", "nginx", "--property=MainPID")
-		if pidStr := strings.TrimSpace(strings.TrimPrefix(stdout, "MainPID=")); pidStr != "" && pidStr != "0" {
-			props = append(props, contract.Property{Name: "Main PID", Value: pidStr, Group: "Overview"})
-
-			// Try to get CPU and Mem
-			_, psOut, _, _ := m.deps.Agent.CommandExecute(ctx, "ps", "-p", pidStr, "-o", "%cpu,%mem", "--no-headers")
-			fields := strings.Fields(psOut)
-			if len(fields) >= 2 {
-				props = append(props, contract.Property{Name: "CPU Usage", Value: fields[0] + "%", Group: "Performance"})
-				props = append(props, contract.Property{Name: "Memory Usage", Value: fields[1] + "%", Group: "Performance"})
-			}
-		}
-
-		// Try to get Uptime
-		_, uptimeOut, _, _ := m.deps.Agent.CommandExecute(ctx, "systemctl", "show", "nginx", "--property=ActiveEnterTimestamp")
-		if ts := strings.TrimSpace(strings.TrimPrefix(uptimeOut, "ActiveEnterTimestamp=")); ts != "" {
-			props = append(props, contract.Property{Name: "Started At", Value: ts, Group: "Overview"})
-		}
-
-		// Try to get stub_status (Active Connections) if available
-		_, curlOut, _, _ := m.deps.Agent.CommandExecute(ctx, "curl", "-s", "--max-time", "1", "http://127.0.0.1/nginx_status")
-		if strings.Contains(curlOut, "Active connections:") {
-			lines := strings.Split(curlOut, "\n")
-			for _, line := range lines {
-				if strings.HasPrefix(line, "Active connections:") {
-					val := strings.TrimSpace(strings.TrimPrefix(line, "Active connections:"))
-					props = append(props, contract.Property{Name: "Active Connections", Value: val, Group: "Performance"})
-				} else if strings.Contains(line, "Reading:") {
-					props = append(props, contract.Property{Name: "Connection Stats", Value: strings.TrimSpace(line), Group: "Performance"})
-				}
-			}
-		}
-	}
-
-	return &contract.RuntimeStatus{
-		PackageStatus:   pkgStatus,
-		ServiceStatus:   srvStatus,
-		SoftwareVersion: version,
-		Properties:      props,
-	}, nil
-}
-
-func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
-	svcStatus, err := m.deps.Agent.ServiceStatus(ctx, "nginx")
-	if err != nil {
-		return &contract.HealthReport{
-			Status:  contract.HealthError,
-			Message: fmt.Sprintf("cannot query nginx service: %v", err),
-		}, nil
-	}
-
-	checks := []contract.HealthCheck{
-		{
-			Name:    "service_running",
-			Status:  boolHealth(svcStatus.Active),
-			Message: formatServiceMsg(svcStatus.Active),
-		},
-	}
-	
-	// Check configuration
-	_, _, stderr, cfgErr := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
-	if cfgErr == nil {
-		checks = append(checks, contract.HealthCheck{Name: "config_valid", Status: contract.HealthOK, Message: "Configuration is valid"})
-	} else {
-		checks = append(checks, contract.HealthCheck{Name: "config_valid", Status: contract.HealthError, Message: "Configuration test failed:\n" + stderr})
-	}
-	
-	// Check port
-	_, portOut, _, _ := m.deps.Agent.CommandExecute(ctx, "ss", "-tuln")
-	if strings.Contains(portOut, ":80 ") || strings.Contains(portOut, ":443 ") {
-		checks = append(checks, contract.HealthCheck{Name: "port_open", Status: contract.HealthOK, Message: "Listening on port 80/443"})
-	} else {
-		checks = append(checks, contract.HealthCheck{Name: "port_open", Status: contract.HealthWarning, Message: "Not listening on standard HTTP(S) ports"})
-	}
-
-	overall := contract.HealthOK
-	for _, c := range checks {
-		if c.Status == contract.HealthError {
-			overall = contract.HealthError
-			break
-		}
-		if c.Status == contract.HealthWarning && overall == contract.HealthOK {
-			overall = contract.HealthWarning
-		}
-	}
-
-	return &contract.HealthReport{
-		Status: overall,
-		Checks: checks,
-	}, nil
-}
-
-// ─── WebServerPlugin ────────────────────────────────────────────────────────
-
-func (m *Module) ApplySite(ctx context.Context, action contract.SiteAction, site contract.SiteSpec) error {
-	configPath := fmt.Sprintf("/etc/nginx/sites-available/opendeploy-%s.conf", site.PrimaryDomain)
-	enabledPath := fmt.Sprintf("/etc/nginx/sites-enabled/opendeploy-%s.conf", site.PrimaryDomain)
-
-	switch action {
-	case contract.SiteUpsert, contract.SiteEnable:
-		if action == contract.SiteUpsert {
-			content, err := renderNginx(site)
-			if err != nil {
-				return err
-			}
-			if err := m.deps.Agent.FileWrite(ctx, configPath, content, 0o644); err != nil {
-				return fmt.Errorf("nginx: write config: %w", err)
-			}
-			if err := m.deps.Agent.FileWrite(ctx, enabledPath, content, 0o644); err != nil {
-				return fmt.Errorf("nginx: enable site: %w", err)
-			}
-		}
-
-		// Test configuration
-		exitCode, stdout, stderr, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
-		if err != nil || exitCode != 0 {
-			// Rollback
-			_ = m.deps.Agent.FileDelete(ctx, enabledPath)
-			if action == contract.SiteUpsert {
-				_ = m.deps.Agent.FileDelete(ctx, configPath)
-			}
-			return fmt.Errorf("nginx config test failed: %s\n%s", stdout, stderr)
-		}
-
-		// Reload configuration safely
-		return m.deps.Agent.ServiceReload(ctx, "nginx")
-
-	case contract.SiteDisable:
-		_ = m.deps.Agent.FileDelete(ctx, enabledPath)
-		return m.deps.Agent.ServiceReload(ctx, "nginx")
-
-	case contract.SiteDelete:
-		_ = m.deps.Agent.FileDelete(ctx, enabledPath)
-		_ = m.deps.Agent.FileDelete(ctx, configPath)
-		return m.deps.Agent.ServiceReload(ctx, "nginx")
-	}
-
-	return nil
-}
-
-func renderNginx(site contract.SiteSpec) ([]byte, error) {
-	var b bytes.Buffer
-	if err := tmpl.Execute(&b, site); err != nil {
-		return nil, fmt.Errorf("failed to render nginx template: %w", err)
-	}
-	return b.Bytes(), nil
-}
-
-func boolHealth(ok bool) contract.HealthStatus {
-	if ok {
-		return contract.HealthOK
-	}
-	return contract.HealthError
-}
-
-func formatServiceMsg(active bool) string {
-	if active {
-		return "nginx service is running"
-	}
-	return "nginx service is not running"
-}
-
 // compile-time assertion
 var _ contract.WebServerPlugin = (*Module)(nil)
 
-func (m *Module) Actions() []contract.ActionDef {
-	return []contract.ActionDef{
-		{ID: "start", Title: "Start", Icon: "play", Color: "success", RequiresConfirmation: false},
-		{ID: "stop", Title: "Stop", Icon: "square", Color: "secondary", RequiresConfirmation: true},
-		{ID: "reload", Title: "Reload Configuration", Icon: "refresh", Color: "primary", RequiresConfirmation: false},
-		{ID: "restart", Title: "Restart", Icon: "rotate-cw", Color: "primary", RequiresConfirmation: true},
-		{ID: "test_config", Title: "Test Configuration", Icon: "check-circle", Color: "secondary", RequiresConfirmation: false},
-	}
-}
-func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
-	switch actionID {
-	case "start":
-		return m.deps.Agent.ServiceStart(ctx, "nginx")
-	case "stop":
-		return m.deps.Agent.ServiceStop(ctx, "nginx")
-	case "reload":
-		// User specifically requested to run 'nginx -t' BEFORE reload.
-		exitCode, stdout, stderr, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
-		if err != nil || exitCode != 0 {
-			return fmt.Errorf("configuration test failed, reload aborted:\n%s\n%s", stdout, stderr)
-		}
-		return m.deps.Agent.ServiceReload(ctx, "nginx")
-	case "restart":
-		return m.deps.Agent.ServiceRestart(ctx, "nginx")
-	case "test_config":
-		_, stdout, stderr, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
-		if err != nil {
-			return fmt.Errorf("nginx -t failed: %v\n%s", err, stderr)
-		}
-		m.log.Info("Config test passed", "output", stdout)
-		return nil
-	default:
-		return fmt.Errorf("unknown action: %s", actionID)
-	}
-}
 func (m *Module) Logs() []contract.LogDef {
 	logs := []contract.LogDef{
 		{ID: "service", Name: "Systemd Service Log", Type: "systemd"},
@@ -357,23 +86,20 @@ func (m *Module) Logs() []contract.LogDef {
 		{ID: "error", Name: "Global Error Log", Type: "file", Path: "/var/log/nginx/error.log"},
 	}
 
-	// Try to find site specific logs dynamically
-	// In a real scenario, this would use filepath.Glob but we can just use Agent.CommandExecute for ls
-	_, out, _, err := m.deps.Agent.CommandExecute(context.Background(), "find", "/var/log/nginx", "-name", "*.log", "-maxdepth", "1")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	entries, err := m.deps.Agent.DirList(ctx, "/var/log/nginx")
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(out), "\n")
-		for _, line := range lines {
-			if line == "" || line == "/var/log/nginx/access.log" || line == "/var/log/nginx/error.log" {
+		for _, entry := range entries {
+			if entry.IsDir || !strings.HasSuffix(entry.Name, ".log") || entry.Name == "access.log" || entry.Name == "error.log" {
 				continue
 			}
-			parts := strings.Split(line, "/")
-			filename := parts[len(parts)-1]
-			logID := strings.TrimSuffix(filename, ".log")
+			logID := strings.TrimSuffix(entry.Name, ".log")
 			logs = append(logs, contract.LogDef{
 				ID:   logID,
-				Name: filename,
+				Name: entry.Name,
 				Type: "file",
-				Path: line,
+				Path: entry.Path,
 			})
 		}
 	}
@@ -415,29 +141,27 @@ func (m *Module) ClearLog(ctx context.Context, logID string) error {
 		return fmt.Errorf("log %s not found", logID)
 	}
 
-	// Empty the file using standard system tool
-	_, _, _, err := m.deps.Agent.CommandExecute(ctx, "truncate", "-s", "0", path)
-	return err
+	return m.deps.Agent.FileWrite(ctx, path, nil, 0o640)
 }
 func (m *Module) SettingsSchema() []contract.SettingField {
 	return []contract.SettingField{
 		{
-			ID:          "worker_processes",
-			Type:        "select",
-			Label:       "Worker Processes",
-			Description: "Number of worker processes (usually auto)",
-			Value:       "auto",
-			Options:     []string{"auto", "1", "2", "4", "8"},
-			Category:    "Performance",
+			ID:              "worker_processes",
+			Type:            "select",
+			Label:           "Worker Processes",
+			Description:     "Number of worker processes (usually auto)",
+			Value:           "auto",
+			Options:         []string{"auto", "1", "2", "4", "8"},
+			Category:        "Performance",
 			RequiresRestart: true,
 		},
 		{
-			ID:          "worker_connections",
-			Type:        "number",
-			Label:       "Worker Connections",
-			Description: "Maximum number of simultaneous connections that can be opened by a worker process",
-			Value:       "1024",
-			Category:    "Performance",
+			ID:              "worker_connections",
+			Type:            "number",
+			Label:           "Worker Connections",
+			Description:     "Maximum number of simultaneous connections that can be opened by a worker process",
+			Value:           "1024",
+			Category:        "Performance",
 			RequiresRestart: true,
 		},
 		{
@@ -479,12 +203,12 @@ func (m *Module) SaveSettings(ctx context.Context, settings map[string]any) erro
 	// Usually this would parse and rewrite /etc/nginx/nginx.conf
 	// Since we are mocking the file write logic for this test, we just validate using nginx -t
 	// In reality we would render a template for /etc/nginx/nginx.conf or similar
-	
+
 	_, _, _, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
 	if err != nil {
 		return fmt.Errorf("configuration validation failed: %w", err)
 	}
-	
+
 	// Reload nginx
 	_, _, _, err = m.deps.Agent.CommandExecute(ctx, "systemctl", "reload", "nginx")
 	return err
@@ -544,40 +268,32 @@ func (m *Module) GetDataGridSchema(ctx context.Context, pageID string) (contract
 func (m *Module) GetDataGridData(ctx context.Context, pageID string) ([]map[string]any, error) {
 	if pageID == "sites" {
 		var sites []map[string]any
-		
-		_, out, _, err := m.deps.Agent.CommandExecute(ctx, "sh", "-c", "ls -1 /etc/nginx/sites-available/opendeploy-*.conf 2>/dev/null || true")
-		if err == nil && strings.TrimSpace(out) != "" {
-			lines := strings.Split(strings.TrimSpace(out), "\n")
-			for _, line := range lines {
-				if line == "" { continue }
-				
+		entries, err := m.deps.Agent.DirList(ctx, "/etc/nginx/sites-available")
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir || !strings.HasPrefix(entry.Name, "opendeploy-") || !strings.HasSuffix(entry.Name, ".conf") {
+					continue
+				}
 				// Extract domain from filename
-				filename := line[strings.LastIndex(line, "/")+1:]
-				domain := strings.TrimSuffix(strings.TrimPrefix(filename, "opendeploy-"), ".conf")
-				
+				domain := strings.TrimSuffix(strings.TrimPrefix(entry.Name, "opendeploy-"), ".conf")
+
 				// Check status
 				enabledPath := fmt.Sprintf("/etc/nginx/sites-enabled/opendeploy-%s.conf", domain)
 				status := "disabled"
-				_, _, _, statErr := m.deps.Agent.CommandExecute(ctx, "test", "-e", enabledPath)
-				if statErr == nil {
+				if _, readErr := m.deps.Agent.FileRead(ctx, enabledPath); readErr == nil {
 					status = "enabled"
 				}
-				
-				// Extract root
-				_, rootOut, _, _ := m.deps.Agent.CommandExecute(ctx, "grep", "-E", "^\\s*root ", line)
-				root := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rootOut), "root "))
-				root = strings.TrimSuffix(root, ";")
-				
-				// Extract port
-				_, portOut, _, _ := m.deps.Agent.CommandExecute(ctx, "grep", "-E", "^\\s*listen ", line)
-				port := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(portOut), "listen "))
-				port = strings.TrimSuffix(port, ";")
-				port = strings.Split(port, " ")[0]
-				
+				content, _ := m.deps.Agent.FileRead(ctx, entry.Path)
+				root := nginxDirective(string(content), "root")
+				port := strings.Fields(nginxDirective(string(content), "listen"))
+				listenPort := ""
+				if len(port) > 0 {
+					listenPort = port[0]
+				}
 				sites = append(sites, map[string]any{
 					"domain": domain,
-					"port": port,
-					"root": root,
+					"port":   listenPort,
+					"root":   root,
 					"status": status,
 				})
 			}
@@ -590,15 +306,25 @@ func (m *Module) GetDataGridData(ctx context.Context, pageID string) ([]map[stri
 	return nil, fmt.Errorf("unknown page id: %s", pageID)
 }
 
+func nginxDirective(content, directive string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, directive+" ") {
+			return strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(line, directive)), ";")
+		}
+	}
+	return ""
+}
+
 func (m *Module) DataGridAction(ctx context.Context, pageID, actionID string, payload map[string]any) error {
 	if pageID == "sites" {
 		domain, _ := payload["domain"].(string)
 		if domain == "" {
 			return fmt.Errorf("domain is required")
 		}
-		
+
 		spec := contract.SiteSpec{PrimaryDomain: domain}
-		
+
 		switch actionID {
 		case "enable":
 			return m.ApplySite(ctx, contract.SiteEnable, spec)
@@ -612,4 +338,3 @@ func (m *Module) DataGridAction(ctx context.Context, pageID, actionID string, pa
 	}
 	return fmt.Errorf("unknown page or action")
 }
-

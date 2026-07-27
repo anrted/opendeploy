@@ -8,10 +8,10 @@ import (
 )
 
 func TestValidatePathHonorsRootBoundary(t *testing.T) {
-	if _, err := validatePath("/etc/nginx/nginx.conf"); err != nil {
-		t.Fatalf("expected path below /etc to be allowed: %v", err)
+	if _, err := validatePath("/etc/nginx/sites-available/example.conf"); err != nil {
+		t.Fatalf("expected managed nginx site path to be allowed: %v", err)
 	}
-	for _, path := range []string{"/etc-shadow/passwd", "/var/www2/site", "/etc/../tmp/file"} {
+	for _, path := range []string{"/etc/passwd", "/etc/systemd/system/evil.service", "/home/root/.ssh/authorized_keys", "/var/www2/site", "/etc/nginx/sites-available/../../../tmp/file"} {
 		if _, err := validatePath(path); err == nil {
 			t.Errorf("expected %q to be rejected", path)
 		}
@@ -54,5 +54,44 @@ func TestWriteAtomicallyReplacesFileAndPreservesRequestedMode(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Fatalf("temporary files were not cleaned up: %v", matches)
+	}
+}
+
+func TestSecurePathRejectsSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating symlinks requires additional privileges on Windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(root, "escape")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	manager := &Manager{allowedRoots: []string{root}}
+	if _, err := manager.Resolve(filepath.Join(link, "secret")); err == nil {
+		t.Fatal("expected symlink escape to be rejected")
+	}
+}
+
+func TestDeleteRefusesAllowedRoot(t *testing.T) {
+	root := t.TempDir()
+	manager := &Manager{allowedRoots: []string{root}}
+	if err := manager.Delete(root); err == nil {
+		t.Fatal("expected root deletion to be rejected")
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("allowed root was removed: %v", err)
+	}
+}
+
+func TestChmodRejectsSpecialBits(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "file")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := &Manager{allowedRoots: []string{root}}
+	if err := manager.Chmod(path, 0o4755); err == nil {
+		t.Fatal("expected setuid mode to be rejected")
 	}
 }

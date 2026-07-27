@@ -1,5 +1,9 @@
 # OpenDeploy API Reference
 
+Status: manually maintained alpha reference. There is no generated OpenAPI
+contract or stable compatibility guarantee yet. Pagination, filtering and
+sorting are endpoint-specific unless explicitly documented.
+
 Base URL: `http://YOUR_SERVER:5888/api/v1`
 
 All API requests (except `/auth/login`, `/auth/refresh`, `/health`) require:

@@ -5,8 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
-	"time"
 
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -167,75 +165,19 @@ func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
 	}
 
 	email := m.deps.Config.Get("email", "")
-
-	var emailFlag string
+	args := []string{"certonly", "--webroot", "-w", webroot, "-d", domain, "--agree-tos", "-n"}
 	if email == "" {
-		emailFlag = "--register-unsafely-without-email"
+		args = append(args, "--register-unsafely-without-email")
 	} else {
-		emailFlag = fmt.Sprintf("-m %s", email)
+		args = append(args, "-m", email)
 	}
-
-	svcName := fmt.Sprintf("certbot-obtain-%s.service", domain)
-	svcPath := fmt.Sprintf("/etc/systemd/system/%s", svcName)
-
-	// Create systemd service to run certbot securely via Agent
-	content := fmt.Sprintf(`[Unit]
-Description=Certbot Obtain for %s
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/certbot certonly --webroot -w %s -d %s %s --agree-tos -n
-`, domain, webroot, domain, emailFlag)
-
-	if err := m.deps.Agent.FileWrite(ctx, svcPath, []byte(content), 0o644); err != nil {
-		return apperrors.Internal(fmt.Sprintf("certbot: write systemd service: %v", err), err)
+	exitCode, _, stderr, err := m.deps.Agent.CommandExecute(ctx, "certbot", args...)
+	if err != nil || exitCode != 0 {
+		m.logger.WarnContext(ctx, "certbot obtain failed", "domain", domain, "exit_code", exitCode)
+		return apperrors.InvalidInput("Certbot failed to obtain the certificate; verify DNS and port 80 reachability")
 	}
-	defer m.deps.Agent.FileDelete(ctx, svcPath)
-
-	m.logger.InfoContext(ctx, "certbot: starting oneshot service", "service", svcName)
-	if err := m.deps.Agent.ServiceStart(ctx, svcName); err != nil {
-		return apperrors.Internal(fmt.Sprintf("certbot: start oneshot service: %v", err), err)
-	}
-
-	// Poll for completion
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	timeout := time.After(3 * time.Minute)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return apperrors.Internal("certbot: request cancelled", ctx.Err())
-		case <-timeout:
-			return apperrors.Internal(fmt.Sprintf("certbot: timeout waiting for %s", svcName), nil)
-		case <-ticker.C:
-			status, err := m.deps.Agent.ServiceStatus(ctx, svcName)
-			if err != nil {
-				return apperrors.Internal(fmt.Sprintf("certbot: query status: %v", err), err)
-			}
-			if !status.Active {
-				// Process finished. Check substate.
-				if status.SubState == "dead" {
-					return nil // success
-				}
-				// It failed
-				logs, _ := m.deps.Agent.ServiceLogs(ctx, svcName, 30)
-				logStr := strings.Join(logs, "\n")
-
-				errMsg := "Certbot failed to obtain certificate"
-				if strings.Contains(logStr, "Connection refused") {
-					errMsg = "Certbot failed: Connection refused. This usually means the domain has an incorrect A record in DNS, multiple conflicting A records, or the domain is pointing to the wrong IP address."
-				} else if strings.Contains(logStr, "NXDOMAIN") {
-					errMsg = "Certbot failed: Domain does not exist (NXDOMAIN). Please check your DNS settings."
-				} else if strings.Contains(logStr, "Timeout") {
-					errMsg = "Certbot failed: Connection timeout. Ensure port 80 is open in your firewall and the domain points to this server."
-				}
-
-				return apperrors.InvalidInput(fmt.Sprintf("%s\n\nLogs:\n%s", errMsg, logStr))
-			}
-		}
-	}
+	_ = stderr // Agent-side details are logged and are not reflected to clients.
+	return nil
 }
 
 var _ contract.CertbotPlugin = (*Module)(nil)

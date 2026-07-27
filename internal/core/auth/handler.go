@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"strconv"
 
 	"filippo.io/csrf/gorilla"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/internal/platform/logger"
+	"github.com/go-chi/chi/v5"
 )
 
 // contextKeyPrincipal is the context key for storing the authenticated user.
@@ -33,6 +35,10 @@ type loginRequest struct {
 
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+type passwordRequest struct {
+	Password string `json:"password"`
 }
 
 // ─── HTTP handlers ─────────────────────────────────────────────────────────
@@ -120,6 +126,90 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CSRFToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-CSRF-Token", csrf.Token(r))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	page, err := h.service.ListUsers(r.Context(), UserFilter{
+		Query: r.URL.Query().Get("q"), Role: Role(r.URL.Query().Get("role")),
+		Status: r.URL.Query().Get("status"), Limit: limit, Offset: offset,
+	})
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, page)
+}
+
+func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	var input CreateUserInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		respondError(w, apperrors.InvalidInput("malformed JSON body"))
+		return
+	}
+	user, err := h.service.CreateUser(r.Context(), PrincipalFromContext(r.Context()).ID, input)
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusCreated, user)
+}
+
+func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	var input UpdateUserInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		respondError(w, apperrors.InvalidInput("malformed JSON body"))
+		return
+	}
+	user, err := h.service.UpdateUser(r.Context(), PrincipalFromContext(r.Context()).ID, chi.URLParam(r, "id"), input)
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, user)
+}
+
+func (h *Handler) ChangeUserPassword(w http.ResponseWriter, r *http.Request) {
+	var input passwordRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		respondError(w, apperrors.InvalidInput("malformed JSON body"))
+		return
+	}
+	if err := h.service.SetPassword(r.Context(), PrincipalFromContext(r.Context()).ID, chi.URLParam(r, "id"), input.Password); err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "password changed"})
+}
+
+func (h *Handler) SetUserActive(w http.ResponseWriter, r *http.Request) {
+	active := chi.URLParam(r, "action") == "unblock"
+	user, err := h.service.SetUserActive(r.Context(), PrincipalFromContext(r.Context()).ID, chi.URLParam(r, "id"), active)
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, user)
+}
+
+func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.DeleteUser(r.Context(), PrincipalFromContext(r.Context()).ID, chi.URLParam(r, "id")); err != nil {
+		respondError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) UserAudit(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	entries, err := h.service.UserAudit(r.Context(), chi.URLParam(r, "id"), limit, offset)
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, entries)
 }
 
 // ─── Context helpers ───────────────────────────────────────────────────────

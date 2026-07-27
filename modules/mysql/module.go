@@ -122,7 +122,31 @@ func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 }
 
 func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
-	return &contract.HealthReport{Status: contract.HealthOK}, nil
+	installed, version, err := m.deps.Agent.PackageInstalled(ctx, "mysql-server")
+	if err != nil {
+		return &contract.HealthReport{Status: contract.HealthError, Message: "cannot query MySQL package state"}, nil
+	}
+	if !installed {
+		return &contract.HealthReport{Status: contract.HealthWarning, Message: "MySQL is not installed"}, nil
+	}
+	serviceStatus, err := m.deps.Agent.ServiceStatus(ctx, "mysql")
+	if err != nil {
+		return &contract.HealthReport{Status: contract.HealthError, Message: "cannot query MySQL service state"}, nil
+	}
+	status := contract.HealthOK
+	message := fmt.Sprintf("MySQL %s is installed and running", version)
+	if !serviceStatus.Active {
+		status = contract.HealthError
+		message = fmt.Sprintf("MySQL %s is installed but not running", version)
+	}
+	return &contract.HealthReport{
+		Status:  status,
+		Message: message,
+		Checks: []contract.HealthCheck{
+			{Name: "package_installed", Status: contract.HealthOK, Message: version},
+			{Name: "service_running", Status: status, Message: serviceStatus.SubState},
+		},
+	}, nil
 }
 
 // ─── DatabasePlugin ────────────────────────────────────────────────────────

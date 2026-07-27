@@ -3,6 +3,9 @@
 OpenDeploy is early alpha software. Use it on a test server, not a production
 host.
 
+Known production blockers are listed in [AUDIT.md](AUDIT.md). Installation
+success does not imply that a host is production-ready.
+
 ## Quick Installation (Ubuntu 22.04+)
 
 The easiest way to install OpenDeploy is using the automated installation script. It downloads the pre-compiled binaries, creates the necessary users and directories, sets up systemd services, and generates the initial JWT secret.
@@ -37,11 +40,17 @@ After installation, access the panel in your browser:
 http://<YOUR_SERVER_IP>:5888
 ```
 
-You will be greeted by the initial setup wizard to create your administrator account.
+Provide `OD_ADMIN_PASSWORD` through the protected service environment before
+first start. The current release does not provide a browser-based initial setup
+wizard. Keep `OD_JWT_SECRET` stable, random and at least 32 bytes.
 
 ## Updates
 
 OpenDeploy includes an automated updater. You can apply stable or development updates directly from the Settings page in the web interface.
+
+The alpha update path does not yet provide the complete signed-artifact and
+automatic rollback guarantees required for v1.0. Back up
+`/var/lib/opendeploy` and `/etc/opendeploy` before upgrading.
 
 ## Uninstallation
 

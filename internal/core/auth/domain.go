@@ -101,6 +101,7 @@ type User struct {
 	Email     string     `json:"email"`
 	Password  string     `json:"-"` // bcrypt hash — never serialised to JSON
 	Role      Role       `json:"role"`
+	IsActive  bool       `json:"is_active"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	LastLogin *time.Time `json:"last_login,omitempty"`

@@ -2,11 +2,15 @@ package middleware
 
 import (
 	"encoding/json"
+	"log/slog"
+	"net"
 	"net/http"
+	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 // RateLimit implements a simple per-IP sliding-window rate limiter.
@@ -90,8 +94,9 @@ func (l *ipLimiter) cleanup() {
 }
 
 func clientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
 	}
 	return r.RemoteAddr
 }
@@ -104,6 +109,13 @@ func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rv := recover(); rv != nil {
+				slog.ErrorContext(r.Context(), "panic recovered in HTTP handler",
+					"panic", rv,
+					"request_id", middleware.GetReqID(r.Context()),
+					"method", r.Method,
+					"path", r.URL.Path,
+					"stack", string(debug.Stack()),
+				)
 				writeError(w, apperrors.Internal("an unexpected error occurred", nil))
 			}
 		}()

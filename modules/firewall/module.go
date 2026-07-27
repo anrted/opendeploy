@@ -143,7 +143,10 @@ func (m *Module) Status(ctx context.Context) (*contract.RuntimeStatus, error) {
 
 func (m *Module) HealthCheck(ctx context.Context) (*contract.HealthReport, error) {
 	st, err := m.deps.Agent.FirewallStatus(ctx)
-	if err != nil || !st.Active {
+	if err != nil {
+		return &contract.HealthReport{Status: contract.HealthError, Message: "Cannot query firewall state"}, nil
+	}
+	if !st.Active {
 		return &contract.HealthReport{Status: contract.HealthWarning, Message: "Firewall is not running"}, nil
 	}
 	return &contract.HealthReport{Status: contract.HealthOK}, nil

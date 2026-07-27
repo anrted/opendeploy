@@ -43,7 +43,7 @@ func GRPCUnaryInterceptor() grpc.UnaryServerInterceptor {
 					"stack", string(debug.Stack()),
 					"method", info.FullMethod,
 				)
-				err = status.Errorf(codes.Internal, "panic: %v", r)
+				err = status.Error(codes.Internal, "internal agent error")
 			}
 		}()
 		return handler(ctx, req)
@@ -65,7 +65,7 @@ func GRPCStreamInterceptor() grpc.StreamServerInterceptor {
 					"stack", string(debug.Stack()),
 					"method", info.FullMethod,
 				)
-				err = status.Errorf(codes.Internal, "panic: %v", r)
+				err = status.Error(codes.Internal, "internal agent error")
 			}
 		}()
 		return handler(srv, ss)

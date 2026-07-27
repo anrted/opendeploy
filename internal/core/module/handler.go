@@ -162,6 +162,45 @@ func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, job)
 }
 
+func (h *Handler) ListJobs(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	page, err := h.service.ListJobs(r.Context(), JobFilter{
+		Query: r.URL.Query().Get("q"), State: JobState(r.URL.Query().Get("state")),
+		Type: JobType(r.URL.Query().Get("type")), Limit: limit, Offset: offset,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, page)
+}
+
+func (h *Handler) CancelJob(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.CancelJob(r.Context(), chi.URLParam(r, "id")); err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "task canceled"})
+}
+
+func (h *Handler) RetryJob(w http.ResponseWriter, r *http.Request) {
+	jobID, err := h.service.RetryJob(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+}
+
+func (h *Handler) DeleteJob(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.DeleteJob(r.Context(), chi.URLParam(r, "id")); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 func respond(w http.ResponseWriter, status int, data any) {
@@ -217,15 +256,15 @@ func (h *Handler) HandleExecuteDataGridAction(w http.ResponseWriter, r *http.Req
 	moduleID := chi.URLParam(r, "id")
 	pageID := chi.URLParam(r, "pageId")
 	actionID := chi.URLParam(r, "actionId")
-	
+
 	var payload map[string]any
 	if r.Body != nil && r.Body != http.NoBody {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, apperrors.InvalidInput("malformed JSON body"))
 			return
 		}
 	}
-	
+
 	err := h.service.ExecuteDataGridAction(r.Context(), moduleID, pageID, actionID, payload)
 	if err != nil {
 		writeError(w, err)
@@ -236,13 +275,13 @@ func (h *Handler) HandleExecuteDataGridAction(w http.ResponseWriter, r *http.Req
 
 func (h *Handler) HandleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "id")
-	
+
 	var settings map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(w, apperrors.InvalidInput("malformed JSON body"))
 		return
 	}
-	
+
 	if err := h.service.SaveSettings(r.Context(), moduleID, settings); err != nil {
 		writeError(w, err)
 		return
@@ -253,7 +292,7 @@ func (h *Handler) HandleSaveSettings(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleReadLog(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "id")
 	logID := chi.URLParam(r, "logId")
-	
+
 	linesStr := r.URL.Query().Get("lines")
 	lines := 100
 	if linesStr != "" {
@@ -261,13 +300,16 @@ func (h *Handler) HandleReadLog(w http.ResponseWriter, r *http.Request) {
 			lines = parsed
 		}
 	}
-	
+	if lines > 5000 {
+		lines = 5000
+	}
+
 	output, err := h.service.ReadLog(r.Context(), moduleID, logID, lines)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(output)
 }
@@ -275,7 +317,7 @@ func (h *Handler) HandleReadLog(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleClearLog(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "id")
 	logID := chi.URLParam(r, "logId")
-	
+
 	if err := h.service.ClearLog(r.Context(), moduleID, logID); err != nil {
 		writeError(w, err)
 		return

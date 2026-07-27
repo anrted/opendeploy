@@ -90,6 +90,7 @@ var Module = fx.Options(
 		registerModules,
 		seedAdmin,
 		startBackgroundJobs,
+		registerDomainSubscribers,
 		bootstrapModules,
 		startServer,
 	),
@@ -165,16 +166,16 @@ func provideJWTManager(cfg *config.Config) (*auth.JWTManager, error) {
 	return auth.NewJWTManager(secret)
 }
 
-func provideAuthService(userRepo auth.UserRepository, sessionRepo auth.SessionRepository, jwtMgr *auth.JWTManager, cfg *config.Config, log *slog.Logger) *auth.Service {
-	return auth.NewService(userRepo, sessionRepo, jwtMgr, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, log)
+func provideAuthService(userRepo auth.UserRepository, sessionRepo auth.SessionRepository, jwtMgr *auth.JWTManager, cfg *config.Config, log *slog.Logger, auditSvc *audit.Service) *auth.Service {
+	return auth.NewService(userRepo, sessionRepo, jwtMgr, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, log, auditSvc)
 }
 
 func provideModuleService(registry *module.Registry, repo module.Repository, jobRepo module.JobRepository, bus *events.MemoryBus, auditSvc *audit.Service, log *slog.Logger) *module.Service {
 	return module.NewService(registry, repo, jobRepo, bus, auditSvc, log)
 }
 
-func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent *agentclient.Client, registry *module.Registry, log *slog.Logger) *site.Service {
-	return site.NewService(repo, auditSvc, agent, registry, log)
+func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent *agentclient.Client, registry *module.Registry, bus *events.MemoryBus, log *slog.Logger) *site.Service {
+	return site.NewService(repo, auditSvc, agent, registry, bus, log)
 }
 
 func provideSvcService(repo service.Repository, agent *agentclient.Client, log *slog.Logger) *service.SvcService {
@@ -225,9 +226,31 @@ func startBackgroundJobs(lc fx.Lifecycle, dashboardSvc *dashboard.Service, log *
 	})
 }
 
-func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Repository, agent *agentclient.Client, db *database.Database, bus *events.MemoryBus, log *slog.Logger) {
+func registerDomainSubscribers(lc fx.Lifecycle, bus *events.MemoryBus, auditSvc *audit.Service, hub *websocket.Hub, log *slog.Logger) {
+	var unsubscribers []events.UnsubscribeFn
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			unsubscribers = append(unsubscribers,
+				site.RegisterAuditSubscriber(bus, auditSvc, log),
+				dashboard.RegisterSiteLifecycleSubscriber(bus, hub),
+			)
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			for _, unsubscribe := range unsubscribers {
+				unsubscribe()
+			}
+			return nil
+		},
+	})
+}
+
+func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Repository, moduleService *module.Service, agent *agentclient.Client, db *database.Database, bus *events.MemoryBus, log *slog.Logger) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			if err := moduleService.RecoverInterruptedJobs(ctx); err != nil {
+				return err
+			}
 			loader := module.NewLoader(registry, repo, log)
 			deps := contract.ModuleDeps{
 				Agent:  agent,

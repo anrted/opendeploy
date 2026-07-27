@@ -7,22 +7,25 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 )
 
 // AllowedRoots defines the directories where the Agent is allowed to read/write.
 // Paths outside these roots are rejected.
 var AllowedRoots = []string{
-	"/etc",
+	"/etc/nginx/sites-available",
+	"/etc/nginx/sites-enabled",
+	"/etc/apache2/sites-available",
+	"/etc/apache2/sites-enabled",
+	"/etc/php",
+	"/etc/fail2ban/jail.d",
+	"/etc/fail2ban/filter.d",
 	"/var/www",
 	"/var/lib/opendeploy",
+	"/var/log/nginx",
+	"/var/log/fail2ban.log",
 	"/srv",
-	"/home",
-	"/run/opendeploy-agent",
 }
 
 // Manager handles file system operations with path validation.
@@ -44,6 +47,9 @@ func validatePath(path string) (string, error) {
 }
 
 func validatePathWithin(path string, allowedRoots []string) (string, error) {
+	if !filepath.IsAbs(path) && !strings.HasPrefix(filepath.ToSlash(path), "/") {
+		return "", fmt.Errorf("filesystem: path must be absolute")
+	}
 	clean := filepath.Clean(path)
 
 	// Reject obvious traversal patterns before cleaning.
@@ -61,13 +67,71 @@ func validatePathWithin(path string, allowedRoots []string) (string, error) {
 	return "", fmt.Errorf("filesystem: path %q is outside allowed directories", clean)
 }
 
+// securePath validates both the lexical path and every existing symlink in its
+// ancestry. Missing path components are allowed for create/write operations,
+// but their nearest existing parent must still resolve inside an allowed root.
+func (m *Manager) securePath(path string) (string, error) {
+	clean, err := m.validatePath(path)
+	if err != nil {
+		return "", err
+	}
+	existing := clean
+	for {
+		_, statErr := os.Lstat(existing)
+		if statErr == nil {
+			break
+		}
+		if !os.IsNotExist(statErr) {
+			return "", fmt.Errorf("filesystem: inspect %q: %w", existing, statErr)
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return "", fmt.Errorf("filesystem: no existing parent for %q", clean)
+		}
+		existing = parent
+	}
+	resolved, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return "", fmt.Errorf("filesystem: resolve %q: %w", existing, err)
+	}
+	if _, err := validatePathWithin(resolved, m.resolvedRoots()); err != nil {
+		return "", fmt.Errorf("filesystem: symlink escapes allowed roots: %w", err)
+	}
+	if existing == clean {
+		return resolved, nil
+	}
+	suffix, err := filepath.Rel(existing, clean)
+	if err != nil || strings.HasPrefix(suffix, "..") {
+		return "", fmt.Errorf("filesystem: invalid path suffix")
+	}
+	return filepath.Join(resolved, suffix), nil
+}
+
+func (m *Manager) resolvedRoots() []string {
+	roots := make([]string, 0, len(m.allowedRoots))
+	for _, root := range m.allowedRoots {
+		resolved, err := filepath.EvalSymlinks(root)
+		if err == nil {
+			roots = append(roots, resolved)
+		} else {
+			roots = append(roots, filepath.Clean(root))
+		}
+	}
+	return roots
+}
+
 func (m *Manager) validatePath(path string) (string, error) {
 	return validatePathWithin(path, m.allowedRoots)
 }
 
+// Resolve returns a symlink-checked absolute path within an allowed root.
+func (m *Manager) Resolve(path string) (string, error) {
+	return m.securePath(path)
+}
+
 // Read returns the contents of a file.
 func (m *Manager) Read(path string) ([]byte, error) {
-	clean, err := m.validatePath(path)
+	clean, err := m.securePath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +144,10 @@ func (m *Manager) Read(path string) ([]byte, error) {
 
 // Write writes content to a file, creating parent directories as needed.
 func (m *Manager) Write(path string, content []byte, mode fs.FileMode) error {
-	clean, err := m.validatePath(path)
+	if err := validateMode(mode); err != nil {
+		return err
+	}
+	clean, err := m.securePath(path)
 	if err != nil {
 		return err
 	}
@@ -124,9 +191,14 @@ func (m *Manager) Write(path string, content []byte, mode fs.FileMode) error {
 
 // Delete removes a file or directory recursively.
 func (m *Manager) Delete(path string) error {
-	clean, err := m.validatePath(path)
+	clean, err := m.securePath(path)
 	if err != nil {
 		return err
+	}
+	for _, root := range m.resolvedRoots() {
+		if clean == root {
+			return fmt.Errorf("filesystem: refusing to delete an allowed root")
+		}
 	}
 	if err := os.RemoveAll(clean); err != nil {
 		return fmt.Errorf("filesystem: delete %q: %w", clean, err)
@@ -136,7 +208,10 @@ func (m *Manager) Delete(path string) error {
 
 // MkdirAll creates a directory and all parents.
 func (m *Manager) MkdirAll(path string, mode fs.FileMode) error {
-	clean, err := m.validatePath(path)
+	if err := validateMode(mode); err != nil {
+		return err
+	}
+	clean, err := m.securePath(path)
 	if err != nil {
 		return err
 	}
@@ -160,7 +235,7 @@ type FileEntry struct {
 
 // List returns the direct children of a directory.
 func (m *Manager) List(path string) ([]FileEntry, error) {
-	clean, err := m.validatePath(path)
+	clean, err := m.securePath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -176,17 +251,7 @@ func (m *Manager) List(path string) ([]FileEntry, error) {
 		if err != nil {
 			continue
 		}
-		var owner, group string
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			owner = strconv.FormatUint(uint64(stat.Uid), 10)
-			group = strconv.FormatUint(uint64(stat.Gid), 10)
-			if u, err := user.LookupId(owner); err == nil {
-				owner = u.Username
-			}
-			if g, err := user.LookupGroupId(group); err == nil {
-				group = g.Name
-			}
-		}
+		owner, group := ownership(info)
 
 		result = append(result, FileEntry{
 			Name:    e.Name(),
@@ -204,11 +269,11 @@ func (m *Manager) List(path string) ([]FileEntry, error) {
 
 // Rename renames or moves a file or directory.
 func (m *Manager) Rename(oldPath, newPath string) error {
-	cleanOld, err := m.validatePath(oldPath)
+	cleanOld, err := m.securePath(oldPath)
 	if err != nil {
 		return err
 	}
-	cleanNew, err := m.validatePath(newPath)
+	cleanNew, err := m.securePath(newPath)
 	if err != nil {
 		return err
 	}
@@ -220,11 +285,11 @@ func (m *Manager) Rename(oldPath, newPath string) error {
 
 // Copy copies a file from src to dst.
 func (m *Manager) Copy(srcPath, dstPath string) error {
-	cleanSrc, err := m.validatePath(srcPath)
+	cleanSrc, err := m.securePath(srcPath)
 	if err != nil {
 		return err
 	}
-	cleanDst, err := m.validatePath(dstPath)
+	cleanDst, err := m.securePath(dstPath)
 	if err != nil {
 		return err
 	}
@@ -244,7 +309,8 @@ func (m *Manager) Copy(srcPath, dstPath string) error {
 		return fmt.Errorf("filesystem: mkdir for dst %q: %w", cleanDst, err)
 	}
 
-	dst, err := os.OpenFile(cleanDst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+	dstMode := info.Mode().Perm() &^ 0o022
+	dst, err := os.OpenFile(cleanDst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, dstMode)
 	if err != nil {
 		return fmt.Errorf("filesystem: open dst %q: %w", cleanDst, err)
 	}
@@ -258,11 +324,14 @@ func (m *Manager) Copy(srcPath, dstPath string) error {
 
 // Chmod changes the permissions of a file.
 func (m *Manager) Chmod(path string, mode uint32) error {
-	clean, err := m.validatePath(path)
+	clean, err := m.securePath(path)
 	if err != nil {
 		return err
 	}
-	if err := os.Chmod(clean, fs.FileMode(mode)); err != nil {
+	if err := validateMode(fs.FileMode(mode)); err != nil {
+		return err
+	}
+	if err := os.Chmod(clean, fs.FileMode(mode).Perm()); err != nil {
 		return fmt.Errorf("filesystem: chmod %q: %w", clean, err)
 	}
 	return nil
@@ -270,12 +339,22 @@ func (m *Manager) Chmod(path string, mode uint32) error {
 
 // Chown changes the owner and group of a file.
 func (m *Manager) Chown(path string, uid, gid int) error {
-	clean, err := m.validatePath(path)
+	clean, err := m.securePath(path)
 	if err != nil {
 		return err
 	}
+	if uid <= 0 || gid <= 0 {
+		return fmt.Errorf("filesystem: root or negative ownership is forbidden")
+	}
 	if err := os.Chown(clean, uid, gid); err != nil {
 		return fmt.Errorf("filesystem: chown %q: %w", clean, err)
+	}
+	return nil
+}
+
+func validateMode(mode fs.FileMode) error {
+	if mode.Perm() == 0 || mode&^fs.FileMode(0o777) != 0 || mode.Perm()&0o002 != 0 {
+		return fmt.Errorf("filesystem: unsafe permission bits %o", mode)
 	}
 	return nil
 }

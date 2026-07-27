@@ -16,11 +16,7 @@ func Auth(jwt *auth.JWTManager) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenStr := extractBearerToken(r)
 			if tokenStr == "" {
-				// Fallback to query parameter (useful for WebSockets)
-				tokenStr = r.URL.Query().Get("token")
-			}
-			if tokenStr == "" {
-				writeError(w, apperrors.Unauthorized("missing or malformed Authorization header or token query parameter"))
+				writeError(w, apperrors.Unauthorized("missing or malformed Authorization header"))
 				return
 			}
 

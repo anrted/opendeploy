@@ -1,10 +1,11 @@
 package module
-
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/anrted/opendeploy/internal/core/audit"
@@ -13,6 +14,8 @@ import (
 	"github.com/anrted/opendeploy/pkg/contract"
 	"github.com/google/uuid"
 )
+
+const moduleJobTimeout = 30 * time.Minute
 
 // Service orchestrates module lifecycle operations.
 // Long-running operations (Install, Uninstall) run asynchronously and return
@@ -24,6 +27,8 @@ type Service struct {
 	bus      *events.MemoryBus
 	audit    *audit.Service
 	logger   *slog.Logger
+	cancelMu sync.Mutex
+	cancels  map[string]context.CancelFunc
 }
 
 // NewService constructs a module Service.
@@ -42,6 +47,7 @@ func NewService(
 		bus:      bus,
 		audit:    audit,
 		logger:   logger,
+		cancels:  make(map[string]context.CancelFunc),
 	}
 }
 
@@ -64,28 +70,28 @@ func (s *Service) List(ctx context.Context) ([]ModuleView, error) {
 		if !ok {
 			rec = Record{ID: m.ID(), Name: m.Name(), State: StateAvailable}
 		}
-		
+
 		var installedVersion string
 		if rec.Version != nil {
 			installedVersion = *rec.Version
 		}
 
 		views = append(views, ModuleView{
-			ID:               m.ID(),
-			Name:             m.Name(),
-			ModuleVersion:    m.Version(),
-			SoftwareVersion:  installedVersion,
-			Description:      m.Description(),
-			Category:         m.Category(),
-			Icon:             m.Icon(),
-			Dependencies:     m.Dependencies(),
-			Capabilities:     m.Capabilities(),
-			State:            rec.State,
-			InstalledAt:      rec.InstalledAt,
-			Pages:            m.Pages(),
-			Actions:          m.Actions(),
-			Logs:             m.Logs(),
-			SettingsSchema:   m.SettingsSchema(),
+			ID:              m.ID(),
+			Name:            m.Name(),
+			ModuleVersion:   m.Version(),
+			SoftwareVersion: installedVersion,
+			Description:     m.Description(),
+			Category:        m.Category(),
+			Icon:            m.Icon(),
+			Dependencies:    m.Dependencies(),
+			Capabilities:    m.Capabilities(),
+			State:           rec.State,
+			InstalledAt:     rec.InstalledAt,
+			Pages:           m.Pages(),
+			Actions:         m.Actions(),
+			Logs:            m.Logs(),
+			SettingsSchema:  m.SettingsSchema(),
 		})
 	}
 	return views, nil
@@ -108,21 +114,21 @@ func (s *Service) Get(ctx context.Context, id string) (*ModuleView, error) {
 	}
 
 	return &ModuleView{
-		ID:               m.ID(),
-		Name:             m.Name(),
-		ModuleVersion:    m.Version(),
-		SoftwareVersion:  installedVersion,
-		Description:      m.Description(),
-		Category:         m.Category(),
-		Icon:             m.Icon(),
-		Dependencies:     m.Dependencies(),
-		Capabilities:     m.Capabilities(),
-		State:            rec.State,
-		InstalledAt:      rec.InstalledAt,
-		Pages:            m.Pages(),
-		Actions:          m.Actions(),
-		Logs:             m.Logs(),
-		SettingsSchema:   m.SettingsSchema(),
+		ID:              m.ID(),
+		Name:            m.Name(),
+		ModuleVersion:   m.Version(),
+		SoftwareVersion: installedVersion,
+		Description:     m.Description(),
+		Category:        m.Category(),
+		Icon:            m.Icon(),
+		Dependencies:    m.Dependencies(),
+		Capabilities:    m.Capabilities(),
+		State:           rec.State,
+		InstalledAt:     rec.InstalledAt,
+		Pages:           m.Pages(),
+		Actions:         m.Actions(),
+		Logs:            m.Logs(),
+		SettingsSchema:  m.SettingsSchema(),
 	}, nil
 }
 
@@ -132,14 +138,14 @@ func (s *Service) Status(ctx context.Context, id string) (*contract.RuntimeStatu
 	if m == nil {
 		return nil, apperrors.New(404, apperrors.CodeModuleNotFound, "module not found: "+id)
 	}
-	
+
 	status, err := m.Status(ctx)
 	if err != nil {
 		s.logger.Warn("module service: runtime status failed", "module", m.ID(), "error", err)
 		return nil, apperrors.Internal("failed to fetch status", err)
 	}
 
-	// Optionally update the DB with the actual status here, 
+	// Optionally update the DB with the actual status here,
 	// e.g. updating rec.State or rec.Version if they have drifted.
 
 	return status, nil
@@ -170,7 +176,7 @@ func (s *Service) Install(ctx context.Context, id, userID, ip string) (string, e
 		}
 		_ = s.repo.Upsert(ctx, &Record{
 			ID: id, Name: m.Name(), State: StateInstalled,
-			Version: version,
+			Version:     version,
 			InstalledAt: &now, UpdatedAt: now,
 		})
 		s.publishEvent(ctx, "module.installed", map[string]string{"module_id": id})
@@ -275,35 +281,6 @@ func (s *Service) ExecuteAction(ctx context.Context, id, actionID, userID, ip st
 	return nil
 }
 
-// GetJob returns the current state of a background job.
-func (s *Service) GetJob(ctx context.Context, jobID string) (*Job, error) {
-	return s.jobs.FindByID(ctx, jobID)
-}
-
-// ─── ModuleView ────────────────────────────────────────────────────────────
-
-// ModuleView is the API response DTO for a module.
-type ModuleView struct {
-	ID               string                      `json:"id"`
-	Name             string                      `json:"name"`
-	ModuleVersion    string                      `json:"module_version"`
-	SoftwareVersion  string                      `json:"software_version,omitempty"`
-	Description      string                      `json:"description"`
-	Category         string                      `json:"category"`
-	Icon             string                      `json:"icon"`
-	Dependencies     contract.ModuleDependencies `json:"dependencies"`
-	Capabilities     contract.ModuleCapabilities `json:"capabilities"`
-	State            State                       `json:"state"`
-	InstalledAt      *time.Time                  `json:"installed_at,omitempty"`
-	Status           *contract.RuntimeStatus     `json:"status,omitempty"`
-	
-	// Dynamic Metadata
-	Pages            []contract.ModulePage       `json:"pages,omitempty"`
-	Actions          []contract.ActionDef        `json:"actions,omitempty"`
-	Logs             []contract.LogDef           `json:"logs,omitempty"`
-	SettingsSchema   []contract.SettingField     `json:"settings_schema,omitempty"`
-}
-
 // ─── internal helpers ──────────────────────────────────────────────────────
 
 // startJob creates a Job record and launches an async goroutine.
@@ -317,125 +294,57 @@ func (s *Service) startJob(
 	payload, _ := json.Marshal(map[string]string{"module_id": moduleID})
 	job := &Job{
 		ID:        uuid.New().String(),
+		Name:      fmt.Sprintf("%s %s", jobType, moduleID),
 		Type:      jobType,
 		Payload:   string(payload),
 		State:     JobPending,
 		CreatedAt: nowUTC(),
+		Progress:  0,
 	}
 	if err := s.jobs.Create(ctx, job); err != nil {
 		return "", apperrors.Internal("create job", err)
 	}
 
 	// Detached goroutine — use background context so it outlives the request.
+	bgCtx, cancel := context.WithTimeout(context.Background(), moduleJobTimeout)
+	s.cancelMu.Lock()
+	s.cancels[job.ID] = cancel
+	s.cancelMu.Unlock()
 	go func() {
-		bgCtx := context.Background()
+		defer func() {
+			cancel()
+			s.cancelMu.Lock()
+			delete(s.cancels, job.ID)
+			s.cancelMu.Unlock()
+		}()
 		_ = s.jobs.UpdateState(bgCtx, job.ID, JobRunning, "", "")
 
 		if err := work(bgCtx); err != nil {
 			s.logger.Error("module job failed", "job_id", job.ID, "type", jobType, "error", err)
-			_ = s.jobs.UpdateState(bgCtx, job.ID, JobError, "", err.Error())
-			s.publishEvent(bgCtx, "job.error", map[string]string{"job_id": job.ID})
+			persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer persistCancel()
+			state := JobError
+			if errors.Is(err, context.Canceled) {
+				state = JobCanceled
+			}
+			_ = s.jobs.UpdateState(persistCtx, job.ID, state, "", err.Error())
+			s.publishEvent(persistCtx, "job.error", map[string]string{"job_id": job.ID})
+			return
+		}
+		if bgCtx.Err() != nil {
+			persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer persistCancel()
+			_ = s.jobs.UpdateState(persistCtx, job.ID, JobCanceled, "", bgCtx.Err().Error())
+			s.publishEvent(persistCtx, "job.canceled", map[string]string{"job_id": job.ID})
 			return
 		}
 
-		onSuccess(bgCtx)
-		_ = s.jobs.UpdateState(bgCtx, job.ID, JobSuccess, "", "")
-		s.publishEvent(bgCtx, "job.done", map[string]string{"job_id": job.ID})
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer persistCancel()
+		onSuccess(persistCtx)
+		_ = s.jobs.UpdateState(persistCtx, job.ID, JobSuccess, "", "")
+		s.publishEvent(persistCtx, "job.done", map[string]string{"job_id": job.ID})
 	}()
 
 	return job.ID, nil
-}
-
-func (s *Service) publishEvent(ctx context.Context, eventType string, payload any) {
-	ev := events.NewBaseEvent(eventType, payload)
-	if err := s.bus.Publish(ctx, ev); err != nil {
-		s.logger.Warn("module service: publish event failed", "type", eventType, "error", err)
-	}
-}
-
-func (s *Service) recordAudit(ctx context.Context, userID, action, moduleID, ip string, status audit.Status) {
-	uid := &userID
-	resource := moduleID
-	ipPtr := &ip
-	_ = s.audit.Record(ctx, audit.Entry{
-		UserID:    uid,
-		Action:    action,
-		Resource:  &resource,
-		IPAddress: ipPtr,
-		Status:    status,
-	})
-}
-
-func nowUTC() time.Time { return time.Now().UTC() }
-
-func (s *Service) GetDataGridSchema(ctx context.Context, moduleID, pageID string) (contract.DataGridSchema, error) {
-	m := s.registry.Find(moduleID)
-	if m == nil {
-		return contract.DataGridSchema{}, fmt.Errorf("module %s not found", moduleID)
-	}
-	dgp, ok := m.(contract.DataGridProvider)
-	if !ok {
-		return contract.DataGridSchema{}, fmt.Errorf("module does not support datagrid")
-	}
-	return dgp.DataGridSchema(pageID)
-}
-
-func (s *Service) GetDataGridData(ctx context.Context, moduleID, pageID string) ([]map[string]any, error) {
-	m := s.registry.Find(moduleID)
-	if m == nil {
-		return nil, fmt.Errorf("module %s not found", moduleID)
-	}
-	dgp, ok := m.(contract.DataGridProvider)
-	if !ok {
-		return nil, fmt.Errorf("module does not support datagrid")
-	}
-	return dgp.DataGridData(ctx, pageID)
-}
-
-func (s *Service) ExecuteDataGridAction(ctx context.Context, moduleID, pageID, actionID string, payload map[string]any) error {
-	m := s.registry.Find(moduleID)
-	if m == nil {
-		return fmt.Errorf("module %s not found", moduleID)
-	}
-	dgp, ok := m.(contract.DataGridProvider)
-	if !ok {
-		return fmt.Errorf("module does not support datagrid")
-	}
-	return dgp.DataGridAction(ctx, pageID, actionID, payload)
-}
-
-func (s *Service) SaveSettings(ctx context.Context, moduleID string, settings map[string]any) error {
-	m := s.registry.Find(moduleID)
-	if m == nil {
-		return fmt.Errorf("module %s not found", moduleID)
-	}
-	sp, ok := m.(contract.SettingsProvider)
-	if !ok {
-		return fmt.Errorf("module %s does not support saving settings", moduleID)
-	}
-	return sp.SaveSettings(ctx, settings)
-}
-
-func (s *Service) ReadLog(ctx context.Context, moduleID string, logID string, lines int) ([]string, error) {
-	m := s.registry.Find(moduleID)
-	if m == nil {
-		return nil, fmt.Errorf("module %s not found", moduleID)
-	}
-	lp, ok := m.(contract.LogProvider)
-	if !ok {
-		return nil, fmt.Errorf("module %s does not support log reading", moduleID)
-	}
-	return lp.ReadLog(ctx, logID, lines)
-}
-
-func (s *Service) ClearLog(ctx context.Context, moduleID string, logID string) error {
-	m := s.registry.Find(moduleID)
-	if m == nil {
-		return fmt.Errorf("module %s not found", moduleID)
-	}
-	lp, ok := m.(contract.LogProvider)
-	if !ok {
-		return fmt.Errorf("module %s does not support log clearing", moduleID)
-	}
-	return lp.ClearLog(ctx, logID)
 }

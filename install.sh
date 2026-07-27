@@ -63,18 +63,22 @@ case "$ARCH" in
 esac
 print_success "Архитектура: $ARCH"
 
-# 3. Проверить ОС (Ubuntu)
+# 3. Detect a supported Linux family.
 print_step "Проверка ОС"
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    if [ "$ID" != "ubuntu" ]; then
-        print_warning "Эта система не определена как Ubuntu. Возможны проблемы с совместимостью."
-    else
-        print_success "ОС: Ubuntu $VERSION_ID"
-    fi
-else
-    print_warning "Файл /etc/os-release не найден. Невозможно определить ОС."
-fi
+[ -r /etc/os-release ] || die "Файл /etc/os-release не найден"
+. /etc/os-release
+case "${ID:-}:${ID_LIKE:-}" in
+    ubuntu:*|debian:*|*:debian*)
+        PACKAGE_FAMILY="apt"
+        ;;
+    rhel:*|centos:*|rocky:*|almalinux:*|fedora:*|*:rhel*|*:fedora*)
+        PACKAGE_FAMILY="dnf"
+        ;;
+    *)
+        die "Неподдерживаемая ОС: ${ID:-unknown}"
+        ;;
+esac
+print_success "ОС: ${PRETTY_NAME:-$ID}"
 
 # 4. Проверить systemd
 print_step "Проверка systemd"
@@ -85,10 +89,32 @@ print_success "systemd найден"
 
 # 5. Проверить утилиты
 print_step "Проверка системных утилит"
+install_requirement() {
+    package=$1
+    case "$PACKAGE_FAMILY" in
+        apt)
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$package"
+            ;;
+        dnf)
+            if command -v dnf >/dev/null 2>&1; then
+                dnf install -y -q "$package"
+            else
+                yum install -y -q "$package"
+            fi
+            ;;
+    esac
+}
+
 for req in curl tar jq sha256sum grep awk; do
     if ! command -v "$req" >/dev/null 2>&1; then
         print_step "Установка недостающей утилиты: $req"
-        apt-get update -qq && apt-get install -y -qq "$req" >/dev/null 2>&1 || die "Не удалось установить $req"
+        package=$req
+        case "$req" in
+            sha256sum) package=coreutils ;;
+            awk) package=gawk ;;
+        esac
+        install_requirement "$package" >/dev/null 2>&1 || die "Не удалось установить $req"
     fi
 done
 print_success "Все необходимые утилиты установлены"
@@ -138,13 +164,17 @@ if ! grep "$TAR_NAME" checksums.txt | sha256sum -c - >/dev/null 2>&1; then
 fi
 print_success "Контрольная сумма верна"
 
-# 9. Распаковка и установка
+# 9. Extract only the three expected release files into an isolated directory.
 print_step "Установка бинарных файлов"
-tar -xzf "$TAR_NAME"
+ARCHIVE_ENTRIES=$(tar -tzf "$TAR_NAME" | sed 's#^\./##' | sort)
+EXPECTED_ENTRIES=$(printf '%s\n' opendeploy-agent opendeploy-cli opendeploy-core)
+[ "$ARCHIVE_ENTRIES" = "$EXPECTED_ENTRIES" ] || die "Архив релиза содержит неожиданные пути или файлы"
+mkdir "$TMP_DIR/extract"
+tar -xzf "$TAR_NAME" --no-same-owner --no-same-permissions -C "$TMP_DIR/extract"
 install -d -m 0755 "$PREFIX"
-install -m 0755 opendeploy-core "$PREFIX/opendeploy-core"
-install -m 0755 opendeploy-agent "$PREFIX/opendeploy-agent"
-install -m 0755 opendeploy-cli "$PREFIX/opendeploy"
+install -m 0755 "$TMP_DIR/extract/opendeploy-core" "$PREFIX/opendeploy-core"
+install -m 0755 "$TMP_DIR/extract/opendeploy-agent" "$PREFIX/opendeploy-agent"
+install -m 0755 "$TMP_DIR/extract/opendeploy-cli" "$PREFIX/opendeploy"
 print_success "Бинарные файлы установлены в $PREFIX"
 
 # 10. Создание пользователя и директорий

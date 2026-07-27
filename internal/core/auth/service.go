@@ -7,8 +7,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net/mail"
+	"strings"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
@@ -32,6 +35,7 @@ type Service struct {
 	sessions SessionRepository
 	jwt      *JWTManager
 	logger   *slog.Logger
+	audit    *audit.Service
 
 	accessTTL  time.Duration
 	refreshTTL time.Duration
@@ -44,12 +48,14 @@ func NewService(
 	jwt *JWTManager,
 	accessTTL, refreshTTL time.Duration,
 	logger *slog.Logger,
+	auditService *audit.Service,
 ) *Service {
 	return &Service{
 		users:      users,
 		sessions:   sessions,
 		jwt:        jwt,
 		logger:     logger,
+		audit:      auditService,
 		accessTTL:  accessTTL,
 		refreshTTL: refreshTTL,
 	}
@@ -81,6 +87,7 @@ func (s *Service) SeedAdminIfEmpty(ctx context.Context, username, password strin
 		Email:     username + "@localhost",
 		Password:  string(hash),
 		Role:      RoleAdmin,
+		IsActive:  true,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -101,6 +108,9 @@ func (s *Service) Login(ctx context.Context, username, password, ipAddress, user
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return nil, apperrors.New(401, apperrors.CodeInvalidCredentials, "invalid username or password")
+	}
+	if !user.IsActive {
+		return nil, apperrors.Forbidden("user account is blocked")
 	}
 
 	// Issue access token.
@@ -208,6 +218,164 @@ func (s *Service) Logout(ctx context.Context, userID string) error {
 // GetUser returns the full user record for the authenticated principal.
 func (s *Service) GetUser(ctx context.Context, userID string) (*User, error) {
 	return s.users.FindByID(ctx, userID)
+}
+
+type CreateUserInput struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     Role   `json:"role"`
+}
+
+type UpdateUserInput struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Role     Role   `json:"role"`
+}
+
+func (s *Service) ListUsers(ctx context.Context, filter UserFilter) (*UserPage, error) {
+	if filter.Limit <= 0 || filter.Limit > 100 {
+		filter.Limit = 25
+	}
+	if filter.Offset < 0 {
+		filter.Offset = 0
+	}
+	return s.users.List(ctx, filter)
+}
+
+func (s *Service) CreateUser(ctx context.Context, actorID string, input CreateUserInput) (*User, error) {
+	input.Username = strings.TrimSpace(input.Username)
+	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
+	if err := validateUserInput(input.Username, input.Email, input.Role); err != nil {
+		return nil, err
+	}
+	if len(input.Password) < 12 {
+		return nil, apperrors.InvalidInput("password must contain at least 12 characters")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcryptCost)
+	if err != nil {
+		return nil, apperrors.Internal("hash password", err)
+	}
+	now := time.Now().UTC()
+	user := &User{ID: uuid.NewString(), Username: input.Username, Email: input.Email, Password: string(hash), Role: input.Role, IsActive: true, CreatedAt: now, UpdatedAt: now}
+	if err := s.users.Create(ctx, user); err != nil {
+		return nil, err
+	}
+	s.recordUserAudit(ctx, actorID, "user.create", user.ID, map[string]any{"username": user.Username, "role": user.Role})
+	return user, nil
+}
+
+func (s *Service) UpdateUser(ctx context.Context, actorID, id string, input UpdateUserInput) (*User, error) {
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	input.Username = strings.TrimSpace(input.Username)
+	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
+	if err := validateUserInput(input.Username, input.Email, input.Role); err != nil {
+		return nil, err
+	}
+	if actorID == id && input.Role != RoleAdmin {
+		return nil, apperrors.InvalidInput("an administrator cannot remove their own admin role")
+	}
+	user.Username, user.Email, user.Role, user.UpdatedAt = input.Username, input.Email, input.Role, time.Now().UTC()
+	if err := s.users.Update(ctx, user); err != nil {
+		return nil, err
+	}
+	s.recordUserAudit(ctx, actorID, "user.update", id, map[string]any{"role": user.Role})
+	return user, nil
+}
+
+func (s *Service) SetPassword(ctx context.Context, actorID, id, password string) error {
+	if len(password) < 12 {
+		return apperrors.InvalidInput("password must contain at least 12 characters")
+	}
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	if err != nil {
+		return apperrors.Internal("hash password", err)
+	}
+	user.Password, user.UpdatedAt = string(hash), time.Now().UTC()
+	if err := s.users.Update(ctx, user); err != nil {
+		return err
+	}
+	_ = s.sessions.DeleteByUserID(ctx, id)
+	s.recordUserAudit(ctx, actorID, "user.password.change", id, nil)
+	return nil
+}
+
+func (s *Service) SetUserActive(ctx context.Context, actorID, id string, active bool) (*User, error) {
+	if actorID == id && !active {
+		return nil, apperrors.InvalidInput("an administrator cannot block their own account")
+	}
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	user.IsActive, user.UpdatedAt = active, time.Now().UTC()
+	if err := s.users.Update(ctx, user); err != nil {
+		return nil, err
+	}
+	if !active {
+		_ = s.sessions.DeleteByUserID(ctx, id)
+	}
+	action := "user.unblock"
+	if !active {
+		action = "user.block"
+	}
+	s.recordUserAudit(ctx, actorID, action, id, nil)
+	return user, nil
+}
+
+func (s *Service) DeleteUser(ctx context.Context, actorID, id string) error {
+	if actorID == id {
+		return apperrors.InvalidInput("an administrator cannot delete their own account")
+	}
+	if _, err := s.users.FindByID(ctx, id); err != nil {
+		return err
+	}
+	if err := s.users.Delete(ctx, id); err != nil {
+		return apperrors.Internal("delete user", err)
+	}
+	s.recordUserAudit(ctx, actorID, "user.delete", id, nil)
+	return nil
+}
+
+func (s *Service) UserAudit(ctx context.Context, id string, limit, offset int) ([]audit.Entry, error) {
+	if _, err := s.users.FindByID(ctx, id); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return s.audit.ListForUser(ctx, id, limit, offset)
+}
+
+func validateUserInput(username, email string, role Role) error {
+	if len(username) < 3 || len(username) > 64 {
+		return apperrors.InvalidInput("username must contain 3 to 64 characters")
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return apperrors.InvalidInput("email is invalid")
+	}
+	if !role.IsValid() {
+		return apperrors.InvalidInput("role must be admin, operator, or viewer")
+	}
+	return nil
+}
+
+func (s *Service) recordUserAudit(ctx context.Context, actorID, action, id string, metadata any) {
+	if s.audit == nil {
+		return
+	}
+	resource := "user:" + id
+	_ = s.audit.Record(ctx, audit.Entry{UserID: &actorID, Action: action, Resource: &resource, Metadata: metadata, Status: audit.StatusSuccess})
 }
 
 // PurgeExpiredSessions removes all expired sessions. Called by the scheduler.

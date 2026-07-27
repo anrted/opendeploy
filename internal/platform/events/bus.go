@@ -8,9 +8,12 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Event is the interface that all domain events must satisfy.
@@ -23,11 +26,28 @@ type Event interface {
 	OccurredAt() time.Time
 }
 
+type IdentifiedEvent interface {
+	Event
+	ID() string
+	CorrelationID() string
+}
+
 // Handler is a function that processes an event.
 type Handler func(ctx context.Context, event Event) error
 
 // UnsubscribeFn removes a subscription when called.
 type UnsubscribeFn func()
+
+func SubscribePayload[T any](bus Bus, eventType string, handler func(context.Context, T) error) UnsubscribeFn {
+	return bus.Subscribe(eventType, func(ctx context.Context, event Event) error {
+		payload, ok := event.Payload().(T)
+		if !ok {
+			var expected T
+			return fmt.Errorf("event bus: %s payload type %T, expected %T", eventType, event.Payload(), expected)
+		}
+		return handler(ctx, payload)
+	})
+}
 
 // Bus is the interface for the in-process event bus.
 type Bus interface {
@@ -81,6 +101,12 @@ func (b *MemoryBus) Subscribe(eventType string, handler Handler) UnsubscribeFn {
 // Publish calls all handlers registered for event.Type() and for the wildcard
 // "*". Errors from handlers are accumulated and returned as a combined error.
 func (b *MemoryBus) Publish(ctx context.Context, event Event) error {
+	if event == nil {
+		return errors.New("event bus: event is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("event bus: publish canceled: %w", err)
+	}
 	b.mu.RLock()
 	specific := make([]subscription, len(b.subs[event.Type()]))
 	copy(specific, b.subs[event.Type()])
@@ -90,30 +116,50 @@ func (b *MemoryBus) Publish(ctx context.Context, event Event) error {
 
 	var errs []error
 	for _, s := range append(specific, wildcard...) {
-		if err := s.handler(ctx, event); err != nil {
+		if err := callHandler(ctx, s.handler, event); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("event bus: %d handler(s) failed: %v", len(errs), errs)
+		return fmt.Errorf("event bus: %d handler(s) failed: %w", len(errs), errors.Join(errs...))
 	}
 	return nil
+}
+
+func callHandler(ctx context.Context, handler Handler, event Event) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("handler panic for %s: %v", event.Type(), recovered)
+		}
+	}()
+	return handler(ctx, event)
 }
 
 // — BaseEvent provides a reusable implementation of the Event interface —
 
 // BaseEvent is an embeddable struct for creating domain events.
 type BaseEvent struct {
-	eventType  string
-	payload    any
-	occurredAt time.Time
+	eventType     string
+	payload       any
+	occurredAt    time.Time
+	id            string
+	correlationID string
 }
 
 // NewBaseEvent creates a BaseEvent with the current time.
 func NewBaseEvent(eventType string, payload any) BaseEvent {
-	return BaseEvent{eventType: eventType, payload: payload, occurredAt: time.Now().UTC()}
+	return NewCorrelatedEvent(eventType, payload, "")
+}
+
+func NewCorrelatedEvent(eventType string, payload any, correlationID string) BaseEvent {
+	return BaseEvent{
+		eventType: eventType, payload: payload, occurredAt: time.Now().UTC(),
+		id: uuid.NewString(), correlationID: correlationID,
+	}
 }
 
 func (e BaseEvent) Type() string          { return e.eventType }
 func (e BaseEvent) Payload() any          { return e.payload }
 func (e BaseEvent) OccurredAt() time.Time { return e.occurredAt }
+func (e BaseEvent) ID() string            { return e.id }
+func (e BaseEvent) CorrelationID() string { return e.correlationID }

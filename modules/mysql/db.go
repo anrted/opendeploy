@@ -6,18 +6,25 @@ import (
 	"fmt"
 	"regexp"
 
-	_ "github.com/go-sql-driver/mysql"
+	mysqlDriver "github.com/go-sql-driver/mysql"
 )
 
 // dbNameRegex ensures the database name only contains safe characters
 var dbNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 // getDB opens a connection to the local MySQL server.
-// In a real scenario, this gets the root password from module settings.
 func (m *Module) getDB() (*sql.DB, error) {
-	// We would normally read the password from m.deps.Settings.Get("mysql", "root_password")
-	dsn := "root:@tcp(127.0.0.1:3306)/?parseTime=true"
-	db, err := sql.Open("mysql", dsn)
+	password := m.deps.Config.Get("root_password", "")
+	if password == "" {
+		return nil, fmt.Errorf("mysql administrator credentials are not configured")
+	}
+	driverConfig := mysqlDriver.NewConfig()
+	driverConfig.User = "root"
+	driverConfig.Passwd = password
+	driverConfig.Net = "tcp"
+	driverConfig.Addr = "127.0.0.1:3306"
+	driverConfig.ParseTime = true
+	db, err := sql.Open("mysql", driverConfig.FormatDSN())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open mysql connection: %w", err)
 	}
@@ -46,12 +53,12 @@ func (m *Module) CreateDatabase(ctx context.Context, dbName, user, password stri
 		return fmt.Errorf("failed to create database: %w", err)
 	}
 
-	createUserSQL := fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s';", user, password)
-	if _, err := db.ExecContext(ctx, createUserSQL); err != nil {
+	createUserSQL := fmt.Sprintf("CREATE USER IF NOT EXISTS `%s`@'localhost' IDENTIFIED BY ?", user)
+	if _, err := db.ExecContext(ctx, createUserSQL, password); err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
-	grantSQL := fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';", dbName, user)
+	grantSQL := fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO `%s`@'localhost';", dbName, user)
 	if _, err := db.ExecContext(ctx, grantSQL); err != nil {
 		return fmt.Errorf("failed to grant privileges: %w", err)
 	}
@@ -82,7 +89,7 @@ func (m *Module) DeleteDatabase(ctx context.Context, dbName, user string) error 
 		return fmt.Errorf("failed to drop database: %w", err)
 	}
 
-	dropUserSQL := fmt.Sprintf("DROP USER IF EXISTS '%s'@'localhost';", user)
+	dropUserSQL := fmt.Sprintf("DROP USER IF EXISTS `%s`@'localhost';", user)
 	if _, err := db.ExecContext(ctx, dropUserSQL); err != nil {
 		return fmt.Errorf("failed to drop user: %w", err)
 	}
