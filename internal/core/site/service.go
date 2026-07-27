@@ -142,7 +142,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
 		}
 		time.Sleep(2 * time.Second) // wait for web server to restart
-		if err := s.obtainCertbotSSL(ctx, req.Domain, "/var/lib/opendeploy/acme"); err != nil {
+		if err := s.obtainCertbotSSL(ctx, req.Domain, "/var/www/_opendeploy_acme"); err != nil {
 			_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
 			// Return the error directly if it's already an AppError
 			if _, ok := err.(*apperrors.AppError); ok {
@@ -263,7 +263,7 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 			return nil, apperrors.Internal("failed to provision temp web server for certbot", err)
 		}
 		time.Sleep(2 * time.Second)
-		if err := s.obtainCertbotSSL(ctx, primaryDomain, "/var/lib/opendeploy/acme"); err != nil {
+		if err := s.obtainCertbotSSL(ctx, primaryDomain, "/var/www/_opendeploy_acme"); err != nil {
 			_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
 			if _, ok := err.(*apperrors.AppError); ok {
 				return nil, err
