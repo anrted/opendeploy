@@ -36,8 +36,8 @@ func TestRunUpgradesLegacyMigrationMetadataWithoutLosingData(t *testing.T) {
 		t.Fatalf("create legacy database: %v", err)
 	}
 
-	if err := Run(db); err != nil {
-		t.Fatalf("Run() returned error: %v", err)
+	if err := migrateLegacyMetadata(db); err != nil {
+		t.Fatalf("migrateLegacyMetadata() returned error: %v", err)
 	}
 
 	var version uint64
@@ -95,8 +95,8 @@ func TestRunRepairsDirtyMetadataLeftByLegacyConversion(t *testing.T) {
 		t.Fatalf("create dirty converted database: %v", err)
 	}
 
-	if err := Run(db); err != nil {
-		t.Fatalf("Run() returned error: %v", err)
+	if err := migrateLegacyMetadata(db); err != nil {
+		t.Fatalf("migrateLegacyMetadata() returned error: %v", err)
 	}
 
 	var version uint64
