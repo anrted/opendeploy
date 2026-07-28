@@ -48,7 +48,7 @@ usedns = no
 	"nginx_scanners": {
 		filterPath: "/etc/fail2ban/filter.d/opendeploy-nginx-scanners.conf",
 		filterContent: `[Definition]
-failregex = ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) [^"]*(?:/wp-login\.php|/wp-admin(?:[/?\s]|$)|/xmlrpc\.php|/\.env(?:[/?\s]|$)|/\.git(?:[/?\s]|$)|/vendor(?:[/?\s]|$)|/composer\.(?:json|lock)|/phpinfo\.php|/cgi-bin(?:[/?\s]|$)|/admin\.php|(?:\.\./|%2e%2e(?:%2f|/)))[^"]* HTTP/[^"]+" (?:400|401|403|404) .*$
+failregex = ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) [^"]*(?:/wp-login\.php|/wp-admin(?:[/?\s]|$)|/xmlrpc\.php|/\.env(?:[/?\s]|$)|/\.git(?:[/?\s]|$)|/vendor(?:[/?\s]|$)|/composer\.(?:json|lock)|/phpinfo\.php|/cgi-bin(?:[/?\s]|$)|/admin\.php|(?:\.\./|%%2e%%2e(?:%%2f|/)))[^"]* HTTP/[^"]+" (?:400|401|403|404) .*$
 ignoreregex =
 `,
 		jailPath: "/etc/fail2ban/jail.d/opendeploy-nginx-scanners.local",

@@ -247,6 +247,16 @@ func TestBadBotFilterMatchesFodaScannerOnly(t *testing.T) {
 	}
 }
 
+func TestScannerFilterEscapesConfigParserPercentLiterals(t *testing.T) {
+	filter := protectionPresets["nginx_scanners"].filterContent
+	if strings.Contains(strings.ReplaceAll(filter, "%%", ""), "%") {
+		t.Fatal("scanner filter contains an unescaped ConfigParser percent literal")
+	}
+	if !strings.Contains(filter, "%%2e%%2e") {
+		t.Fatal("scanner filter no longer covers URL-encoded path traversal")
+	}
+}
+
 func TestPHPProbeFilterMatchesScannerSamples(t *testing.T) {
 	filter := protectionPresets["php_probes"].filterContent
 	var patterns []string
