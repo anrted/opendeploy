@@ -13,6 +13,25 @@ type protectionPreset struct {
 }
 
 var protectionPresets = map[string]protectionPreset{
+	"manual": {
+		filterPath: "/etc/fail2ban/filter.d/opendeploy-manual.conf",
+		filterContent: `[Definition]
+failregex = ^<HOST> OPENDEPLOY_MANUAL_BAN$
+ignoreregex =
+`,
+		jailPath: "/etc/fail2ban/jail.d/opendeploy-manual.local",
+		jailContent: `[opendeploy-manual]
+enabled = true
+filter = opendeploy-manual
+banaction = %(banaction_allports)s
+logpath = /var/log/fail2ban.log
+backend = polling
+maxretry = 1
+findtime = 10m
+bantime = -1
+usedns = no
+`,
+	},
 	"sshd": {
 		jailPath: "/etc/fail2ban/jail.d/opendeploy-sshd.local",
 		jailContent: `[opendeploy-sshd]
@@ -60,10 +79,30 @@ bantime = 24h
 usedns = no
 `,
 	},
+	"nginx_bad_bots": {
+		filterPath: "/etc/fail2ban/filter.d/opendeploy-nginx-bad-bots.conf",
+		filterContent: `[Definition]
+failregex = ^<HOST> \S+ \S+ \[[^]]+\] "[^"]+" \d{3} \S+ "[^"]*" "[^"]*(?i:foda-scanner|masscan|zgrab|sqlmap|nikto)[^"]*"$
+ignoreregex =
+`,
+		jailPath: "/etc/fail2ban/jail.d/opendeploy-nginx-bad-bots.local",
+		jailContent: `[opendeploy-nginx-bad-bots]
+enabled = true
+filter = opendeploy-nginx-bad-bots
+port = http,https
+logpath = /var/log/nginx/access.log
+backend = auto
+maxretry = 1
+findtime = 10m
+bantime = 24h
+usedns = no
+`,
+	},
 	"php_probes": {
 		filterPath: "/etc/fail2ban/filter.d/opendeploy-php-probes.conf",
 		filterContent: `[Definition]
-failregex = ^<HOST> \S+ \S+ \[.*\] "(?:GET|HEAD|POST) [^"]*(?:/\.env|/wp-login\.php|/xmlrpc\.php|/(?:phpmyadmin|pma)(?:/|\s)|phpinfo(?:\.php|=1)|/vendor/phpunit|/cgi-bin/)[^"]* HTTP/.*" \d{3} .*$
+failregex = ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) [^"]*(?:/\.env(?:[/?\s]|$)|/wp-(?:admin|content|includes)(?:[/?\s]|$)|/wp-login\.php(?:[?\s]|$)|/xmlrpc\.php(?:[?\s]|$)|/(?:phpmyadmin|pma)(?:[/?\s]|$)|/phpinfo(?:\.php|=1)|/vendor/phpunit(?:[/?\s]|$)|/cgi-bin(?:[/?\s]|$))[^"]* HTTP/[^"]+" \d{3} .*$
+            ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) /+[^"]*\.php(?:[/?][^"]*)? HTTP/[^"]+" 404 .*$
 ignoreregex =
 `,
 		jailPath: "/etc/fail2ban/jail.d/opendeploy-php-probes.local",
@@ -79,6 +118,20 @@ bantime = 24h
 usedns = no
 `,
 	},
+}
+
+func presetNeedsUpdate(ctx context.Context, agent interface {
+	FileRead(context.Context, string) ([]byte, error)
+}, preset protectionPreset) bool {
+	jail, err := agent.FileRead(ctx, preset.jailPath)
+	if err != nil || string(jail) != preset.jailContent {
+		return true
+	}
+	if preset.filterPath == "" {
+		return false
+	}
+	filter, err := agent.FileRead(ctx, preset.filterPath)
+	return err != nil || string(filter) != preset.filterContent
 }
 
 type configSnapshot struct {

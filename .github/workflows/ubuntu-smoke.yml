@@ -57,7 +57,7 @@ jobs:
           curl -fsS http://127.0.0.1:5888/api/v1/modules \
             -H "Authorization: Bearer $token" |
             jq -e '.[] | select(.id == "nodejs" and (.state == "installed" or .state == "enabled"))'
-          for preset in sshd nginx_scanners nginx_auth php_probes; do
+          for preset in sshd nginx_scanners nginx_auth nginx_bad_bots php_probes; do
             curl --fail-with-body -sS -X POST \
               "http://127.0.0.1:5888/api/v1/modules/fail2ban/actions/enable_preset_${preset}" \
               -H "Authorization: Bearer $token"
@@ -65,6 +65,7 @@ jobs:
           sudo fail2ban-client status opendeploy-sshd
           sudo fail2ban-client status opendeploy-nginx-scanners
           sudo fail2ban-client status opendeploy-nginx-auth
+          sudo fail2ban-client status opendeploy-nginx-bad-bots
           sudo fail2ban-client status opendeploy-php-probes
           sudo systemctl is-active --quiet opendeploy-update.path
           sudo test -s /etc/opendeploy/source-dir

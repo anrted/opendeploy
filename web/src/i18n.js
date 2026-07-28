@@ -136,6 +136,7 @@ const messages = {
       start: { title: 'Start' }, stop: { title: 'Stop' }, reload: { title: 'Reload' },
       restart: { title: 'Restart' }, test_config: { title: 'Test Configuration' },
       unban_all: { title: 'Unban All' }, unban: { title: 'Unban' },
+      ban_permanently: { title: 'Block IP Permanently' },
       enable_preset_sshd: { title: 'Enable SSH Protection', description: 'Ban an IP for 24 hours after 5 failed SSH logins in 10 minutes.' },
       enable_preset_nginx_scanners: { title: 'Enable Nginx Scanner Protection', description: 'Block repeated requests for sensitive and commonly scanned paths.' },
       enable_preset_nginx_auth: { title: 'Enable Nginx Authentication Protection', description: 'Block repeated failed authentication attempts against Nginx.' },
@@ -241,6 +242,8 @@ const messages = {
       search: 'Search…', noData: 'No Data', noDataDescription: 'No data found.',
       noActions: 'No actions', confirm: 'Confirm Action', confirmMessage: 'Execute “{action}”?',
       success: '“{action}” completed successfully', failed: 'Failed to execute “{action}”: {error}',
+      required: '{field} is required.',
+      inputs: { ip: 'Enter an IPv4 or IPv6 address' },
       columns: { name: 'Jail Name', status: 'Status', banned: 'Banned IPs', ip: 'IP Address', jail: 'Jail' },
     },
     settingsForm: {
@@ -482,6 +485,7 @@ const messages = {
       start: { title: 'Запустить' }, stop: { title: 'Остановить' }, reload: { title: 'Перезагрузить конфигурацию' },
       restart: { title: 'Перезапустить' }, test_config: { title: 'Проверить конфигурацию' },
       unban_all: { title: 'Разблокировать все' }, unban: { title: 'Разблокировать' },
+      ban_permanently: { title: 'Заблокировать IP бессрочно' },
       enable_preset_sshd: { title: 'Включить защиту SSH', description: 'Блокировать IP на 24 часа после 5 неудачных попыток входа по SSH за 10 минут.' },
       enable_preset_nginx_scanners: { title: 'Включить защиту от сканирования Nginx', description: 'Блокировать повторные запросы к чувствительным и часто сканируемым путям.' },
       enable_preset_nginx_auth: { title: 'Включить защиту авторизации Nginx', description: 'Блокировать повторные неудачные попытки авторизации через Nginx.' },
@@ -587,6 +591,8 @@ const messages = {
       search: 'Поиск…', noData: 'Нет данных', noDataDescription: 'Данные не найдены.',
       noActions: 'Нет действий', confirm: 'Подтверждение действия', confirmMessage: 'Выполнить «{action}»?',
       success: 'Действие «{action}» успешно выполнено', failed: 'Не удалось выполнить «{action}»: {error}',
+      required: 'Поле «{field}» обязательно.',
+      inputs: { ip: 'Введите IPv4- или IPv6-адрес' },
       columns: { name: 'Название jail', status: 'Статус', banned: 'Заблокированные IP', ip: 'IP-адрес', jail: 'Jail' },
     },
     settingsForm: {

@@ -181,10 +181,26 @@ func (m *Module) Actions() []contract.ActionDef {
 			RequiresConfirmation: true,
 		},
 		{
+			ID:                   "enable_preset_nginx_bad_bots",
+			Title:                "Enable Nginx Bad Bot Protection",
+			Description:          "Immediately ban clients that identify as common offensive scanners.",
+			Icon:                 "shield",
+			Color:                "success",
+			RequiresConfirmation: true,
+		},
+		{
 			ID:                   "enable_preset_php_probes",
 			Title:                "Enable PHP Probe Protection",
 			Description:          "Ban repeated probes for .env, phpinfo, WordPress, phpMyAdmin, PHPUnit and CGI paths.",
 			Icon:                 "shield",
+			Color:                "success",
+			RequiresConfirmation: true,
+		},
+		{
+			ID:                   "update_preset_php_probes",
+			Title:                "Update PHP Probe Protection",
+			Description:          "Update an enabled PHP probe jail to detect repeated WordPress and missing PHP web-shell scans.",
+			Icon:                 "refresh-cw",
 			Color:                "success",
 			RequiresConfirmation: true,
 		},
@@ -213,6 +229,14 @@ func (m *Module) Actions() []contract.ActionDef {
 			RequiresConfirmation: true,
 		},
 		{
+			ID:                   "disable_preset_nginx_bad_bots",
+			Title:                "Disable Nginx Bad Bot Protection",
+			Description:          "Remove the OpenDeploy Nginx bad bot jail.",
+			Icon:                 "shield-off",
+			Color:                "warning",
+			RequiresConfirmation: true,
+		},
+		{
 			ID:                   "disable_preset_php_probes",
 			Title:                "Disable PHP Probe Protection",
 			Description:          "Remove the OpenDeploy PHP probe jail.",
@@ -235,6 +259,9 @@ func (m *Module) ActionAvailability(ctx context.Context) map[string]bool {
 		availability["enable_preset_"+presetID] = !enabled
 		availability["disable_preset_"+presetID] = enabled
 	}
+	phpPreset := protectionPresets["php_probes"]
+	_, phpJailErr := m.agent.FileRead(ctx, phpPreset.jailPath)
+	availability["update_preset_php_probes"] = phpJailErr == nil && presetNeedsUpdate(ctx, m.agent, phpPreset)
 	return availability
 }
 
@@ -246,7 +273,11 @@ func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
 		return m.enableProtectionPreset(ctx, "nginx_scanners")
 	case "enable_preset_nginx_auth":
 		return m.enableProtectionPreset(ctx, "nginx_auth")
+	case "enable_preset_nginx_bad_bots":
+		return m.enableProtectionPreset(ctx, "nginx_bad_bots")
 	case "enable_preset_php_probes":
+		return m.enableProtectionPreset(ctx, "php_probes")
+	case "update_preset_php_probes":
 		return m.enableProtectionPreset(ctx, "php_probes")
 	case "disable_preset_sshd":
 		return m.disableProtectionPreset(ctx, "sshd")
@@ -254,6 +285,8 @@ func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
 		return m.disableProtectionPreset(ctx, "nginx_scanners")
 	case "disable_preset_nginx_auth":
 		return m.disableProtectionPreset(ctx, "nginx_auth")
+	case "disable_preset_nginx_bad_bots":
+		return m.disableProtectionPreset(ctx, "nginx_bad_bots")
 	case "disable_preset_php_probes":
 		return m.disableProtectionPreset(ctx, "php_probes")
 	case "reload":
@@ -351,6 +384,19 @@ func (m *Module) DataGridSchema(pageID string) (contract.DataGridSchema, error) 
 				{Key: "ip", Title: "IP Address", Type: "text", Sortable: true},
 				{Key: "jail", Title: "Jail", Type: "badge", Sortable: true},
 			},
+			Actions: []contract.ActionDef{
+				{
+					ID:                   "ban_permanently",
+					Title:                "Block IP Permanently",
+					Icon:                 "shield",
+					Color:                "danger",
+					RequiresConfirmation: true,
+					Dangerous:            true,
+					Inputs: []contract.ActionInputDef{
+						{Key: "ip", Label: "IP address", Type: "text", Placeholder: "192.0.2.10 or 2001:db8::10", Required: true},
+					},
+				},
+			},
 			RowActions: []contract.ActionDef{
 				{ID: "unban", Title: "Unban", Icon: "unlock", Color: "warning", RequiresConfirmation: true},
 			},
@@ -400,6 +446,31 @@ func (m *Module) DataGridAction(ctx context.Context, pageID string, actionID str
 	switch {
 	case pageID == "jails" && actionID == "unban_all":
 		return m.runFail2BanClient(ctx, "unban", "--all")
+	case pageID == "banned_ips" && actionID == "ban_permanently":
+		ip, ok := payload["ip"].(string)
+		ip = strings.TrimSpace(ip)
+		parsedIP := net.ParseIP(ip)
+		if !ok || parsedIP == nil {
+			return fmt.Errorf("invalid IP address")
+		}
+		ip = parsedIP.String()
+
+		const manualJail = "opendeploy-manual"
+		if presetNeedsUpdate(ctx, m.agent, protectionPresets["manual"]) {
+			if err := m.enableProtectionPreset(ctx, "manual"); err != nil {
+				return err
+			}
+		}
+		banned, err := m.bannedIPs(ctx, manualJail)
+		if err != nil {
+			return err
+		}
+		for _, bannedIP := range banned {
+			if parsedBannedIP := net.ParseIP(bannedIP); parsedBannedIP != nil && parsedBannedIP.Equal(parsedIP) {
+				return nil
+			}
+		}
+		return m.runFail2BanClient(ctx, "set", manualJail, "banip", ip)
 	case pageID == "banned_ips" && actionID == "unban":
 		ip, ipOK := payload["ip"].(string)
 		jail, jailOK := payload["jail"].(string)

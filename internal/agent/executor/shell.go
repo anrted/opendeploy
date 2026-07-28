@@ -47,7 +47,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "npm", AllowedArgs: []string{"--version"}},
 	{Binary: "git", AllowedArgs: []string{"clone", "pull", "fetch", "checkout", "rev-parse", "--version"}},
 	{Binary: "tail", AllowedArgs: []string{"-n", "-f"}},
-	{Binary: "fail2ban-client", AllowedArgs: []string{"status", "set", "reload", "stop", "start", "unban", "unbanip", "-V"}},
+	{Binary: "fail2ban-client", AllowedArgs: []string{"status", "set", "reload", "stop", "start", "banip", "unban", "unbanip", "-V"}},
 	{Binary: "fail2ban-server", AllowedArgs: []string{"-b", "-t"}},
 	{Binary: "hostname"},
 	{Binary: "timedatectl", AllowedArgs: []string{"set-timezone", "status"}},

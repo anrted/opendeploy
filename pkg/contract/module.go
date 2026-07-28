@@ -83,14 +83,25 @@ type ModuleCapabilities struct {
 
 // ActionDef describes a dynamically available action on the module page.
 type ActionDef struct {
-	ID                   string `json:"id"`
-	Title                string `json:"title"`
-	Description          string `json:"description,omitempty"`
-	Icon                 string `json:"icon"`  // e.g. "play", "stop", "refresh", "trash"
-	Color                string `json:"color"` // e.g. "primary", "danger", "warning", "success"
-	RequiresConfirmation bool   `json:"requiresConfirmation"`
-	Dangerous            bool   `json:"dangerous"`
-	Disabled             bool   `json:"disabled,omitempty"`
+	ID                   string           `json:"id"`
+	Title                string           `json:"title"`
+	Description          string           `json:"description,omitempty"`
+	Icon                 string           `json:"icon"`  // e.g. "play", "stop", "refresh", "trash"
+	Color                string           `json:"color"` // e.g. "primary", "danger", "warning", "success"
+	RequiresConfirmation bool             `json:"requiresConfirmation"`
+	Dangerous            bool             `json:"dangerous"`
+	Disabled             bool             `json:"disabled,omitempty"`
+	Inputs               []ActionInputDef `json:"inputs,omitempty"`
+}
+
+// ActionInputDef describes a value collected by the generic action UI and
+// passed to DataGridAction in its payload.
+type ActionInputDef struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Type        string `json:"type"`
+	Placeholder string `json:"placeholder,omitempty"`
+	Required    bool   `json:"required,omitempty"`
 }
 
 // ActionAvailabilityProvider lets a module expose runtime availability for

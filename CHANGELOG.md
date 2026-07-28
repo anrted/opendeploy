@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.16] - 2026-07-29
+
+### Added
+
+- Arbitrary IPv4/IPv6 entry to the banned-IP grid, backed by a persistent
+  all-ports Fail2Ban jail with an unlimited ban time.
+- An Nginx bad-bot preset for clients that explicitly identify as common
+  offensive scanners, including `foda-scanner`.
+- Generic input metadata for data-grid actions.
+
+### Changed
+
+- Expanded the managed Fail2Ban PHP probe filter to catch repeated 404 scans for
+  arbitrary PHP web-shell names and WordPress paths.
+- Added an update action for servers where the PHP probe preset is already
+  enabled but its managed configuration is outdated.
+
 ## [0.1.14] - 2026-07-28
 
 ### Added

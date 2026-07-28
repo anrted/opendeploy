@@ -67,3 +67,10 @@ func TestValidatorAllowsFail2BanVersion(t *testing.T) {
 		t.Fatalf("fail2ban version query rejected: %v", err)
 	}
 }
+
+func TestValidatorAllowsFail2BanManualBan(t *testing.T) {
+	err := NewValidator().Validate("fail2ban-client", []string{"set", "opendeploy-manual", "banip", "2001:db8::10"})
+	if err != nil {
+		t.Fatalf("fail2ban manual ban rejected: %v", err)
+	}
+}

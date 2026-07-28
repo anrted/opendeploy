@@ -109,6 +109,19 @@ const executeGlobalAction = async (action) => {
 }
 
 const executeAction = async (action, row = null, rowIndex = null) => {
+  const payload = row ? { ...row } : {}
+  for (const input of action.inputs || []) {
+    const value = window.prompt(
+      t(`dataGrid.inputs.${input.key}`, input.label),
+      ''
+    )
+    if (value === null) return
+    if (input.required && !value.trim()) {
+      alert(t('dataGrid.required', { field: t(`dataGrid.inputs.${input.key}`, input.label) }))
+      return
+    }
+    payload[input.key] = value.trim()
+  }
   if (action.requiresConfirmation || action.requires_confirmation || action.dangerous) {
     const confirmed = await confirm.require({
       title: t('dataGrid.confirm'),
@@ -121,7 +134,7 @@ const executeAction = async (action, row = null, rowIndex = null) => {
   const loadingKey = rowIndex === null ? action.id : `${action.id}:${rowIndex}`
   actionLoading.value = loadingKey
   try {
-    await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`, row || {})
+    await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`, payload)
     alert(t('dataGrid.success', { action: actionTitle(action) }))
     await fetchData()
   } catch (error) {
