@@ -45,7 +45,7 @@ build-agent:
 build-cli:
 	@echo "→ Building OpenDeploy CLI..."
 	@mkdir -p bin
-	CGO_ENABLED=0 go build $(LDFLAGS) -o $(CLI_BIN) ./cmd/cli
+	CGO_ENABLED=1 go build $(LDFLAGS) -o $(CLI_BIN) ./cmd/cli
 
 ## Development
 dev-agent:

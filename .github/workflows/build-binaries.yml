@@ -81,7 +81,7 @@ jobs:
           LDFLAGS="-s -w -X github.com/anrted/opendeploy/pkg/version.Version=${{ inputs.version }} -X github.com/anrted/opendeploy/pkg/version.Commit=${GITHUB_SHA} -X github.com/anrted/opendeploy/pkg/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           go build -ldflags "$LDFLAGS" -o build-arm64/opendeploy-core ./cmd/core
           go build -ldflags "$LDFLAGS" -o build-arm64/opendeploy-agent ./cmd/agent
-          CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o build-arm64/opendeploy-cli ./cmd/cli
+          go build -ldflags "$LDFLAGS" -o build-arm64/opendeploy-cli ./cmd/cli
           tar -czvf opendeploy-linux-arm64.tar.gz -C build-arm64 opendeploy-core opendeploy-agent opendeploy-cli
 
       - name: Generate Checksums
