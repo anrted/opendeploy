@@ -165,12 +165,22 @@ func TestInternalCertificateSymlinkIsCapturedAsPortableFile(t *testing.T) {
 	if err := os.Symlink(filepath.Join("..", "archive", "cert.pem"), filepath.Join(sourceRoot, "ssl", "live", "cert.pem")); err != nil {
 		t.Fatal(err)
 	}
+	external := filepath.Join(sourceRoot, "outside.pem")
+	writeTestFile(t, external, "must-not-be-captured")
+	if err := os.Symlink(external, filepath.Join(sourceRoot, "ssl", "live", "external.pem")); err != nil {
+		t.Fatal(err)
+	}
 	config := testConfig(t, sourceRoot)
 	config.Sources = []Source{{ID: "ssl", Path: filepath.Join(sourceRoot, "ssl"), Required: true}}
 	engine := NewEngine(config, "test")
-	_, archivePath, err := engine.Create(context.Background(), "ssl-test")
+	manifest, archivePath, err := engine.Create(context.Background(), "ssl-test")
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, entry := range manifest.Entries {
+		if entry.Path == "live/external.pem" {
+			t.Fatal("symlink escaping the source root was captured")
+		}
 	}
 	targetRoot := t.TempDir()
 	restoreConfig := testConfig(t, targetRoot)

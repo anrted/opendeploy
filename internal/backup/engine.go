@@ -164,7 +164,9 @@ func (e *Engine) collect(ctx context.Context, stage string) ([]collectedFile, er
 				}
 				relativeTarget, err := filepath.Rel(path, resolved)
 				if err != nil || relativeTarget == ".." || strings.HasPrefix(relativeTarget, ".."+string(filepath.Separator)) {
-					return fmt.Errorf("symlink %q escapes source root", current)
+					// External system links (common in systemd unit directories)
+					// are owned by another source/package and are not followed.
+					return nil
 				}
 				targetInfo, err := os.Stat(resolved)
 				if err != nil {
