@@ -50,20 +50,23 @@ func DefaultConfig() Config {
 			{ID: "php", Path: "/etc/php"},
 			{ID: "mysql", Path: "/etc/mysql"},
 			{ID: "postgresql", Path: "/etc/postgresql"},
-			{ID: "systemd", Path: "/etc/systemd/system"},
+			{ID: "systemd-core", Path: "/etc/systemd/system/opendeploy-core.service", File: true},
+			{ID: "systemd-agent", Path: "/etc/systemd/system/opendeploy-agent.service", File: true},
+			{ID: "systemd-update", Path: "/etc/systemd/system/opendeploy-update.service", File: true},
+			{ID: "systemd-update-path", Path: "/etc/systemd/system/opendeploy-update.path", File: true},
 		},
 	}
 }
 
 type Manifest struct {
-	Schema      string    `json:"schema"`
-	ID          string    `json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	Reason      string    `json:"reason"`
-	Host        string    `json:"host,omitempty"`
-	OpenDeploy  string    `json:"opendeploy_version,omitempty"`
-	Entries     []Entry   `json:"entries"`
-	TotalBytes  int64     `json:"total_bytes"`
+	Schema     string    `json:"schema"`
+	ID         string    `json:"id"`
+	CreatedAt  time.Time `json:"created_at"`
+	Reason     string    `json:"reason"`
+	Host       string    `json:"host,omitempty"`
+	OpenDeploy string    `json:"opendeploy_version,omitempty"`
+	Entries    []Entry   `json:"entries"`
+	TotalBytes int64     `json:"total_bytes"`
 }
 
 type Entry struct {

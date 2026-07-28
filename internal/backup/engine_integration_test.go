@@ -170,6 +170,9 @@ func TestInternalCertificateSymlinkIsCapturedAsPortableFile(t *testing.T) {
 	if err := os.Symlink(external, filepath.Join(sourceRoot, "ssl", "live", "external.pem")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink(filepath.Join("..", "missing.pem"), filepath.Join(sourceRoot, "ssl", "live", "missing.pem")); err != nil {
+		t.Fatal(err)
+	}
 	config := testConfig(t, sourceRoot)
 	config.Sources = []Source{{ID: "ssl", Path: filepath.Join(sourceRoot, "ssl"), Required: true}}
 	engine := NewEngine(config, "test")

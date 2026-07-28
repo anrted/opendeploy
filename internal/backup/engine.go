@@ -160,7 +160,9 @@ func (e *Engine) collect(ctx context.Context, stage string) ([]collectedFile, er
 			if currentInfo.Mode()&os.ModeSymlink != 0 {
 				resolved, err := filepath.EvalSymlinks(current)
 				if err != nil {
-					return err
+					// Broken package-managed links are metadata, not backup
+					// payload. They are recreated by their owning package.
+					return nil
 				}
 				relativeTarget, err := filepath.Rel(path, resolved)
 				if err != nil || relativeTarget == ".." || strings.HasPrefix(relativeTarget, ".."+string(filepath.Separator)) {

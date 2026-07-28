@@ -16,7 +16,7 @@ The default profile covers:
 - Let's Encrypt certificates and keys;
 - Nginx, Fail2Ban, UFW and nftables configuration;
 - Apache, PHP, MySQL and PostgreSQL configuration;
-- systemd unit configuration, including OpenDeploy services.
+- the OpenDeploy Core, Agent and updater systemd units.
 
 Missing optional modules are skipped. Panel configuration and the database are
 mandatory: backup creation fails closed if either cannot be captured.
