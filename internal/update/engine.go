@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -486,7 +487,11 @@ func extractRelease(archivePath, destination string) error {
 		if err != nil {
 			return fmt.Errorf("update: read release archive: %w", err)
 		}
-		name := strings.TrimPrefix(filepath.ToSlash(header.Name), "./")
+		name := filepath.ToSlash(header.Name)
+		if strings.Contains(name, "..") || filepath.IsAbs(header.Name) ||
+			path.Clean(name) != name || strings.Contains(name, "\\") {
+			return fmt.Errorf("update: unsafe archive entry %q", header.Name)
+		}
 		if _, ok := expected[name]; !ok || header.Typeflag != tar.TypeReg || header.Size <= 0 || header.Size > 256<<20 {
 			return fmt.Errorf("update: unexpected archive entry %q", header.Name)
 		}
@@ -494,7 +499,10 @@ func extractRelease(archivePath, destination string) error {
 		if total > 512<<20 {
 			return fmt.Errorf("update: extracted release exceeds size limit")
 		}
-		target := filepath.Join(destination, name)
+		target, err := confinedReleaseTarget(destination, name)
+		if err != nil {
+			return err
+		}
 		output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700) //nolint:gosec // target is allowlisted above
 		if err != nil {
 			return err
@@ -517,6 +525,26 @@ func extractRelease(archivePath, destination string) error {
 		return fmt.Errorf("update: release archive is missing %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func confinedReleaseTarget(destination, name string) (string, error) {
+	if name == "" || strings.Contains(name, "..") || path.IsAbs(name) ||
+		filepath.IsAbs(name) || path.Clean(name) != name || strings.Contains(name, "\\") {
+		return "", fmt.Errorf("update: unsafe archive target %q", name)
+	}
+	root, err := filepath.Abs(destination)
+	if err != nil {
+		return "", fmt.Errorf("update: resolve extraction root: %w", err)
+	}
+	target, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(name)))
+	if err != nil {
+		return "", fmt.Errorf("update: resolve archive target: %w", err)
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("update: archive entry %q escapes extraction root", name)
+	}
+	return target, nil
 }
 
 func copyFile(source, destination string, mode os.FileMode) error {

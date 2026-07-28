@@ -165,6 +165,36 @@ func TestEngineAbortsBeforeInstallationWhenSystemBackupFails(t *testing.T) {
 	}
 }
 
+func TestExtractReleaseRejectsZipSlipTraversal(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "malicious.tar.gz")
+	outside := filepath.Join(root, "opendeploy-core")
+	writeReleaseTar(t, archivePath, map[string]string{
+		"../opendeploy-core": "owned",
+		"opendeploy-agent":   "agent",
+		"opendeploy-cli":     "cli",
+	})
+	if err := extractRelease(archivePath, filepath.Join(root, "stage")); err == nil {
+		t.Fatal("archive traversal entry was accepted")
+	}
+	if _, err := os.Stat(outside); !os.IsNotExist(err) {
+		t.Fatalf("archive wrote outside extraction root: %v", err)
+	}
+}
+
+func TestConfinedReleaseTargetRejectsEscapes(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"../evil", "../../evil", "/tmp/evil"} {
+		if _, err := confinedReleaseTarget(root, name); err == nil {
+			t.Errorf("target %q was accepted", name)
+		}
+	}
+	target, err := confinedReleaseTarget(root, "opendeploy-core")
+	if err != nil || filepath.Dir(target) != root {
+		t.Fatalf("valid target = %q, %v", target, err)
+	}
+}
+
 func testEngine(t *testing.T, healthErr error) (*Engine, string, *httptest.Server) {
 	t.Helper()
 	root := t.TempDir()
@@ -251,4 +281,33 @@ func releaseArchive(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buffer.Bytes()
+}
+
+func writeReleaseTar(t *testing.T, destination string, entries map[string]string) {
+	t.Helper()
+	file, err := os.Create(destination) //nolint:gosec // test temp path
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipWriter := gzip.NewWriter(file)
+	tarWriter := tar.NewWriter(gzipWriter)
+	for name, value := range entries {
+		if err := tarWriter.WriteHeader(&tar.Header{
+			Name: name, Mode: 0o755, Size: int64(len(value)), Typeflag: tar.TypeReg,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tarWriter.Write([]byte(value)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
