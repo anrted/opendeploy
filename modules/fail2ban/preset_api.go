@@ -133,62 +133,81 @@ func normalizedPresetSettings(base string, input map[string]any) (map[string]any
 			result[key] = value
 		}
 	}
+	if err := validatePresetSettings(result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
 
+func validatePresetSettings(result map[string]any) error {
 	for _, key := range []string{"bantime", "findtime"} {
 		value := stringValue(result, key, "")
 		if !durationPattern.MatchString(value) || (key == "findtime" && value == "-1") {
-			return nil, fmt.Errorf("%s must be a positive Fail2Ban duration", key)
+			return fmt.Errorf("%s must be a positive Fail2Ban duration", key)
 		}
 		result[key] = value
 	}
 	maxRetry, err := strconv.Atoi(stringValue(result, "maxretry", ""))
 	if err != nil || maxRetry < 1 || maxRetry > 1000 {
-		return nil, fmt.Errorf("maxretry must be between 1 and 1000")
+		return fmt.Errorf("maxretry must be between 1 and 1000")
 	}
 	result["maxretry"] = maxRetry
 	backend := stringValue(result, "backend", "")
 	if !backendPattern.MatchString(backend) {
-		return nil, fmt.Errorf("backend must be auto, systemd or polling")
+		return fmt.Errorf("backend must be auto, systemd or polling")
 	}
 	result["backend"] = backend
 	logPath := stringValue(result, "logpath", "")
 	if logPath != "" && (!strings.HasPrefix(logPath, "/var/log/") || strings.Contains(logPath, "..") || strings.ContainsAny(logPath, "\r\n")) {
-		return nil, fmt.Errorf("logpath must be a safe path below /var/log")
+		return fmt.Errorf("logpath must be a safe path below /var/log")
 	}
 	result["logpath"] = logPath
 	action := stringValue(result, "banaction", "")
 	if action != "" && !actionPattern.MatchString(action) {
-		return nil, fmt.Errorf("banaction contains unsupported characters")
+		return fmt.Errorf("banaction contains unsupported characters")
 	}
 	result["banaction"] = action
+	if err := validatePresetPort(result); err != nil {
+		return err
+	}
+	if err := validatePresetIgnoreIP(result); err != nil {
+		return err
+	}
+	for _, key := range []string{"ipv6", "auto_reload"} {
+		value, boolErr := boolValue(result[key], true)
+		if boolErr != nil {
+			return fmt.Errorf("%s %w", key, boolErr)
+		}
+		result[key] = value
+	}
+	return nil
+}
+
+func validatePresetPort(result map[string]any) error {
 	port := stringValue(result, "port", "")
 	if port != "" && !portPattern.MatchString(port) {
-		return nil, fmt.Errorf("port must be a service name, port number or comma-separated list")
+		return fmt.Errorf("port must be a service name, port number or comma-separated list")
 	}
 	for _, part := range strings.Split(port, ",") {
 		if number, numberErr := strconv.Atoi(part); numberErr == nil && number > 65535 {
-			return nil, fmt.Errorf("port must be between 1 and 65535")
+			return fmt.Errorf("port must be between 1 and 65535")
 		}
 	}
 	result["port"] = port
+	return nil
+}
 
+func validatePresetIgnoreIP(result map[string]any) error {
 	ignoreIP := strings.Fields(stringValue(result, "ignoreip", ""))
 	for _, address := range ignoreIP {
 		if net.ParseIP(address) == nil {
 			if _, _, cidrErr := net.ParseCIDR(address); cidrErr != nil {
-				return nil, fmt.Errorf("ignoreip contains invalid address or network %q", address)
+				return fmt.Errorf("ignoreip contains invalid address or network %q", address)
 			}
 		}
 	}
 	result["ignoreip"] = strings.Join(ignoreIP, " ")
-	for _, key := range []string{"ipv6", "auto_reload"} {
-		value, boolErr := boolValue(result[key], true)
-		if boolErr != nil {
-			return nil, fmt.Errorf("%s %w", key, boolErr)
-		}
-		result[key] = value
-	}
-	return result, nil
+	return nil
 }
 
 func renderPresetJail(base string, settings map[string]any) string {
