@@ -83,9 +83,7 @@ func TestPHPProbeFilterMatchesScannerSamples(t *testing.T) {
 	var patterns []string
 	for _, line := range strings.Split(filter, "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "failregex = ") {
-			line = strings.TrimPrefix(line, "failregex = ")
-		}
+		line = strings.TrimPrefix(line, "failregex = ")
 		if strings.HasPrefix(line, "^<HOST>") {
 			patterns = append(patterns, strings.Replace(line, "<HOST>", `\S+`, 1))
 		}
