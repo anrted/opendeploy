@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -23,6 +24,16 @@ const testCommit = "0123456789abcdef0123456789abcdef01234567"
 type testVerifier struct{ err error }
 
 func (v testVerifier) Verify(context.Context, string, string) error { return v.err }
+
+type testBackup struct {
+	err   error
+	calls int
+}
+
+func (b *testBackup) CreateBackup(context.Context, string) (string, error) {
+	b.calls++
+	return "/backups/test.tar.gz", b.err
+}
 
 type testRuntime struct {
 	healthErr error
@@ -140,6 +151,20 @@ func TestEngineRejectsInvalidSignatureBeforeInstallation(t *testing.T) {
 	}
 }
 
+func TestEngineAbortsBeforeInstallationWhenSystemBackupFails(t *testing.T) {
+	engine, binaryDir, server := testEngine(t, nil)
+	defer server.Close()
+	engine.Backup = &testBackup{err: errors.New("backup unavailable")}
+	if _, err := engine.Apply(context.Background(), "v1.2.3", "v1.2.2"); err == nil ||
+		!strings.Contains(err.Error(), "pre-update system backup") {
+		t.Fatalf("backup failure was not enforced: %v", err)
+	}
+	content, _ := os.ReadFile(filepath.Join(binaryDir, "opendeploy-core")) //nolint:gosec // test temp directory
+	if string(content) != "old-opendeploy-core" {
+		t.Fatal("binary changed after backup failure")
+	}
+}
+
 func testEngine(t *testing.T, healthErr error) (*Engine, string, *httptest.Server) {
 	t.Helper()
 	root := t.TempDir()
@@ -196,6 +221,7 @@ func testEngine(t *testing.T, healthErr error) (*Engine, string, *httptest.Serve
 		Signature: sigstoreAsset, HealthTimeout: time.Second,
 	}
 	engine := NewEngine(config, github, testVerifier{}, &testRuntime{healthErr: healthErr})
+	engine.Backup = &testBackup{}
 	engine.Client = client
 	return engine, binaryDir, server
 }

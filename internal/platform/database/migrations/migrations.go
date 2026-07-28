@@ -16,6 +16,41 @@ import (
 //go:embed *.sql
 var sqlFiles embed.FS
 
+// NeedsMigration reports whether the database schema is older than the newest
+// embedded migration. Legacy metadata is deliberately treated as pending.
+func NeedsMigration(db *sql.DB) (bool, error) {
+	hasName, hasVersion, err := migrationMetadataColumns(db)
+	if err != nil {
+		return false, err
+	}
+	if hasName || !hasVersion {
+		return hasName, nil
+	}
+	var current uint64
+	if err := db.QueryRow(`SELECT version FROM schema_migrations LIMIT 1`).Scan(&current); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
+		return false, fmt.Errorf("read migration version: %w", err)
+	}
+	entries, err := sqlFiles.ReadDir(".")
+	if err != nil {
+		return false, err
+	}
+	var latest uint64
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".up.sql") {
+			continue
+		}
+		versionText := strings.SplitN(entry.Name(), "_", 2)[0]
+		version, parseErr := strconv.ParseUint(versionText, 10, 64)
+		if parseErr == nil && version > latest {
+			latest = version
+		}
+	}
+	return current < latest, nil
+}
+
 // Run applies all pending SQL migration files using golang-migrate.
 func Run(db *sql.DB) error {
 	if err := migrateLegacyMetadata(db); err != nil {

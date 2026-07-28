@@ -27,6 +27,26 @@ type Service struct {
 	events events.Bus
 	files  *FileService
 	deploy *DeployService
+	backup interface {
+		CreateBackupAndWait(context.Context, string) error
+	}
+}
+
+func (s *Service) SetBackupGuard(guard interface {
+	CreateBackupAndWait(context.Context, string) error
+}) {
+	s.backup = guard
+}
+
+func (s *Service) backupCritical(ctx context.Context, operation, _ string) error {
+	if s.backup == nil {
+		return nil
+	}
+	reason := fmt.Sprintf("critical-site-%s-%s", operation, time.Now().UTC().Format("20060102T150405.000000000Z"))
+	if err := s.backup.CreateBackupAndWait(ctx, reason); err != nil {
+		return apperrors.Internal("mandatory pre-change backup", err)
+	}
+	return nil
 }
 
 // NewService constructs a site Service.
@@ -69,6 +89,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		return nil, apperrors.InvalidInput("module_id is required")
 	}
 	if err := validateSSL(req.SSLEnabled, req.SSLCert, req.SSLKey); err != nil {
+		return nil, err
+	}
+	if err := s.backupCritical(ctx, "create", req.Name); err != nil {
 		return nil, err
 	}
 
@@ -168,6 +191,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 
 // Update applies partial updates to a site.
 func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, userID, ip string) (*Site, error) {
+	if err := s.backupCritical(ctx, "update", id); err != nil {
+		return nil, err
+	}
 	site, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err

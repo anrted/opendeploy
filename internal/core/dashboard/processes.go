@@ -26,9 +26,9 @@ func (h *Handler) KillProcess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, apperrors.InvalidInput("invalid pid"))
 		return
 	}
-	
+
 	force := r.URL.Query().Get("force") == "true"
-	
+
 	if err := h.service.agent.ProcessKill(r.Context(), pid, force); err != nil {
 		writeError(w, apperrors.Internal("failed to kill process", err))
 		return

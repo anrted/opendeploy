@@ -223,6 +223,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	reason := "critical-settings-" + time.Now().UTC().Format("20060102T150405.000000000Z")
+	if err := h.updates.CreateBackupAndWait(r.Context(), reason); err != nil {
+		writeError(w, apperrors.Internal("mandatory pre-change backup", err))
+		return
+	}
 	if err := h.svc.SetMany(r.Context(), kv); err != nil {
 		writeError(w, apperrors.Internal("update settings", err))
 		return
@@ -282,6 +287,45 @@ func (h *Handler) RollbackUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusAccepted, map[string]string{"message": "rollback started"})
+}
+
+func (h *Handler) CreateBackup(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil && err != io.EOF {
+		writeError(w, apperrors.InvalidInput("invalid backup request"))
+		return
+	}
+	if err := h.updates.CreateBackup(r.Context(), request.Reason); err != nil {
+		writeError(w, apperrors.Internal("request backup", err))
+		return
+	}
+	respond(w, http.StatusAccepted, map[string]string{"message": "backup started"})
+}
+
+func (h *Handler) RestoreBackup(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Archive string `json:"archive"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, apperrors.InvalidInput("invalid restore request"))
+		return
+	}
+	if err := h.updates.RestoreBackup(r.Context(), request.Archive); err != nil {
+		writeError(w, apperrors.InvalidInput(err.Error()))
+		return
+	}
+	respond(w, http.StatusAccepted, map[string]string{"message": "restore started; services may restart"})
+}
+
+func (h *Handler) BackupHistory(w http.ResponseWriter, r *http.Request) {
+	entries, err := h.updates.BackupHistory(r.Context())
+	if err != nil {
+		writeError(w, apperrors.Internal("read backup history", err))
+		return
+	}
+	respond(w, http.StatusOK, entries)
 }
 
 // ─── helpers ───────────────────────────────────────────────────────────────

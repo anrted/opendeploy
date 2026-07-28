@@ -4,6 +4,7 @@ package update
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -88,6 +89,8 @@ type UpdateRequest struct {
 	Operation     string    `json:"operation"`
 	Tag           string    `json:"tag,omitempty"`
 	TransactionID string    `json:"transaction_id,omitempty"`
+	Archive       string    `json:"archive,omitempty"`
+	Reason        string    `json:"reason,omitempty"`
 	RequestedAt   time.Time `json:"requested_at"`
 }
 
@@ -101,5 +104,18 @@ func (r UpdateRequest) Validate() error {
 	if r.Operation == "rollback" && r.Tag == "" {
 		return nil
 	}
+	if r.Operation == "backup" && r.Tag == "" && r.Archive == "" &&
+		len(r.Reason) <= 128 && !strings.ContainsAny(r.Reason, "\x00\r\n") {
+		return nil
+	}
+	if r.Operation == "restore" && r.Tag == "" && validBackupArchiveName(r.Archive) {
+		return nil
+	}
 	return fmt.Errorf("update: invalid update request")
+}
+
+func validBackupArchiveName(name string) bool {
+	return name == filepath.Base(name) && strings.HasPrefix(name, "opendeploy-") &&
+		strings.HasSuffix(name, ".tar.gz") && len(name) <= 160 &&
+		!strings.ContainsAny(name, "/\\\x00\r\n")
 }

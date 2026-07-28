@@ -124,7 +124,7 @@ func (l *Loader) Bootstrap(ctx context.Context, deps contract.ModuleDeps) error 
 						}
 					}
 				}
-				
+
 				switch detected {
 				case StateInstalled, StateEnabled, StateDisabled:
 					rec := *existing

@@ -46,21 +46,27 @@ type Engine struct {
 	GitHub   *GitHubClient
 	Verifier SignatureVerifier
 	Runtime  RuntimeController
+	Backup   BackupCreator
 	Client   *http.Client
 	Now      func() time.Time
 }
 
+type BackupCreator interface {
+	CreateBackup(ctx context.Context, reason string) (string, error)
+}
+
 type HistoryEntry struct {
-	ID          string    `json:"id"`
-	StartedAt   time.Time `json:"started_at"`
-	CompletedAt time.Time `json:"completed_at"`
-	FromVersion string    `json:"from_version,omitempty"`
-	ToVersion   string    `json:"to_version"`
-	Commit      string    `json:"commit"`
-	Status      string    `json:"status"`
-	Automatic   bool      `json:"automatic_rollback,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	BackupDir   string    `json:"backup_dir,omitempty"`
+	ID           string    `json:"id"`
+	StartedAt    time.Time `json:"started_at"`
+	CompletedAt  time.Time `json:"completed_at"`
+	FromVersion  string    `json:"from_version,omitempty"`
+	ToVersion    string    `json:"to_version"`
+	Commit       string    `json:"commit"`
+	Status       string    `json:"status"`
+	Automatic    bool      `json:"automatic_rollback,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	BackupDir    string    `json:"backup_dir,omitempty"`
+	SystemBackup string    `json:"system_backup,omitempty"`
 }
 
 func NewEngine(config Config, github *GitHubClient, verifier SignatureVerifier, runtime RuntimeController) *Engine {
@@ -170,6 +176,13 @@ func (e *Engine) Apply(ctx context.Context, tag, currentVersion string) (entry H
 	payloadDir := filepath.Join(stage, "payload")
 	if err := extractRelease(archivePath, payloadDir); err != nil {
 		return entry, err
+	}
+	if e.Backup == nil {
+		return entry, fmt.Errorf("update: full system backup provider is required")
+	}
+	entry.SystemBackup, err = e.Backup.CreateBackup(ctx, "before-update-"+manifest.Tag)
+	if err != nil {
+		return entry, fmt.Errorf("update: pre-update system backup: %w", err)
 	}
 
 	entry.Status = "installing"

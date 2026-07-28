@@ -170,12 +170,16 @@ func provideAuthService(userRepo auth.UserRepository, sessionRepo auth.SessionRe
 	return auth.NewService(userRepo, sessionRepo, jwtMgr, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, log, auditSvc)
 }
 
-func provideModuleService(registry *module.Registry, repo module.Repository, jobRepo module.JobRepository, bus *events.MemoryBus, auditSvc *audit.Service, log *slog.Logger) *module.Service {
-	return module.NewService(registry, repo, jobRepo, bus, auditSvc, log)
+func provideModuleService(registry *module.Registry, repo module.Repository, jobRepo module.JobRepository, bus *events.MemoryBus, auditSvc *audit.Service, updates *updater.Service, log *slog.Logger) *module.Service {
+	service := module.NewService(registry, repo, jobRepo, bus, auditSvc, log)
+	service.SetBackupGuard(updates)
+	return service
 }
 
-func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent *agentclient.Client, registry *module.Registry, bus *events.MemoryBus, log *slog.Logger) *site.Service {
-	return site.NewService(repo, auditSvc, agent, registry, bus, log)
+func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent *agentclient.Client, registry *module.Registry, bus *events.MemoryBus, updates *updater.Service, log *slog.Logger) *site.Service {
+	service := site.NewService(repo, auditSvc, agent, registry, bus, log)
+	service.SetBackupGuard(updates)
+	return service
 }
 
 func provideSvcService(repo service.Repository, agent *agentclient.Client, log *slog.Logger) *service.SvcService {

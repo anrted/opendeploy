@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	systembackup "github.com/anrted/opendeploy/internal/backup"
 	secureupdate "github.com/anrted/opendeploy/internal/update"
 )
 
@@ -129,11 +130,7 @@ func (s *Service) Apply(ctx context.Context, updateType string) error {
 		Schema: "opendeploy.update-request/v1", Operation: "apply",
 		Tag: status.LatestVersion, RequestedAt: time.Now().UTC(),
 	}
-	content, err := json.Marshal(request)
-	if err != nil {
-		return fmt.Errorf("updates: encode request: %w", err)
-	}
-	return s.agent.FileWrite(ctx, updateRequest, append(content, '\n'), 0o600)
+	return s.writeRequest(ctx, request)
 }
 
 func (s *Service) History(ctx context.Context) ([]secureupdate.HistoryEntry, error) {
@@ -168,6 +165,95 @@ func (s *Service) Rollback(ctx context.Context, transactionID string) error {
 	request := secureupdate.UpdateRequest{
 		Schema: "opendeploy.update-request/v1", Operation: "rollback",
 		TransactionID: transactionID, RequestedAt: time.Now().UTC(),
+	}
+	return s.writeRequest(ctx, request)
+}
+
+func (s *Service) CreateBackup(ctx context.Context, reason string) error {
+	if len(reason) > 128 || strings.ContainsAny(reason, "\x00\r\n") {
+		return fmt.Errorf("backups: invalid reason")
+	}
+	return s.writeRequest(ctx, secureupdate.UpdateRequest{
+		Schema: "opendeploy.update-request/v1", Operation: "backup",
+		Reason: reason, RequestedAt: time.Now().UTC(),
+	})
+}
+
+// CreateBackupAndWait is the fail-closed guard used by critical mutations.
+func (s *Service) CreateBackupAndWait(ctx context.Context, reason string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+	requestedAt := time.Now().UTC()
+	if err := s.CreateBackup(waitCtx, reason); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("backups: wait for mandatory backup: %w", waitCtx.Err())
+		case <-ticker.C:
+			entries, err := s.BackupHistory(waitCtx)
+			if err != nil {
+				continue
+			}
+			for index := len(entries) - 1; index >= 0; index-- {
+				entry := entries[index]
+				if entry.Type != "create" || entry.Reason != reason || entry.StartedAt.Before(requestedAt) {
+					continue
+				}
+				if entry.Status != "succeeded" {
+					return fmt.Errorf("backups: mandatory backup failed: %s", entry.Error)
+				}
+				return nil
+			}
+		}
+	}
+}
+
+func (s *Service) RestoreBackup(ctx context.Context, archive string) error {
+	request := secureupdate.UpdateRequest{
+		Schema: "opendeploy.update-request/v1", Operation: "restore",
+		Archive: archive, RequestedAt: time.Now().UTC(),
+	}
+	if err := request.Validate(); err != nil {
+		return fmt.Errorf("backups: invalid archive name")
+	}
+	return s.writeRequest(ctx, request)
+}
+
+func (s *Service) BackupHistory(ctx context.Context) ([]systembackup.Operation, error) {
+	if s.agent == nil {
+		return nil, fmt.Errorf("backups: Agent is unavailable")
+	}
+	data, err := s.agent.FileRead(ctx, "/var/lib/opendeploy/backup-state/history.jsonl")
+	if err != nil {
+		return nil, fmt.Errorf("backups: read history: %w", err)
+	}
+	var entries []systembackup.Operation
+	for index, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry systembackup.Operation
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("backups: invalid history line %d: %w", index+1, err)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func (s *Service) writeRequest(ctx context.Context, request secureupdate.UpdateRequest) error {
+	if s.agent == nil {
+		return fmt.Errorf("updates: Agent is unavailable")
+	}
+	if err := request.Validate(); err != nil {
+		return err
+	}
+	if current, err := s.agent.FileRead(ctx, updateRequest); err == nil && strings.TrimSpace(string(current)) != "" {
+		return fmt.Errorf("updates: another privileged operation is already queued or requires operator attention")
 	}
 	content, err := json.Marshal(request)
 	if err != nil {

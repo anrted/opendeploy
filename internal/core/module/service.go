@@ -27,6 +27,26 @@ type Service struct {
 	logger   *slog.Logger
 	cancelMu sync.Mutex
 	cancels  map[string]context.CancelFunc
+	backup   interface {
+		CreateBackupAndWait(context.Context, string) error
+	}
+}
+
+func (s *Service) SetBackupGuard(guard interface {
+	CreateBackupAndWait(context.Context, string) error
+}) {
+	s.backup = guard
+}
+
+func (s *Service) backupCritical(ctx context.Context, operation, id string) error {
+	if s.backup == nil {
+		return nil
+	}
+	reason := fmt.Sprintf("critical-module-%s-%s-%s", operation, id, nowUTC().Format("20060102T150405.000000000Z"))
+	if err := s.backup.CreateBackupAndWait(ctx, reason); err != nil {
+		return apperrors.Internal("mandatory pre-change backup", err)
+	}
+	return nil
 }
 
 // NewService constructs a module Service.
@@ -179,6 +199,9 @@ func (s *Service) Install(ctx context.Context, id, userID, ip string) (string, e
 	if rec != nil && (rec.State == StateInstalling || rec.State == StateRemoving) {
 		return "", apperrors.New(409, apperrors.CodeModuleBusy, "module operation in progress")
 	}
+	if err := s.backupCritical(ctx, "install", id); err != nil {
+		return "", err
+	}
 
 	jobID, err := s.startJob(ctx, JobInstall, id, func(jobCtx context.Context) error {
 		return m.Install(jobCtx)
@@ -215,6 +238,9 @@ func (s *Service) Uninstall(ctx context.Context, id, userID, ip string) (string,
 	if err != nil || rec.State == StateAvailable {
 		return "", apperrors.New(409, apperrors.CodeModuleNotInstalled, "module is not installed")
 	}
+	if err := s.backupCritical(ctx, "uninstall", id); err != nil {
+		return "", err
+	}
 
 	jobID, err := s.startJob(ctx, JobUninstall, id, func(jobCtx context.Context) error {
 		return m.Uninstall(jobCtx)
@@ -241,6 +267,9 @@ func (s *Service) Enable(ctx context.Context, id, userID, ip string) error {
 	if err != nil || (rec.State != StateInstalled && rec.State != StateDisabled) {
 		return apperrors.New(409, apperrors.CodeModuleNotInstalled, "module must be installed before enabling")
 	}
+	if err := s.backupCritical(ctx, "enable", id); err != nil {
+		return err
+	}
 
 	if err := m.Enable(ctx); err != nil {
 		return apperrors.Internal("enable module", err)
@@ -258,6 +287,9 @@ func (s *Service) Disable(ctx context.Context, id, userID, ip string) error {
 	m := s.registry.Find(id)
 	if m == nil {
 		return apperrors.New(404, apperrors.CodeModuleNotFound, "module not found: "+id)
+	}
+	if err := s.backupCritical(ctx, "disable", id); err != nil {
+		return err
 	}
 	if err := m.Disable(ctx); err != nil {
 		return apperrors.Internal("disable module", err)

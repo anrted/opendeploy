@@ -193,6 +193,35 @@ See [UPDATE_SECURITY.md](UPDATE_SECURITY.md) for the trust and recovery model.
 
 ---
 
+## Backups
+
+### POST /backups
+
+Queues a full privileged backup:
+
+```json
+{ "reason": "before-critical-change" }
+```
+
+### POST /backups/restore
+
+Queues a verified transactional restore:
+
+```json
+{ "archive": "opendeploy-20260729T010203.000000000Z.tar.gz" }
+```
+
+Only an OpenDeploy backup basename is accepted.
+
+### GET /backups/history
+
+Returns the durable backup and restore operation journal.
+
+See [BACKUP_RECOVERY.md](BACKUP_RECOVERY.md) for the complete format,
+integrity and clean-server recovery model.
+
+---
+
 ## Error Format
 
 All errors follow a consistent format:

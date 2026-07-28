@@ -281,6 +281,9 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsView)).Get("/updates/history", deps.SettingsHandler.UpdateHistory)
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsSecurity)).Post("/updates/apply", deps.SettingsHandler.ApplyUpdate)
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsSecurity)).Post("/updates/rollback", deps.SettingsHandler.RollbackUpdate)
+				r.With(coreMiddleware.RequirePermission(auth.PermSettingsView)).Get("/backups/history", deps.SettingsHandler.BackupHistory)
+				r.With(coreMiddleware.RequirePermission(auth.PermSettingsSecurity)).Post("/backups", deps.SettingsHandler.CreateBackup)
+				r.With(coreMiddleware.RequirePermission(auth.PermSettingsSecurity)).Post("/backups/restore", deps.SettingsHandler.RestoreBackup)
 			}
 		})
 	})

@@ -309,8 +309,13 @@ NoNewPrivileges=yes
 LockPersonality=yes
 EOF
 
-mkdir -p /var/lib/opendeploy/updates/staging /var/lib/opendeploy/updates/backups /opt/opendeploy/releases
+mkdir -p /var/lib/opendeploy/updates/staging /var/lib/opendeploy/updates/backups \
+    /var/lib/opendeploy/backups /var/lib/opendeploy/backup-state \
+    /var/lib/opendeploy/migration-backups /opt/opendeploy/releases
 chmod 0700 /var/lib/opendeploy/updates /var/lib/opendeploy/updates/staging /var/lib/opendeploy/updates/backups
+chmod 0700 /var/lib/opendeploy/backups /var/lib/opendeploy/backup-state
+chown opendeploy:opendeploy /var/lib/opendeploy/migration-backups
+chmod 0700 /var/lib/opendeploy/migration-backups
 chmod 0755 /opt/opendeploy /opt/opendeploy/releases
 if [ ! -x /usr/bin/cosign ] && ! grep -Eq '^OD_UPDATE_(COSIGN_PATH|GPG_KEYRING)=' /etc/opendeploy/update.env 2>/dev/null; then
     print_warning "Для автоматических обновлений установите /usr/bin/cosign либо настройте trust-параметры в /etc/opendeploy/update.env"

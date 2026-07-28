@@ -47,6 +47,8 @@ Three independent processes:
 | `opendeploy` (CLI) | any user | Command-line management |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design decisions.
+See [BACKUP_RECOVERY.md](BACKUP_RECOVERY.md) for backup and clean-server
+disaster recovery procedures.
 
 ---
 

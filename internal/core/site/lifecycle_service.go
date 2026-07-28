@@ -8,6 +8,9 @@ import (
 
 // Delete removes a site and delegates configuration cleanup.
 func (s *Service) Delete(ctx context.Context, id string, userID, ip string) error {
+	if err := s.backupCritical(ctx, "delete", id); err != nil {
+		return err
+	}
 	site, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
@@ -23,10 +26,16 @@ func (s *Service) Delete(ctx context.Context, id string, userID, ip string) erro
 }
 
 func (s *Service) Enable(ctx context.Context, id string, userID, ip string) error {
+	if err := s.backupCritical(ctx, "enable", id); err != nil {
+		return err
+	}
 	return s.setState(ctx, id, StateActive, contract.SiteEnable, EventEnabled, userID, ip)
 }
 
 func (s *Service) Disable(ctx context.Context, id string, userID, ip string) error {
+	if err := s.backupCritical(ctx, "disable", id); err != nil {
+		return err
+	}
 	return s.setState(ctx, id, StateDisabled, contract.SiteDisable, EventDisabled, userID, ip)
 }
 

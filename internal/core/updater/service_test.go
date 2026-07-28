@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	secureupdate "github.com/anrted/opendeploy/internal/update"
 )
 
 func TestCompareVersions(t *testing.T) {
@@ -102,5 +104,33 @@ func TestHistoryReadsJSONLJournal(t *testing.T) {
 	entries, err := service.History(context.Background())
 	if err != nil || len(entries) != 1 || entries[0].ID != "one" {
 		t.Fatalf("entries = %#v, err = %v", entries, err)
+	}
+}
+
+func TestBackupAndRestoreCreateRestrictedTypedRequests(t *testing.T) {
+	agent := &recordingAgent{}
+	service := NewService("v0.2.0", "commit", agent)
+	if err := service.CreateBackup(context.Background(), "manual"); err != nil {
+		t.Fatal(err)
+	}
+	var request secureupdate.UpdateRequest
+	if err := json.Unmarshal(agent.data, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Operation != "backup" || request.Reason != "manual" || agent.mode != 0o600 {
+		t.Fatalf("backup request = %#v, mode = %#o", request, agent.mode)
+	}
+	if err := service.RestoreBackup(context.Background(), "../unsafe.tar.gz"); err == nil {
+		t.Fatal("unsafe restore archive accepted")
+	}
+	agent.data = nil // simulate privileged worker consuming the create request
+	if err := service.RestoreBackup(context.Background(), "opendeploy-20260729T010203Z.tar.gz"); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(agent.data, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Operation != "restore" || request.Archive != "opendeploy-20260729T010203Z.tar.gz" {
+		t.Fatalf("restore request = %#v", request)
 	}
 }
