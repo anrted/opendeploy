@@ -36,7 +36,7 @@ func (v *SigstoreVerifier) Verify(ctx context.Context, manifestPath, bundlePath 
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("update: cosign path must be absolute")
 	}
-	command := exec.CommandContext(ctx, path, "verify-blob",
+	command := exec.CommandContext(ctx, path, "verify-blob", //nolint:gosec // absolute operator-configured trust binary
 		"--bundle", bundlePath,
 		"--certificate-identity-regexp", v.IdentityRegexp,
 		"--certificate-oidc-issuer", v.OIDCIssuer,
@@ -75,7 +75,7 @@ func (v *GPGVerifier) Verify(ctx context.Context, manifestPath, signaturePath st
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("update: gpgv path must be absolute")
 	}
-	output, err := exec.CommandContext(ctx, path, "--keyring", v.Keyring, signaturePath, manifestPath).CombinedOutput()
+	output, err := exec.CommandContext(ctx, path, "--keyring", v.Keyring, signaturePath, manifestPath).CombinedOutput() //nolint:gosec // absolute verifier and validated paths
 	if err != nil {
 		return fmt.Errorf("update: GPG verification failed: %s: %w", string(output), err)
 	}

@@ -71,7 +71,9 @@ func NewEngine(config Config, github *GitHubClient, verifier SignatureVerifier, 
 	return &Engine{Config: config, GitHub: github, Verifier: verifier, Runtime: runtime, Client: client, Now: time.Now}
 }
 
-func (e *Engine) Apply(ctx context.Context, tag, currentVersion string) (entry HistoryEntry, err error) {
+// Apply intentionally keeps the security gates in one linear transaction so
+// their ordering remains auditable.
+func (e *Engine) Apply(ctx context.Context, tag, currentVersion string) (entry HistoryEntry, err error) { //nolint:gocyclo
 	if e.Verifier == nil || e.Runtime == nil {
 		return entry, fmt.Errorf("update: verifier and runtime controller are required")
 	}
@@ -115,7 +117,7 @@ func (e *Engine) Apply(ctx context.Context, tag, currentVersion string) (entry H
 	if err != nil {
 		return entry, fmt.Errorf("update: create staging directory: %w", err)
 	}
-	defer os.RemoveAll(stage)
+	defer func() { _ = os.RemoveAll(stage) }()
 	manifestPath := filepath.Join(stage, manifestAsset)
 	signaturePath := filepath.Join(stage, filepath.Base(signatureName))
 	if err := e.download(ctx, manifestURL, manifestPath, maxMetadata); err != nil {
@@ -127,7 +129,7 @@ func (e *Engine) Apply(ctx context.Context, tag, currentVersion string) (entry H
 	if err := e.Verifier.Verify(ctx, manifestPath, signaturePath); err != nil {
 		return entry, err
 	}
-	manifestBytes, err := os.ReadFile(manifestPath)
+	manifestBytes, err := os.ReadFile(manifestPath) //nolint:gosec // path is created inside the private staging directory
 	if err != nil {
 		return entry, err
 	}
@@ -182,16 +184,17 @@ func (e *Engine) Apply(ctx context.Context, tag, currentVersion string) (entry H
 	}
 	healthCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.healthTimeout())
 	defer cancel()
-	if err := e.Runtime.Restart(healthCtx); err == nil {
-		err = e.Runtime.Healthy(healthCtx)
+	runtimeErr := e.Runtime.Restart(healthCtx)
+	if runtimeErr == nil {
+		runtimeErr = e.Runtime.Healthy(healthCtx)
 	}
-	if err != nil {
+	if runtimeErr != nil {
 		rollbackErr := e.restore(entry.BackupDir)
 		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), e.healthTimeout())
 		defer rollbackCancel()
 		restartErr := e.Runtime.Restart(rollbackCtx)
 		healthErr := e.Runtime.Healthy(rollbackCtx)
-		combined := errors.Join(err, rollbackErr, restartErr, healthErr)
+		combined := errors.Join(runtimeErr, rollbackErr, restartErr, healthErr)
 		entry.Status, entry.Automatic, entry.Error = "rolled_back", true, combined.Error()
 		entry.CompletedAt = e.Now().UTC()
 		_ = e.appendHistory(entry)
@@ -314,11 +317,11 @@ func (e *Engine) download(ctx context.Context, sourceURL, destination string, li
 	if err != nil {
 		return fmt.Errorf("update: download %s: %w", filepath.Base(destination), err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("update: download %s returned HTTP %d", filepath.Base(destination), response.StatusCode)
 	}
-	file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // destination is private staging
 	if err != nil {
 		return err
 	}
@@ -339,7 +342,7 @@ func (e *Engine) install(payload string, manifest *Manifest, backupDir string) e
 	}
 	releaseDir := filepath.Join(e.Config.ReleaseDir,
 		strings.TrimPrefix(manifest.Version, "v")+"-"+manifest.Commit[:12]+"-"+filepath.Base(backupDir))
-	if err := os.Mkdir(releaseDir, 0o755); err != nil {
+	if err := os.Mkdir(releaseDir, 0o750); err != nil {
 		return err
 	}
 	names := map[string]string{"opendeploy-core": "opendeploy-core", "opendeploy-agent": "opendeploy-agent", "opendeploy-cli": "opendeploy"}
@@ -402,7 +405,7 @@ func (e *Engine) appendHistory(entry HistoryEntry) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	if _, err := file.Write(append(data, '\n')); err != nil {
 		return err
 	}
@@ -430,11 +433,11 @@ func (e *Engine) healthTimeout() time.Duration {
 }
 
 func verifySHA256(path, expected string) error {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // caller supplies a path inside private staging
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return err
@@ -449,16 +452,16 @@ func extractRelease(archivePath, destination string) error {
 	if err := os.MkdirAll(destination, 0o700); err != nil {
 		return err
 	}
-	file, err := os.Open(archivePath)
+	file, err := os.Open(archivePath) //nolint:gosec // archive path is generated inside private staging
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("update: open release archive: %w", err)
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 	reader := tar.NewReader(gzipReader)
 	expected := map[string]bool{"opendeploy-core": false, "opendeploy-agent": false, "opendeploy-cli": false}
 	var total int64
@@ -479,7 +482,7 @@ func extractRelease(archivePath, destination string) error {
 			return fmt.Errorf("update: extracted release exceeds size limit")
 		}
 		target := filepath.Join(destination, name)
-		output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
+		output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700) //nolint:gosec // target is allowlisted above
 		if err != nil {
 			return err
 		}
@@ -504,15 +507,15 @@ func extractRelease(archivePath, destination string) error {
 }
 
 func copyFile(source, destination string, mode os.FileMode) error {
-	input, err := os.Open(source)
+	input, err := os.Open(source) //nolint:gosec // source is constrained to updater-managed directories
 	if err != nil {
 		return err
 	}
-	defer input.Close()
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	defer func() { _ = input.Close() }()
+	if err := os.MkdirAll(filepath.Dir(destination), 0o750); err != nil {
 		return err
 	}
-	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode) //nolint:gosec // destination is updater-managed
 	if err != nil {
 		return err
 	}
@@ -523,7 +526,7 @@ func copyFile(source, destination string, mode os.FileMode) error {
 }
 
 func atomicCopy(source, destination string, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destination), 0o750); err != nil {
 		return err
 	}
 	temp, err := os.CreateTemp(filepath.Dir(destination), "."+filepath.Base(destination)+".update-*")
@@ -531,8 +534,8 @@ func atomicCopy(source, destination string, mode os.FileMode) error {
 		return err
 	}
 	tempPath := temp.Name()
-	defer os.Remove(tempPath)
-	input, err := os.Open(source)
+	defer func() { _ = os.Remove(tempPath) }()
+	input, err := os.Open(source) //nolint:gosec // source is constrained to updater-managed directories
 	if err != nil {
 		_ = temp.Close()
 		return err

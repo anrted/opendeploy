@@ -9,7 +9,7 @@ import (
 )
 
 func acquireUpdateLock(path string) (func(), error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // caller uses fixed updater state root
 	if err != nil {
 		return nil, err
 	}

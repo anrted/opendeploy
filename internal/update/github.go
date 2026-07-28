@@ -146,7 +146,7 @@ func (c *GitHubClient) getJSON(ctx context.Context, endpoint string, destination
 	if err != nil {
 		return fmt.Errorf("update: query GitHub release: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 		return fmt.Errorf("update: GitHub release returned HTTP %d", response.StatusCode)

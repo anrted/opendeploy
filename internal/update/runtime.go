@@ -22,7 +22,7 @@ type SystemRuntime struct {
 
 func (r *SystemRuntime) Restart(ctx context.Context) error {
 	for _, unit := range []string{"opendeploy-agent.service", "opendeploy-core.service"} {
-		output, err := exec.CommandContext(ctx, "systemctl", "restart", unit).CombinedOutput()
+		output, err := exec.CommandContext(ctx, "systemctl", "restart", unit).CombinedOutput() //nolint:gosec // unit comes from fixed allowlist
 		if err != nil {
 			return fmt.Errorf("update: restart %s: %s: %w", unit, strings.TrimSpace(string(output)), err)
 		}
@@ -32,7 +32,7 @@ func (r *SystemRuntime) Restart(ctx context.Context) error {
 
 func (r *SystemRuntime) Healthy(ctx context.Context) error {
 	for _, unit := range []string{"opendeploy-agent.service", "opendeploy-core.service"} {
-		output, err := exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", unit).CombinedOutput()
+		output, err := exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", unit).CombinedOutput() //nolint:gosec // unit comes from fixed allowlist
 		if err != nil {
 			return fmt.Errorf("update: service %s is unhealthy: %s", unit, strings.TrimSpace(string(output)))
 		}

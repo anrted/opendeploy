@@ -46,7 +46,7 @@ func TestEngineAppliesSignedPinnedRelease(t *testing.T) {
 		t.Fatalf("status = %q", entry.Status)
 	}
 	for _, name := range []string{"opendeploy-core", "opendeploy-agent", "opendeploy"} {
-		content, err := os.ReadFile(filepath.Join(binaryDir, name))
+		content, err := os.ReadFile(filepath.Join(binaryDir, name)) //nolint:gosec // test temp directory
 		if err != nil || string(content) != "new-"+name {
 			t.Fatalf("%s = %q, %v", name, content, err)
 		}
@@ -68,7 +68,7 @@ func TestEngineAutomaticallyRollsBackFailedHealthGate(t *testing.T) {
 		t.Fatalf("entry = %#v, err = %v", entry, err)
 	}
 	for _, name := range []string{"opendeploy-core", "opendeploy-agent", "opendeploy"} {
-		content, readErr := os.ReadFile(filepath.Join(binaryDir, name))
+		content, readErr := os.ReadFile(filepath.Join(binaryDir, name)) //nolint:gosec // test temp directory
 		if readErr != nil || string(content) != "old-"+name {
 			t.Fatalf("%s was not rolled back: %q, %v", name, content, readErr)
 		}
@@ -93,7 +93,7 @@ func TestEngineSupportsManualRollbackFromJournal(t *testing.T) {
 		t.Fatalf("status = %q", rolledBack.Status)
 	}
 	for _, name := range []string{"opendeploy-core", "opendeploy-agent", "opendeploy"} {
-		content, readErr := os.ReadFile(filepath.Join(binaryDir, name))
+		content, readErr := os.ReadFile(filepath.Join(binaryDir, name)) //nolint:gosec // test temp directory
 		if readErr != nil || string(content) != "old-"+name {
 			t.Fatalf("%s was not manually rolled back: %q, %v", name, content, readErr)
 		}
@@ -120,7 +120,7 @@ func TestFailedManualRollbackRestoresCurrentVersion(t *testing.T) {
 		t.Fatalf("entry = %#v, err = %v", rolledBack, err)
 	}
 	for _, name := range []string{"opendeploy-core", "opendeploy-agent", "opendeploy"} {
-		content, readErr := os.ReadFile(filepath.Join(binaryDir, name))
+		content, readErr := os.ReadFile(filepath.Join(binaryDir, name)) //nolint:gosec // test temp directory
 		if readErr != nil || string(content) != "new-"+name {
 			t.Fatalf("%s current version was not restored: %q, %v", name, content, readErr)
 		}
@@ -134,7 +134,7 @@ func TestEngineRejectsInvalidSignatureBeforeInstallation(t *testing.T) {
 	if _, err := engine.Apply(context.Background(), "v1.2.3", "v1.2.2"); err == nil {
 		t.Fatal("invalid signature was accepted")
 	}
-	content, _ := os.ReadFile(filepath.Join(binaryDir, "opendeploy-core"))
+	content, _ := os.ReadFile(filepath.Join(binaryDir, "opendeploy-core")) //nolint:gosec // test temp directory
 	if string(content) != "old-opendeploy-core" {
 		t.Fatal("binary changed before signature verification")
 	}
@@ -144,11 +144,11 @@ func testEngine(t *testing.T, healthErr error) (*Engine, string, *httptest.Serve
 	t.Helper()
 	root := t.TempDir()
 	binaryDir := filepath.Join(root, "bin")
-	if err := os.MkdirAll(binaryDir, 0o755); err != nil {
+	if err := os.MkdirAll(binaryDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"opendeploy-core", "opendeploy-agent", "opendeploy"} {
-		if err := os.WriteFile(filepath.Join(binaryDir, name), []byte("old-"+name), 0o755); err != nil {
+		if err := os.WriteFile(filepath.Join(binaryDir, name), []byte("old-"+name), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
