@@ -18,6 +18,7 @@ func (m *Module) Actions() []contract.ActionDef {
 }
 
 func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
+	m.log.InfoContext(ctx, "executing nginx action", "action", actionID)
 	switch actionID {
 	case "start":
 		return m.deps.Agent.ServiceStart(ctx, "nginx")
@@ -32,13 +33,27 @@ func (m *Module) ExecuteAction(ctx context.Context, actionID string) error {
 	case "restart":
 		return m.deps.Agent.ServiceRestart(ctx, "nginx")
 	case "test_config":
-		_, stdout, stderr, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
-		if err != nil {
+		exitCode, stdout, stderr, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
+		if err != nil || exitCode != 0 {
 			return fmt.Errorf("nginx -t failed: %v\n%s", err, stderr)
 		}
 		m.log.Info("Config test passed", "output", stdout)
 		return nil
 	default:
 		return fmt.Errorf("unknown action: %s", actionID)
+	}
+}
+
+func (m *Module) ActionAvailability(ctx context.Context) map[string]bool {
+	status, err := m.deps.Agent.ServiceStatus(ctx, "nginx")
+	if err != nil || status == nil {
+		return map[string]bool{"start": true, "stop": false, "reload": false, "restart": false, "test_config": true}
+	}
+	return map[string]bool{
+		"start":       !status.Active,
+		"stop":        status.Active,
+		"reload":      status.Active,
+		"restart":     status.Active,
+		"test_config": true,
 	}
 }

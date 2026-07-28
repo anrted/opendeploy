@@ -5,6 +5,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- Real Nginx overview diagnostics, health checks, configuration explorer,
+  certificate metadata/renewal, and managed settings.
+- Transactional rollback tests for Nginx sites, settings and configuration
+  edits.
+
+### Fixed
+
+- Implemented the current data-grid provider contract for Nginx virtual hosts
+  and certificates.
+- Replaced hard-coded Nginx settings and silently rejected diagnostic commands
+  with validated Agent-backed operations.
+
 ## [0.1.16] - 2026-07-29
 
 ### Added

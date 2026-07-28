@@ -41,7 +41,10 @@ var allowlist = []AllowedCommand{
 	}},
 	{Binary: "journalctl", AllowedArgs: []string{"-u", "-n", "-f", "--no-pager", "-o", "short", "short-precise"}},
 	{Binary: "ufw", AllowedArgs: []string{"allow", "deny", "reject", "delete", "status", "numbered", "enable", "disable", "reset", "--force"}},
-	{Binary: "nginx", AllowedArgs: []string{"-t", "-s", "reload", "stop", "quit", "-v"}},
+	{Binary: "nginx", AllowedArgs: []string{"-t", "-T", "-s", "reload", "stop", "quit", "-v", "-V"}},
+	{Binary: "openssl", AllowedArgs: []string{"x509", "-in", "-noout", "-issuer", "-subject", "-dates", "-ext", "subjectAltName"}},
+	{Binary: "ss", AllowedArgs: []string{"-tuln"}},
+	{Binary: "curl", AllowedArgs: []string{"-s", "--max-time"}},
 	{Binary: "php", AllowedArgs: []string{"-v", "-m"}},
 	{Binary: "node", AllowedArgs: []string{"--version"}},
 	{Binary: "npm", AllowedArgs: []string{"--version"}},
@@ -51,7 +54,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "fail2ban-server", AllowedArgs: []string{"-b", "-t"}},
 	{Binary: "hostname"},
 	{Binary: "timedatectl", AllowedArgs: []string{"set-timezone", "status"}},
-	{Binary: "certbot", AllowedArgs: []string{"certonly", "--webroot", "-w", "-d", "-n", "--agree-tos", "-m", "--expand", "--register-unsafely-without-email"}},
+	{Binary: "certbot", AllowedArgs: []string{"certonly", "renew", "--webroot", "-w", "-d", "-n", "--agree-tos", "-m", "--expand", "--register-unsafely-without-email", "--cert-name", "--non-interactive"}},
 }
 
 type Validator struct{}
@@ -138,6 +141,28 @@ func validateOperands(binary string, args []string) error {
 			}
 			if !pathWithin(arg, "/var/log") {
 				return fmt.Errorf("validator: log path is outside /var/log")
+			}
+		}
+	case "openssl":
+		for index, arg := range args {
+			if index > 0 && args[index-1] == "-in" {
+				if !pathWithin(arg, "/etc/letsencrypt") && !pathWithin(arg, "/var/lib/opendeploy") {
+					return fmt.Errorf("validator: certificate path is outside managed roots")
+				}
+			}
+		}
+	case "ss":
+		if len(args) != 1 || args[0] != "-tuln" {
+			return fmt.Errorf("validator: only socket-listing diagnostics are permitted")
+		}
+	case "curl":
+		expected := []string{"-s", "--max-time", "1", "http://127.0.0.1/nginx_status"}
+		if len(args) != len(expected) {
+			return fmt.Errorf("validator: only the local nginx status endpoint is permitted")
+		}
+		for index := range expected {
+			if args[index] != expected[index] {
+				return fmt.Errorf("validator: only the local nginx status endpoint is permitted")
 			}
 		}
 	case "git":

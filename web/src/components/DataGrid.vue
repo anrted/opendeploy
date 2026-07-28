@@ -63,6 +63,25 @@
         </tbody>
       </table>
     </div>
+
+    <div v-if="inputAction" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="cancelInputs">
+      <form class="w-full max-w-4xl rounded-xl border border-[#334155] bg-[#1e293b] p-6 shadow-2xl" @submit.prevent="submitInputs">
+        <h3 class="mb-5 text-xl font-semibold text-white">{{ actionTitle(inputAction) }}</h3>
+        <div class="space-y-4">
+          <label v-for="input in inputAction.inputs" :key="input.key" class="block">
+            <span class="mb-1 block text-sm font-medium text-[#e2e8f0]">{{ inputTitle(input) }}</span>
+            <textarea v-if="input.type === 'textarea'" v-model="inputValues[input.key]" rows="22"
+              class="input w-full font-mono text-sm" :placeholder="input.placeholder" :required="input.required"></textarea>
+            <input v-else v-model="inputValues[input.key]" :type="input.type || 'text'"
+              class="input w-full" :placeholder="input.placeholder" :required="input.required" />
+          </label>
+        </div>
+        <div class="mt-6 flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="cancelInputs">{{ t('common.cancel') }}</button>
+          <button type="submit" class="btn btn-primary">{{ t('common.save') }}</button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -86,8 +105,12 @@ const data = ref([])
 const loading = ref(true)
 const actionLoading = ref('')
 const searchQuery = ref('')
+const inputAction = ref(null)
+const inputValues = ref({})
+let inputResolver = null
 
 const actionTitle = (action) => t(`moduleActions.${action.id}.title`, action.title)
+const inputTitle = (input) => t(`dataGrid.inputs.${input.key}`, input.label)
 
 const fetchSchema = async () => {
   const { data } = await api.get(`/modules/${props.module.id}/datagrid/${props.page.id}/schema`)
@@ -110,18 +133,8 @@ const executeGlobalAction = async (action) => {
 
 const executeAction = async (action, row = null, rowIndex = null) => {
   const payload = row ? { ...row } : {}
-  for (const input of action.inputs || []) {
-    const value = window.prompt(
-      t(`dataGrid.inputs.${input.key}`, input.label),
-      ''
-    )
-    if (value === null) return
-    if (input.required && !value.trim()) {
-      alert(t('dataGrid.required', { field: t(`dataGrid.inputs.${input.key}`, input.label) }))
-      return
-    }
-    payload[input.key] = value.trim()
-  }
+  const collectedPayload = await collectInputs(action, payload)
+  if (!collectedPayload) return
   if (action.requiresConfirmation || action.requires_confirmation || action.dangerous) {
     const confirmed = await confirm.require({
       title: t('dataGrid.confirm'),
@@ -134,7 +147,7 @@ const executeAction = async (action, row = null, rowIndex = null) => {
   const loadingKey = rowIndex === null ? action.id : `${action.id}:${rowIndex}`
   actionLoading.value = loadingKey
   try {
-    await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`, payload)
+    await api.post(`/modules/${props.module.id}/datagrid/${props.page.id}/action/${action.id}`, collectedPayload)
     alert(t('dataGrid.success', { action: actionTitle(action) }))
     await fetchData()
   } catch (error) {
@@ -142,6 +155,43 @@ const executeAction = async (action, row = null, rowIndex = null) => {
   } finally {
     actionLoading.value = ''
   }
+}
+
+function collectInputs(action, payload) {
+  if (!action.inputs?.length) return Promise.resolve(payload)
+  inputAction.value = action
+  inputValues.value = Object.fromEntries(
+    action.inputs.map(input => [input.key, String(payload[input.key] || '')])
+  )
+  return new Promise(resolve => {
+    inputResolver = value => resolve(value ? { ...payload, ...value } : null)
+  })
+}
+
+function submitInputs() {
+  for (const input of inputAction.value.inputs) {
+    const value = String(inputValues.value[input.key] || '')
+    if (input.required && !value.trim()) {
+      alert(t('dataGrid.required', { field: inputTitle(input) }))
+      return
+    }
+  }
+  const resolver = inputResolver
+  const values = { ...inputValues.value }
+  closeInputs()
+  resolver?.(values)
+}
+
+function cancelInputs() {
+  const resolver = inputResolver
+  closeInputs()
+  resolver?.(null)
+}
+
+function closeInputs() {
+  inputAction.value = null
+  inputValues.value = {}
+  inputResolver = null
 }
 
 const filteredData = computed(() => {

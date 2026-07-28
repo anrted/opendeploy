@@ -143,77 +143,6 @@ func (m *Module) ClearLog(ctx context.Context, logID string) error {
 
 	return m.deps.Agent.FileWrite(ctx, path, nil, 0o640)
 }
-func (m *Module) SettingsSchema() []contract.SettingField {
-	return []contract.SettingField{
-		{
-			ID:              "worker_processes",
-			Type:            "select",
-			Label:           "Worker Processes",
-			Description:     "Number of worker processes (usually auto)",
-			Value:           "auto",
-			Options:         []string{"auto", "1", "2", "4", "8"},
-			Category:        "Performance",
-			RequiresRestart: true,
-		},
-		{
-			ID:              "worker_connections",
-			Type:            "number",
-			Label:           "Worker Connections",
-			Description:     "Maximum number of simultaneous connections that can be opened by a worker process",
-			Value:           "1024",
-			Category:        "Performance",
-			RequiresRestart: true,
-		},
-		{
-			ID:          "keepalive_timeout",
-			Type:        "number",
-			Label:       "Keepalive Timeout",
-			Description: "Timeout for keep-alive connections with the client",
-			Value:       "65",
-			Category:    "Performance",
-		},
-		{
-			ID:          "client_max_body_size",
-			Type:        "text",
-			Label:       "Client Max Body Size",
-			Description: "Maximum allowed size of the client request body (e.g. 50m)",
-			Value:       "50m",
-			Category:    "General",
-		},
-		{
-			ID:          "gzip",
-			Type:        "boolean",
-			Label:       "Enable GZIP",
-			Description: "Enable gzip compression for responses",
-			Value:       true,
-			Category:    "Performance",
-		},
-		{
-			ID:          "server_tokens",
-			Type:        "boolean",
-			Label:       "Server Tokens",
-			Description: "Emit nginx version on error pages and in the 'Server' response header",
-			Value:       false,
-			Category:    "Security",
-		},
-	}
-}
-
-func (m *Module) SaveSettings(ctx context.Context, settings map[string]any) error {
-	// Usually this would parse and rewrite /etc/nginx/nginx.conf
-	// Since we are mocking the file write logic for this test, we just validate using nginx -t
-	// In reality we would render a template for /etc/nginx/nginx.conf or similar
-
-	_, _, _, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
-	if err != nil {
-		return fmt.Errorf("configuration validation failed: %w", err)
-	}
-
-	// Reload nginx
-	_, _, _, err = m.deps.Agent.CommandExecute(ctx, "systemctl", "reload", "nginx")
-	return err
-}
-
 func (m *Module) Pages() []contract.ModulePage {
 	pages := []contract.ModulePage{
 		{ID: "overview", Title: "Overview", Type: contract.PageTypeOverview},
@@ -228,20 +157,24 @@ func (m *Module) Pages() []contract.ModulePage {
 	// Nginx specific pages
 	pages = append(pages, contract.ModulePage{ID: "sites", Title: "Virtual Hosts", Type: contract.PageTypeDataGrid})
 	pages = append(pages, contract.ModulePage{ID: "certificates", Title: "Certificates", Type: contract.PageTypeDataGrid})
+	pages = append(pages, contract.ModulePage{ID: "configuration", Title: "Configuration", Type: contract.PageTypeDataGrid})
 
 	return pages
 }
 
-func (m *Module) GetDataGridSchema(ctx context.Context, pageID string) (contract.DataGridSchema, error) {
+func (m *Module) DataGridSchema(pageID string) (contract.DataGridSchema, error) {
 	if pageID == "sites" {
 		return contract.DataGridSchema{
 			Columns: []contract.DataGridColumn{
 				{Key: "domain", Title: "Domain", Type: "text"},
 				{Key: "port", Title: "Port", Type: "text"},
 				{Key: "root", Title: "Root Directory", Type: "text"},
+				{Key: "php", Title: "PHP", Type: "text"},
+				{Key: "ssl", Title: "SSL", Type: "badge"},
 				{Key: "status", Title: "Status", Type: "badge"},
+				{Key: "modified", Title: "Last Modified", Type: "date"},
 			},
-			Actions: []contract.ActionDef{
+			RowActions: []contract.ActionDef{
 				{ID: "enable", Title: "Enable", Icon: "play", Color: "success", RequiresConfirmation: false},
 				{ID: "disable", Title: "Disable", Icon: "square", Color: "warning", RequiresConfirmation: true},
 				{ID: "delete", Title: "Delete", Icon: "trash-2", Color: "danger", RequiresConfirmation: true},
@@ -252,20 +185,46 @@ func (m *Module) GetDataGridSchema(ctx context.Context, pageID string) (contract
 		return contract.DataGridSchema{
 			Columns: []contract.DataGridColumn{
 				{Key: "domain", Title: "Domain", Type: "text"},
+				{Key: "provider", Title: "Provider", Type: "badge"},
 				{Key: "issuer", Title: "Issuer", Type: "text"},
+				{Key: "issued_at", Title: "Issued", Type: "text"},
 				{Key: "expires", Title: "Expires", Type: "text"},
+				{Key: "remaining", Title: "Remaining", Type: "text"},
+				{Key: "san", Title: "SAN", Type: "text"},
+				{Key: "path", Title: "Certificate Path", Type: "text"},
 				{Key: "status", Title: "Status", Type: "badge"},
 			},
-			Actions: []contract.ActionDef{
+			RowActions: []contract.ActionDef{
 				{ID: "renew", Title: "Renew", Icon: "refresh-cw", Color: "primary"},
-				{ID: "delete", Title: "Delete", Icon: "trash-2", Color: "danger", RequiresConfirmation: true},
+			},
+		}, nil
+	}
+	if pageID == "configuration" {
+		return contract.DataGridSchema{
+			Columns: []contract.DataGridColumn{
+				{Key: "path", Title: "Path", Type: "text"},
+				{Key: "kind", Title: "Type", Type: "badge"},
+				{Key: "modified", Title: "Last Modified", Type: "date"},
+				{Key: "preview", Title: "Preview", Type: "text"},
+			},
+			Actions: []contract.ActionDef{
+				{ID: "validate_config", Title: "Validate Configuration", Icon: "check-circle", Color: "primary"},
+				{ID: "reload_config", Title: "Reload Configuration", Icon: "refresh-cw", Color: "primary"},
+			},
+			RowActions: []contract.ActionDef{
+				{
+					ID: "save_config", Title: "Edit Configuration", Icon: "edit", Color: "warning", RequiresConfirmation: true,
+					Inputs: []contract.ActionInputDef{
+						{Key: "content", Label: "Configuration content", Type: "textarea", Required: true},
+					},
+				},
 			},
 		}, nil
 	}
 	return contract.DataGridSchema{}, fmt.Errorf("unknown page id: %s", pageID)
 }
 
-func (m *Module) GetDataGridData(ctx context.Context, pageID string) ([]map[string]any, error) {
+func (m *Module) DataGridData(ctx context.Context, pageID string) ([]map[string]any, error) {
 	if pageID == "sites" {
 		var sites []map[string]any
 		entries, err := m.deps.Agent.DirList(ctx, "/etc/nginx/sites-available")
@@ -284,26 +243,52 @@ func (m *Module) GetDataGridData(ctx context.Context, pageID string) ([]map[stri
 					status = "enabled"
 				}
 				content, _ := m.deps.Agent.FileRead(ctx, entry.Path)
-				root := nginxDirective(string(content), "root")
-				port := strings.Fields(nginxDirective(string(content), "listen"))
+				config := string(content)
+				root := nginxDirective(config, "root")
+				port := strings.Fields(nginxDirective(config, "listen"))
 				listenPort := ""
 				if len(port) > 0 {
 					listenPort = port[0]
 				}
 				sites = append(sites, map[string]any{
-					"domain": domain,
-					"port":   listenPort,
-					"root":   root,
-					"status": status,
+					"domain":   domain,
+					"port":     listenPort,
+					"root":     root,
+					"php":      nginxPHPVersion(config),
+					"ssl":      nginxSSLStatus(config),
+					"status":   status,
+					"modified": entry.ModTime.UTC().Format(time.RFC3339),
 				})
 			}
 		}
 		return sites, nil
 	}
 	if pageID == "certificates" {
-		return []map[string]any{}, nil
+		return m.certificateRows(ctx)
+	}
+	if pageID == "configuration" {
+		return m.configurationRows(ctx)
 	}
 	return nil, fmt.Errorf("unknown page id: %s", pageID)
+}
+
+func nginxPHPVersion(content string) string {
+	value := nginxDirective(content, "fastcgi_pass")
+	value = strings.TrimPrefix(value, "unix:/run/php/php")
+	if value == "" || value == nginxDirective(content, "fastcgi_pass") {
+		return ""
+	}
+	if index := strings.Index(value, "-fpm-"); index >= 0 {
+		return value[:index]
+	}
+	return ""
+}
+
+func nginxSSLStatus(content string) string {
+	if nginxDirective(content, "ssl_certificate") != "" {
+		return "enabled"
+	}
+	return "disabled"
 }
 
 func nginxDirective(content, directive string) string {
@@ -336,5 +321,58 @@ func (m *Module) DataGridAction(ctx context.Context, pageID, actionID string, pa
 			return fmt.Errorf("unknown action: %s", actionID)
 		}
 	}
+	if pageID == "certificates" && actionID == "renew" {
+		domain, _ := payload["domain"].(string)
+		certificatePath, _ := payload["path"].(string)
+		if !validManagedDomain(domain) {
+			return fmt.Errorf("valid certificate domain is required")
+		}
+		if !strings.HasPrefix(certificatePath, "/etc/letsencrypt/") {
+			return fmt.Errorf("only Let's Encrypt certificates can be renewed with Certbot")
+		}
+		exitCode, _, stderr, err := m.deps.Agent.CommandExecute(
+			ctx, "certbot", "renew", "--cert-name", domain, "--non-interactive",
+		)
+		if err != nil || exitCode != 0 {
+			return fmt.Errorf("renew certificate for %s: %s", domain, strings.TrimSpace(stderr))
+		}
+		return m.deps.Agent.ServiceReload(ctx, "nginx")
+	}
+	if pageID == "configuration" {
+		switch actionID {
+		case "validate_config":
+			exitCode, stdout, stderr, err := m.deps.Agent.CommandExecute(ctx, "nginx", "-t")
+			if err != nil || exitCode != 0 {
+				return fmt.Errorf("nginx configuration is invalid: %s %s", strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+			}
+			return nil
+		case "reload_config":
+			return m.validateAndReload(ctx)
+		case "save_config":
+			path, _ := payload["path"].(string)
+			content, _ := payload["content"].(string)
+			return m.saveConfigurationFile(ctx, path, content)
+		}
+	}
 	return fmt.Errorf("unknown page or action")
 }
+
+func validManagedDomain(domain string) bool {
+	if domain == "" || len(domain) > 253 || strings.ContainsAny(domain, `/\:@`) {
+		return false
+	}
+	for _, label := range strings.Split(domain, ".") {
+		if label == "" || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+		for _, character := range label {
+			if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') &&
+				(character < '0' || character > '9') && character != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+var _ contract.DataGridProvider = (*Module)(nil)

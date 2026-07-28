@@ -74,3 +74,27 @@ func TestValidatorAllowsFail2BanManualBan(t *testing.T) {
 		t.Fatalf("fail2ban manual ban rejected: %v", err)
 	}
 }
+
+func TestValidatorAllowsBoundedNginxDiagnostics(t *testing.T) {
+	validator := NewValidator()
+	for _, test := range []struct {
+		binary string
+		args   []string
+	}{
+		{"nginx", []string{"-V"}},
+		{"ss", []string{"-tuln"}},
+		{"curl", []string{"-s", "--max-time", "1", "http://127.0.0.1/nginx_status"}},
+		{"openssl", []string{"x509", "-in", "/etc/letsencrypt/live/example.com/fullchain.pem", "-noout", "-issuer", "-dates"}},
+		{"certbot", []string{"renew", "--cert-name", "example.com", "--non-interactive"}},
+	} {
+		if err := validator.Validate(test.binary, test.args); err != nil {
+			t.Errorf("%s diagnostics rejected: %v", test.binary, err)
+		}
+	}
+	if err := validator.Validate("curl", []string{"-s", "https://example.com"}); err == nil {
+		t.Fatal("external curl target was accepted")
+	}
+	if err := validator.Validate("openssl", []string{"x509", "-in", "/etc/shadow", "-noout"}); err == nil {
+		t.Fatal("certificate path outside managed roots was accepted")
+	}
+}

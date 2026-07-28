@@ -14,6 +14,10 @@ import (
 // AllowedRoots defines the directories where the Agent is allowed to read/write.
 // Paths outside these roots are rejected.
 var AllowedRoots = []string{
+	"/etc/nginx/nginx.conf",
+	"/etc/nginx/conf.d",
+	"/etc/nginx/snippets",
+	"/etc/nginx/mime.types",
 	"/etc/nginx/sites-available",
 	"/etc/nginx/sites-enabled",
 	"/etc/apache2/sites-available",
