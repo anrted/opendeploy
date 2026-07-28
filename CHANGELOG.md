@@ -7,6 +7,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Live Fail2Ban protection preset cards with jail, log, threshold, ban duration,
+  rule count, modification time, details and localized configuration dialogs.
+- Typed protection-preset APIs for listing, previewing, saving, resetting and
+  toggling managed presets.
+- Transactional preset validation and rollback tests.
 - Real Nginx overview diagnostics, health checks, configuration explorer,
   certificate metadata/renewal, and managed settings.
 - Transactional rollback tests for Nginx sites, settings and configuration
@@ -14,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Preserved customized Fail2Ban preset settings while disabled and validated
+  active changes before restarting the service.
+- Expanded the Nginx scan and PHP exploit filters to cover documented sensitive
+  paths, traversal attempts, shells, installers, dumps and backup archives.
 - Implemented the current data-grid provider contract for Nginx virtual hosts
   and certificates.
 - Replaced hard-coded Nginx settings and silently rejected diagnostic commands

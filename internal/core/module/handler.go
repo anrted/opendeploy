@@ -289,6 +289,78 @@ func (h *Handler) HandleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (h *Handler) ProtectionPresets(w http.ResponseWriter, r *http.Request) {
+	presets, err := h.service.ProtectionPresets(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, presets)
+}
+
+func (h *Handler) PreviewProtectionPreset(w http.ResponseWriter, r *http.Request) {
+	settings := map[string]any{}
+	if r.Body != nil && r.Body != http.NoBody {
+		if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+			writeError(w, apperrors.InvalidInput("malformed JSON body"))
+			return
+		}
+	}
+	preview, err := h.service.PreviewProtectionPreset(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "presetId"), settings)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, preview)
+}
+
+func presetActor(r *http.Request) (string, string) {
+	principal := auth.PrincipalFromContext(r.Context())
+	if principal == nil {
+		return "", realIP(r)
+	}
+	return principal.ID, realIP(r)
+}
+
+func (h *Handler) SaveProtectionPreset(w http.ResponseWriter, r *http.Request) {
+	settings := map[string]any{}
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+		writeError(w, apperrors.InvalidInput("malformed JSON body"))
+		return
+	}
+	userID, ip := presetActor(r)
+	if err := h.service.SaveProtectionPreset(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "presetId"), settings, userID, ip); err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "protection preset saved"})
+}
+
+func (h *Handler) ResetProtectionPreset(w http.ResponseWriter, r *http.Request) {
+	userID, ip := presetActor(r)
+	if err := h.service.ResetProtectionPreset(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "presetId"), userID, ip); err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "protection preset reset"})
+}
+
+func (h *Handler) ToggleProtectionPreset(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, apperrors.InvalidInput("malformed JSON body"))
+		return
+	}
+	userID, ip := presetActor(r)
+	if err := h.service.SetProtectionPresetEnabled(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "presetId"), payload.Enabled, userID, ip); err != nil {
+		writeError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "protection preset state updated"})
+}
+
 func (h *Handler) HandleReadLog(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "id")
 	logID := chi.URLParam(r, "logId")

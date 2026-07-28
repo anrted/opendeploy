@@ -203,6 +203,11 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/datagrid/{pageId}/action/{actionId}", deps.ModuleHandler.HandleExecuteDataGridAction)
 
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/settings", deps.ModuleHandler.HandleSaveSettings)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}/presets", deps.ModuleHandler.ProtectionPresets)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Post("/modules/{id}/presets/{presetId}/preview", deps.ModuleHandler.PreviewProtectionPreset)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Put("/modules/{id}/presets/{presetId}", deps.ModuleHandler.SaveProtectionPreset)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/presets/{presetId}/reset", deps.ModuleHandler.ResetProtectionPreset)
+				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/presets/{presetId}/toggle", deps.ModuleHandler.ToggleProtectionPreset)
 
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleView)).Get("/modules/{id}/logs/{logId}/read", deps.ModuleHandler.HandleReadLog)
 				r.With(coreMiddleware.RequirePermission(auth.PermModuleConfigure)).Post("/modules/{id}/logs/{logId}/clear", deps.ModuleHandler.HandleClearLog)

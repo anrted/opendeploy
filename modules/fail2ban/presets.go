@@ -48,8 +48,7 @@ usedns = no
 	"nginx_scanners": {
 		filterPath: "/etc/fail2ban/filter.d/opendeploy-nginx-scanners.conf",
 		filterContent: `[Definition]
-failregex = ^.*directory index of ".*" is forbidden, client: <HOST>, server: .*request: "(?:GET|HEAD|POST) .* HTTP/.*".*$
-            ^.*client intended to send too large body: \d+ bytes, client: <HOST>, server: .*request: "POST .* HTTP/.*".*$
+failregex = ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) [^"]*(?:/wp-login\.php|/wp-admin(?:[/?\s]|$)|/xmlrpc\.php|/\.env(?:[/?\s]|$)|/\.git(?:[/?\s]|$)|/vendor(?:[/?\s]|$)|/composer\.(?:json|lock)|/phpinfo\.php|/cgi-bin(?:[/?\s]|$)|/admin\.php|(?:\.\./|%2e%2e(?:%2f|/)))[^"]* HTTP/[^"]+" (?:400|401|403|404) .*$
 ignoreregex =
 `,
 		jailPath: "/etc/fail2ban/jail.d/opendeploy-nginx-scanners.local",
@@ -57,7 +56,7 @@ ignoreregex =
 enabled = true
 filter = opendeploy-nginx-scanners
 port = http,https
-logpath = /var/log/nginx/error.log
+logpath = /var/log/nginx/access.log
 backend = auto
 maxretry = 5
 findtime = 10m
@@ -101,7 +100,7 @@ usedns = no
 	"php_probes": {
 		filterPath: "/etc/fail2ban/filter.d/opendeploy-php-probes.conf",
 		filterContent: `[Definition]
-failregex = ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) [^"]*(?:/\.env(?:[/?\s]|$)|/wp-(?:admin|content|includes)(?:[/?\s]|$)|/wp-login\.php(?:[?\s]|$)|/xmlrpc\.php(?:[?\s]|$)|/(?:phpmyadmin|pma)(?:[/?\s]|$)|/phpinfo(?:\.php|=1)|/vendor/phpunit(?:[/?\s]|$)|/cgi-bin(?:[/?\s]|$))[^"]* HTTP/[^"]+" \d{3} .*$
+failregex = ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) [^"]*(?:/\.env(?:[/?\s]|$)|/wp-(?:admin|content|includes)(?:[/?\s]|$)|/wp-login\.php(?:[?\s]|$)|/xmlrpc\.php(?:[?\s]|$)|/(?:phpmyadmin|pma)(?:[/?\s]|$)|/phpinfo(?:\.php|=1)|/vendor/phpunit(?:[/?\s]|$)|/cgi-bin(?:[/?\s]|$)|/(?:eval|shell|upload|installer)\.php(?:[?\s]|$)|/artisan(?:[/?\s]|$)|/composer\.lock(?:[?\s]|$)|/database\.sql(?:[?\s]|$)|/(?:backup|site|www)\.zip(?:[?\s]|$))[^"]* HTTP/[^"]+" (?:400|401|403|404) .*$
             ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|HEAD|POST) /+[^"]*\.php(?:[/?][^"]*)? HTTP/[^"]+" 404 .*$
 ignoreregex =
 `,
@@ -145,6 +144,9 @@ func (m *Module) enableProtectionPreset(ctx context.Context, presetID string) er
 	if !ok {
 		return fmt.Errorf("unknown protection preset: %s", presetID)
 	}
+	if presetID != "manual" {
+		return m.SetProtectionPresetEnabled(ctx, presetID, true)
+	}
 
 	filterSnapshot := m.snapshotConfig(ctx, preset.filterPath)
 	jailSnapshot := m.snapshotConfig(ctx, preset.jailPath)
@@ -181,11 +183,19 @@ func (m *Module) disableProtectionPreset(ctx context.Context, presetID string) e
 	}
 
 	jailSnapshot := m.snapshotConfig(ctx, preset.jailPath)
+	disabledSnapshot := m.snapshotConfig(ctx, preset.jailPath+".disabled")
+	if presetID != "manual" && jailSnapshot.existed {
+		if err := m.agent.FileWrite(ctx, preset.jailPath+".disabled", jailSnapshot.content, 0o644); err != nil {
+			return fmt.Errorf("preserve %s settings: %w", presetID, err)
+		}
+	}
 	if err := m.agent.FileDelete(ctx, preset.jailPath); err != nil {
+		m.restoreConfig(ctx, disabledSnapshot)
 		return fmt.Errorf("remove %s jail: %w", presetID, err)
 	}
 	if err := m.agent.ServiceRestart(ctx, "fail2ban"); err != nil {
 		m.restoreConfig(ctx, jailSnapshot)
+		m.restoreConfig(ctx, disabledSnapshot)
 		_ = m.agent.ServiceRestart(ctx, "fail2ban")
 		return fmt.Errorf("disable %s protection: %w", presetID, err)
 	}

@@ -69,7 +69,8 @@
         </div>
       </div>
 
-      <div v-if="isInstalled(module.state) && presetGroups.length" class="mb-6">
+      <ProtectionPresets v-if="isInstalled(module.state) && module.id === 'fail2ban'" :module-id="module.id" />
+      <div v-else-if="isInstalled(module.state) && presetGroups.length" class="mb-6">
         <div class="flex items-center justify-between mb-3">
           <div>
             <h2 class="text-lg font-semibold text-white">{{ t('moduleDetails.presets') }}</h2>
@@ -235,6 +236,7 @@ import SettingsForm from '@/components/SettingsForm.vue'
 import LogsViewer from '@/components/LogsViewer.vue'
 import ModuleIcon from '@/components/ModuleIcon.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import ProtectionPresets from '@/components/ProtectionPresets.vue'
 import api, { apiErrorMessage } from '@/api/client'
 import { useConfirmStore } from '@/stores/confirm'
 

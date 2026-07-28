@@ -1,10 +1,68 @@
 package fail2ban
 
 import (
+	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/anrted/opendeploy/pkg/contract"
 )
+
+type fail2banTestAgent struct {
+	contract.AgentClient
+	files       map[string][]byte
+	exitCode    int
+	restartErr  error
+	restarts    int
+	serviceEnab int
+}
+
+func (a *fail2banTestAgent) FileRead(_ context.Context, path string) ([]byte, error) {
+	content, ok := a.files[path]
+	if !ok {
+		return nil, errors.New("not found")
+	}
+	return append([]byte(nil), content...), nil
+}
+
+func (a *fail2banTestAgent) FileWrite(_ context.Context, path string, content []byte, _ uint32) error {
+	a.files[path] = append([]byte(nil), content...)
+	return nil
+}
+
+func (a *fail2banTestAgent) FileDelete(_ context.Context, path string) error {
+	delete(a.files, path)
+	return nil
+}
+
+func (a *fail2banTestAgent) DirList(_ context.Context, _ string) ([]contract.FileInfo, error) {
+	return nil, nil
+}
+
+func (a *fail2banTestAgent) CommandExecute(_ context.Context, _ string, _ ...string) (int, string, string, error) {
+	if a.exitCode != 0 {
+		return a.exitCode, "", "invalid configuration", nil
+	}
+	return 0, "", "", nil
+}
+
+func (a *fail2banTestAgent) ServiceRestart(_ context.Context, _ string) error {
+	a.restarts++
+	return a.restartErr
+}
+
+func (a *fail2banTestAgent) ServiceEnable(_ context.Context, _ string) error {
+	a.serviceEnab++
+	return nil
+}
+
+func fail2banModuleForTest(agent contract.AgentClient) *Module {
+	module := New()
+	module.agent = agent
+	return module
+}
 
 func TestNormalizeFail2BanVersion(t *testing.T) {
 	output := `Usage: fail2ban-client [OPTIONS] <COMMAND>
@@ -45,6 +103,117 @@ func TestProtectionPresetsHaveJailsAndSafeThresholds(t *testing.T) {
 	if !strings.Contains(manual.jailContent, "bantime = -1") ||
 		!strings.Contains(manual.jailContent, "banaction = %(banaction_allports)s") {
 		t.Fatal("manual preset is not configured as a permanent all-ports ban")
+	}
+}
+
+func TestFail2BanImplementsProtectionPresetProvider(t *testing.T) {
+	var module any = New()
+	if _, ok := module.(contract.ProtectionPresetProvider); !ok {
+		t.Fatal("fail2ban does not implement ProtectionPresetProvider")
+	}
+}
+
+func TestProtectionPresetCardsReadExistingConfiguration(t *testing.T) {
+	preset := protectionPresets["sshd"]
+	custom := strings.Replace(preset.jailContent, "maxretry = 5", "maxretry = 7", 1)
+	agent := &fail2banTestAgent{files: map[string][]byte{preset.jailPath: []byte(custom)}}
+	cards, err := fail2banModuleForTest(agent).ProtectionPresets(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ssh contract.ProtectionPreset
+	for _, card := range cards {
+		if card.ID == "sshd" {
+			ssh = card
+		}
+	}
+	if !ssh.Enabled || ssh.Settings["maxretry"] != 7 {
+		t.Fatalf("existing SSH jail not reflected in card: enabled=%v settings=%v", ssh.Enabled, ssh.Settings)
+	}
+	if len(ssh.Jails) != 1 || ssh.Jails[0] != "opendeploy-sshd" {
+		t.Fatalf("unexpected SSH jail metadata: %v", ssh.Jails)
+	}
+}
+
+func TestPresetSettingsValidationRejectsUnsafeValues(t *testing.T) {
+	for name, values := range map[string]map[string]any{
+		"path traversal": {"logpath": "/var/log/../../etc/passwd"},
+		"invalid CIDR":   {"ignoreip": "10.0.0.0/99"},
+		"invalid port":   {"port": "70000"},
+		"invalid retry":  {"maxretry": 0},
+		"command text":   {"banaction": "iptables;reboot"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := normalizedPresetSettings(protectionPresets["sshd"].jailContent, values); err == nil {
+				t.Fatal("unsafe preset settings were accepted")
+			}
+		})
+	}
+}
+
+func TestPresetPreviewDoesNotWriteConfiguration(t *testing.T) {
+	agent := &fail2banTestAgent{files: map[string][]byte{}}
+	preview, err := fail2banModuleForTest(agent).PreviewProtectionPreset(context.Background(), "sshd", map[string]any{"maxretry": 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview.Configuration, "maxretry = 8") {
+		t.Fatalf("preview does not contain requested setting:\n%s", preview.Configuration)
+	}
+	if len(agent.files) != 0 {
+		t.Fatal("preview changed managed files")
+	}
+}
+
+func TestSavingEnabledPresetRollsBackFailedValidation(t *testing.T) {
+	preset := protectionPresets["sshd"]
+	old := []byte(preset.jailContent)
+	agent := &fail2banTestAgent{files: map[string][]byte{preset.jailPath: old}, exitCode: 1}
+	err := fail2banModuleForTest(agent).SaveProtectionPreset(context.Background(), "sshd", map[string]any{"maxretry": 8})
+	if err == nil {
+		t.Fatal("save succeeded after fail2ban-server validation failed")
+	}
+	if got := string(agent.files[preset.jailPath]); got != string(old) {
+		t.Fatalf("jail was not rolled back:\n%s", got)
+	}
+	if agent.restarts != 0 {
+		t.Fatal("service restarted after configuration validation failed")
+	}
+}
+
+func TestDisablePresetPreservesSettingsAndRollsBackRestartFailure(t *testing.T) {
+	preset := protectionPresets["sshd"]
+	custom := strings.Replace(preset.jailContent, "maxretry = 5", "maxretry = 9", 1)
+	agent := &fail2banTestAgent{
+		files:      map[string][]byte{preset.jailPath: []byte(custom)},
+		restartErr: errors.New("restart failed"),
+	}
+	err := fail2banModuleForTest(agent).SetProtectionPresetEnabled(context.Background(), "sshd", false)
+	if err == nil {
+		t.Fatal("disable succeeded after service restart failed")
+	}
+	if got := string(agent.files[preset.jailPath]); got != custom {
+		t.Fatal("active jail was not restored")
+	}
+	if _, exists := agent.files[preset.jailPath+".disabled"]; exists {
+		t.Fatal("disabled settings snapshot was not rolled back")
+	}
+}
+
+func TestSavingDisabledPresetKeepsItDisabled(t *testing.T) {
+	preset := protectionPresets["sshd"]
+	agent := &fail2banTestAgent{files: map[string][]byte{}}
+	if err := fail2banModuleForTest(agent).SaveProtectionPreset(context.Background(), "sshd", map[string]any{"maxretry": 6}); err != nil {
+		t.Fatal(err)
+	}
+	if _, active := agent.files[preset.jailPath]; active {
+		t.Fatal("saving a disabled preset enabled it")
+	}
+	if content := string(agent.files[preset.jailPath+".disabled"]); !strings.Contains(content, "maxretry = 6") {
+		t.Fatalf("disabled preset settings were not saved:\n%s", content)
+	}
+	if agent.restarts != 0 {
+		t.Fatal("saving a disabled preset restarted Fail2Ban")
 	}
 }
 

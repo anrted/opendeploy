@@ -155,6 +155,48 @@ type SettingsProvider interface {
 	SaveSettings(ctx context.Context, settings map[string]any) error
 }
 
+// ProtectionPreset describes a managed security configuration exposed by a
+// module. Values are read from the actual managed files when they exist.
+type ProtectionPreset struct {
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	Icon         string         `json:"icon"`
+	Enabled      bool           `json:"enabled"`
+	NeedsUpdate  bool           `json:"needs_update,omitempty"`
+	Jails        []string       `json:"jails"`
+	RuleCount    int            `json:"rule_count"`
+	LastModified *time.Time     `json:"last_modified,omitempty"`
+	Settings     map[string]any `json:"settings"`
+	Defaults     map[string]any `json:"defaults"`
+	Files        []string       `json:"files"`
+	Filters      []string       `json:"filters"`
+	LogPaths     []string       `json:"log_paths"`
+	Actions      []string       `json:"actions"`
+	BlockedIPs   string         `json:"blocked_ips"`
+	Exceptions   string         `json:"exceptions"`
+}
+
+type ProtectionPresetPreview struct {
+	PresetID      string         `json:"preset_id"`
+	Jails         []string       `json:"jails"`
+	Parameters    map[string]any `json:"parameters"`
+	Files         []string       `json:"files"`
+	Services      []string       `json:"services"`
+	Configuration string         `json:"configuration"`
+	Filter        string         `json:"filter,omitempty"`
+}
+
+// ProtectionPresetProvider powers the compact protection cards and their
+// details/configuration workflows.
+type ProtectionPresetProvider interface {
+	ProtectionPresets(ctx context.Context) ([]ProtectionPreset, error)
+	PreviewProtectionPreset(ctx context.Context, presetID string, settings map[string]any) (*ProtectionPresetPreview, error)
+	SaveProtectionPreset(ctx context.Context, presetID string, settings map[string]any) error
+	ResetProtectionPreset(ctx context.Context, presetID string) error
+	SetProtectionPresetEnabled(ctx context.Context, presetID string, enabled bool) error
+}
+
 // LogProvider is implemented by modules that want to expose log reading and clearing.
 type LogProvider interface {
 	ReadLog(ctx context.Context, logID string, lines int) ([]string, error)
