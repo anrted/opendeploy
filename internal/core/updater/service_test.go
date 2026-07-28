@@ -2,6 +2,7 @@ package updater
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -27,21 +28,26 @@ func TestCompareVersions(t *testing.T) {
 type recordingAgent struct {
 	path string
 	mode uint32
+	data []byte
 }
 
-func (a *recordingAgent) FileWrite(_ context.Context, path string, _ []byte, mode uint32) error {
+func (a *recordingAgent) FileRead(_ context.Context, _ string) ([]byte, error) {
+	return a.data, nil
+}
+
+func (a *recordingAgent) FileWrite(_ context.Context, path string, data []byte, mode uint32) error {
 	a.path = path
 	a.mode = mode
+	a.data = append([]byte(nil), data...)
 	return nil
 }
 
 func TestApplyCreatesRestrictedUpdateRequest(t *testing.T) {
 	agent := &recordingAgent{}
 	service := NewService("v0.1.0", "old", agent)
-	service.cached = &Status{UpdateAvailable: true}
+	service.cached = &Status{UpdateAvailable: true, LatestVersion: "v0.2.0"}
 	service.cachedAt = time.Now()
-
-	if err := service.Apply(context.Background(), "dev"); err != nil {
+	if err := service.Apply(context.Background(), "release"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if agent.path != updateRequest {
@@ -49,5 +55,52 @@ func TestApplyCreatesRestrictedUpdateRequest(t *testing.T) {
 	}
 	if agent.mode != 0o600 {
 		t.Fatalf("mode = %#o, want 0600", agent.mode)
+	}
+	var request struct {
+		Schema    string `json:"schema"`
+		Operation string `json:"operation"`
+		Tag       string `json:"tag"`
+	}
+	if err := json.Unmarshal(agent.data, &request); err != nil {
+		t.Fatalf("request JSON: %v", err)
+	}
+	if request.Schema != "opendeploy.update-request/v1" || request.Operation != "apply" || request.Tag != "v0.2.0" {
+		t.Fatalf("request = %#v", request)
+	}
+}
+
+func TestApplyRejectsDevelopmentChannel(t *testing.T) {
+	service := NewService("v0.1.0", "old", &recordingAgent{})
+	if err := service.Apply(context.Background(), "dev"); err == nil {
+		t.Fatal("development update channel was accepted")
+	}
+}
+
+func TestRollbackCreatesRestrictedTypedRequest(t *testing.T) {
+	agent := &recordingAgent{}
+	service := NewService("v0.2.0", "commit", agent)
+	if err := service.Rollback(context.Background(), "transaction-1"); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+	var request struct {
+		Operation     string `json:"operation"`
+		TransactionID string `json:"transaction_id"`
+	}
+	if err := json.Unmarshal(agent.data, &request); err != nil {
+		t.Fatal(err)
+	}
+	if agent.mode != 0o600 || request.Operation != "rollback" || request.TransactionID != "transaction-1" {
+		t.Fatalf("request = %#v, mode = %#o", request, agent.mode)
+	}
+}
+
+func TestHistoryReadsJSONLJournal(t *testing.T) {
+	agent := &recordingAgent{data: []byte(
+		"{\"id\":\"one\",\"to_version\":\"v0.2.0\",\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"status\":\"succeeded\",\"started_at\":\"2026-07-29T00:00:00Z\",\"completed_at\":\"2026-07-29T00:01:00Z\"}\n",
+	)}
+	service := NewService("v0.2.0", "commit", agent)
+	entries, err := service.History(context.Background())
+	if err != nil || len(entries) != 1 || entries[0].ID != "one" {
+		t.Fatalf("entries = %#v, err = %v", entries, err)
 	}
 }

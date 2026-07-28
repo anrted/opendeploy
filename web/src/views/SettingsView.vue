@@ -269,11 +269,11 @@ async function applyUpdate(updateType = 'stable') {
   updateError.value = ''
   updateMessage.value = ''
   updateCancel.value = false
-  const targetCommit = updateStatus.value?.latest_commit
+  const targetVersion = updateStatus.value?.latest_version
   try {
     await api.post('/updates/apply', { type: updateType })
     updateMessage.value = t('settings.updates.started')
-    await waitForUpdatedCore(targetCommit)
+    await waitForUpdatedCore(targetVersion)
   } catch (e) {
     updateError.value = apiErrorMessage(e, t('settings.updates.startFailed'))
     applyingUpdate.value = false
@@ -285,7 +285,7 @@ function cancelUpdate() {
   updateCancel.value = true
 }
 
-async function waitForUpdatedCore(targetCommit) {
+async function waitForUpdatedCore(targetVersion) {
   const deadline = Date.now() + 20 * 60 * 1000
   const checkInterval = 3000
   let checks = 0
@@ -302,7 +302,7 @@ async function waitForUpdatedCore(targetCommit) {
     checks++
     try {
       const { data } = await api.get('/updates')
-      if (targetCommit && data.current_commit === targetCommit) {
+      if (targetVersion && data.current_version === targetVersion) {
         location.reload()
         return
       }

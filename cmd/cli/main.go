@@ -7,16 +7,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
-	"os/exec"
-	"strings"
 	"time"
 
+	secureupdate "github.com/anrted/opendeploy/internal/update"
 	"github.com/anrted/opendeploy/pkg/version"
 )
 
@@ -42,35 +40,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error: CLI API client not yet implemented (Stage 8)")
 		os.Exit(1)
 	case "update":
-		if len(args) > 1 && args[1] == "--apply" {
-			dev := false
-			// Check if this is a dev update request
-			reqFile := "/var/lib/opendeploy/update.request"
-			if b, err := os.ReadFile(reqFile); err == nil {
-				request := strings.TrimSpace(string(b))
-				if request == "dev" {
-					fmt.Println("Downloading and applying the DEV OpenDeploy update...")
-					dev = true
-				} else if _, err := time.Parse(time.RFC3339, request); err != nil {
-					log.Fatalf("Update request is malformed")
-				} else {
-					fmt.Println("Downloading and applying the latest OpenDeploy update...")
-				}
-			} else {
-				fmt.Println("Downloading and applying the latest OpenDeploy update...")
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-			defer cancel()
-			if err := applyUpdate(ctx, dev); err != nil {
-				log.Fatalf("Update failed: %v", err)
-			}
-			if err := os.Remove(reqFile); err != nil && !os.IsNotExist(err) {
-				log.Printf("warning: update succeeded but request cleanup failed: %v", err)
-			}
-			fmt.Println("Update completed successfully.")
-			os.Exit(0)
-		}
-		fmt.Println("Run 'opendeploy update --apply' to apply the latest update.")
+		runUpdate(args[1:])
 	default:
 		log.Printf("unknown command: %q\n", args[0])
 		printUsage()
@@ -78,53 +48,78 @@ func main() {
 	}
 }
 
-func applyUpdate(ctx context.Context, dev bool) error {
-	const installerURL = "https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh"
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, installerURL, nil)
-	if err != nil {
-		return fmt.Errorf("create installer request: %w", err)
+func runUpdate(args []string) {
+	if !isRoot() {
+		log.Fatal("OpenDeploy updater must run as root")
 	}
-	client := &http.Client{Timeout: 2 * time.Minute}
-	response, err := client.Do(request)
-	if err != nil {
-		return fmt.Errorf("download installer: %w", err)
+	config := secureupdate.DefaultConfig()
+	var verifier secureupdate.SignatureVerifier = secureupdate.DefaultSigstoreVerifier()
+	if cosignPath := os.Getenv("OD_UPDATE_COSIGN_PATH"); cosignPath != "" {
+		verifier.(*secureupdate.SigstoreVerifier).CosignPath = cosignPath
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("download installer: HTTP %d", response.StatusCode)
+	if keyring := os.Getenv("OD_UPDATE_GPG_KEYRING"); keyring != "" {
+		config.Signature = "release-manifest.json.asc"
+		verifier = &secureupdate.GPGVerifier{Keyring: keyring}
 	}
-	file, err := os.CreateTemp("", "opendeploy-installer-*.sh")
-	if err != nil {
-		return fmt.Errorf("create installer file: %w", err)
+	engine := secureupdate.NewEngine(config, nil, verifier, &secureupdate.SystemRuntime{})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	if len(args) == 1 && args[0] == "--apply" {
+		const requestFile = "/var/lib/opendeploy/update.request"
+		data, err := os.ReadFile(requestFile)
+		if err != nil {
+			log.Fatalf("Read update request: %v", err)
+		}
+		var request secureupdate.UpdateRequest
+		if err := json.Unmarshal(data, &request); err != nil || request.Validate() != nil {
+			log.Fatal("Update request is malformed")
+		}
+		if request.Operation == "rollback" {
+			entry, err := engine.Rollback(ctx, request.TransactionID)
+			if err != nil {
+				log.Fatalf("Rollback failed: %v", err)
+			}
+			if err := os.Remove(requestFile); err != nil && !os.IsNotExist(err) {
+				log.Printf("warning: rollback succeeded but request cleanup failed: %v", err)
+			}
+			fmt.Printf("Rollback %s completed successfully.\n", entry.ID)
+			return
+		}
+		fmt.Printf("Applying signed OpenDeploy release %s...\n", request.Tag)
+		entry, err := engine.Apply(ctx, request.Tag, version.Version)
+		if err != nil {
+			log.Fatalf("Update failed (transaction %s): %v", entry.ID, err)
+		}
+		if err := os.Remove(requestFile); err != nil && !os.IsNotExist(err) {
+			log.Printf("warning: update succeeded but request cleanup failed: %v", err)
+		}
+		fmt.Printf("Update %s completed successfully.\n", entry.ID)
+		return
 	}
-	path := file.Name()
-	defer os.Remove(path)
-	if err := file.Chmod(0o700); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("secure installer file: %w", err)
+	if len(args) >= 1 && args[0] == "rollback" {
+		transactionID := ""
+		if len(args) > 1 {
+			transactionID = args[1]
+		}
+		entry, err := engine.Rollback(ctx, transactionID)
+		if err != nil {
+			log.Fatalf("Rollback failed: %v", err)
+		}
+		fmt.Printf("Rollback %s completed successfully.\n", entry.ID)
+		return
 	}
-	written, copyErr := io.Copy(file, io.LimitReader(response.Body, (1<<20)+1))
-	closeErr := file.Close()
-	if copyErr != nil {
-		return fmt.Errorf("write installer: %w", copyErr)
+	if len(args) == 1 && args[0] == "history" {
+		entries, err := engine.History()
+		if err != nil {
+			log.Fatalf("Read update history: %v", err)
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		_ = encoder.Encode(entries)
+		return
 	}
-	if closeErr != nil {
-		return fmt.Errorf("close installer: %w", closeErr)
-	}
-	if written > 1<<20 {
-		return fmt.Errorf("installer exceeds size limit")
-	}
-	arguments := []string{path}
-	if dev {
-		arguments = append(arguments, "--dev")
-	}
-	command := exec.CommandContext(ctx, "/bin/sh", arguments...)
-	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root", "LANG=C.UTF-8", "LC_ALL=C.UTF-8"}
-	command.Stdout, command.Stderr = os.Stdout, os.Stderr
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("installer failed: %w", err)
-	}
-	return nil
+	fmt.Println("Usage: opendeploy update --apply | rollback [transaction-id] | history")
 }
 
 func printUsage() {
@@ -138,6 +133,7 @@ Commands:
   modules     Manage modules
   sites       Manage sites
   services    Manage services
+  update      Apply, inspect or roll back signed releases
 
 Run 'opendeploy <command> --help' for more information on a command.`)
 }

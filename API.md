@@ -161,10 +161,9 @@ compares it with the running Core version.
   "current_version": "v0.1.0-alpha-7-gccb2ac8",
   "current_commit": "ccb2ac85d031a4105287a8766b320c7898c22a82",
   "latest_version": "v0.1.0-alpha",
-  "latest_commit": "ccb2ac85d031a4105287a8766b320c7898c22a82",
   "update_available": false,
   "release_url": "https://github.com/anrted/opendeploy/releases/tag/v0.1.0-alpha",
-  "update_url": "https://github.com/anrted/opendeploy/commit/ccb2ac85d031a4105287a8766b320c7898c22a82"
+  "update_url": "https://github.com/anrted/opendeploy/releases/tag/v0.1.0-alpha"
 }
 ```
 
@@ -172,9 +171,25 @@ compares it with the running Core version.
 
 Starts a privileged update through the Agent-managed systemd update path.
 Only administrators with `settings:security` may call it. The updater accepts
-only the canonical `anrted/opendeploy` GitHub remote, requires a clean
-fast-forwardable source checkout, rebuilds the project, preserves
-`/etc/opendeploy` and `/var/lib/opendeploy`, and restarts Agent and Core.
+only a signed stable GitHub Release manifest, pins the release tag and commit,
+verifies the artifact size and SHA256, stages and atomically installs binaries,
+then rolls back unless Agent, Core and the HTTP health endpoint are healthy.
+
+### GET /updates/history
+
+Returns the append-only update and rollback transaction journal. Requires
+`settings:view`.
+
+### POST /updates/rollback
+
+Requests rollback through the privileged systemd updater. Requires
+`settings:security`. An empty body rolls back the latest successful update:
+
+```json
+{ "transaction_id": "20260729T120000.000000000Z-0123456789ab" }
+```
+
+See [UPDATE_SECURITY.md](UPDATE_SECURITY.md) for the trust and recovery model.
 
 ---
 

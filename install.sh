@@ -297,8 +297,24 @@ Documentation=https://github.com/anrted/opendeploy
 [Service]
 Type=oneshot
 User=root
+Group=root
+EnvironmentFile=-/etc/opendeploy/update.env
 ExecStart=/usr/bin/opendeploy update --apply
+UMask=0077
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/usr/bin /opt/opendeploy/releases /var/lib/opendeploy
+NoNewPrivileges=yes
+LockPersonality=yes
 EOF
+
+mkdir -p /var/lib/opendeploy/updates/staging /var/lib/opendeploy/updates/backups /opt/opendeploy/releases
+chmod 0700 /var/lib/opendeploy/updates /var/lib/opendeploy/updates/staging /var/lib/opendeploy/updates/backups
+chmod 0755 /opt/opendeploy /opt/opendeploy/releases
+if [ ! -x /usr/bin/cosign ] && ! grep -Eq '^OD_UPDATE_(COSIGN_PATH|GPG_KEYRING)=' /etc/opendeploy/update.env 2>/dev/null; then
+    print_warning "Для автоматических обновлений установите /usr/bin/cosign либо настройте trust-параметры в /etc/opendeploy/update.env"
+fi
 
 systemctl daemon-reload
 print_success "Сервисы systemd созданы"

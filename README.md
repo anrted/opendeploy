@@ -135,6 +135,8 @@ See [configs/opendeploy.yaml](configs/opendeploy.yaml) for all options.
 - [INSTALL.md](INSTALL.md) — Detailed installation guide
 - [TESTING.md](TESTING.md) — How to run tests and CI/CD details
 - [SECURITY.md](SECURITY.md) — Security model and reporting
+- [UPDATE_SECURITY.md](UPDATE_SECURITY.md) — Signed releases, health checks and rollback
+- [UPDATER_AUDIT.md](UPDATER_AUDIT.md) — Updater findings and remediation report
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 - [ROADMAP.md](ROADMAP.md) — Future plans
 - [CHANGELOG.md](CHANGELOG.md) — Version history

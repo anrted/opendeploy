@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -143,11 +144,11 @@ var CoreSettings = []contract.SettingSpec{
 		ValidationMsg:   "Must be 1-32 characters (letters, numbers, spaces, -, _).",
 	},
 	{
-		Key:          "core.default_php",
-		Label:        "Default PHP Version",
-		Description:  "The default PHP version for new sites.",
-		Type:         contract.SettingTypeSelect,
-		Options:      []string{"", "8.1", "8.2", "8.3", "8.4"},
+		Key:         "core.default_php",
+		Label:       "Default PHP Version",
+		Description: "The default PHP version for new sites.",
+		Type:        contract.SettingTypeSelect,
+		Options:     []string{"", "8.1", "8.2", "8.3", "8.4"},
 	},
 }
 
@@ -160,7 +161,7 @@ func NewHandler(svc *Service, updates *updater.Service, registry *module.Registr
 func (h *Handler) GetSpecs() []contract.SettingSpec {
 	specs := make([]contract.SettingSpec, 0)
 	specs = append(specs, CoreSettings...)
-	
+
 	if h.registry != nil {
 		for _, mod := range h.registry.All() {
 			specs = append(specs, mod.RegisterSettings()...)
@@ -247,7 +248,7 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Ignore error if body is empty or invalid, just use empty type
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	
+
 	if err := h.updates.Apply(r.Context(), req.Type); err != nil {
 		writeError(w, apperrors.Internal("start update", err))
 		return
@@ -255,6 +256,32 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusAccepted, map[string]string{
 		"message": "update started; services will restart automatically",
 	})
+}
+
+// UpdateHistory returns the durable updater transaction journal.
+func (h *Handler) UpdateHistory(w http.ResponseWriter, r *http.Request) {
+	entries, err := h.updates.History(r.Context())
+	if err != nil {
+		writeError(w, apperrors.Internal("read update history", err))
+		return
+	}
+	respond(w, http.StatusOK, entries)
+}
+
+// RollbackUpdate requests a privileged rollback through the systemd updater.
+func (h *Handler) RollbackUpdate(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		TransactionID string `json:"transaction_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil && err != io.EOF {
+		writeError(w, apperrors.InvalidInput("invalid rollback request"))
+		return
+	}
+	if err := h.updates.Rollback(r.Context(), request.TransactionID); err != nil {
+		writeError(w, apperrors.Internal("request rollback", err))
+		return
+	}
+	respond(w, http.StatusAccepted, map[string]string{"message": "rollback started"})
 }
 
 // ─── helpers ───────────────────────────────────────────────────────────────

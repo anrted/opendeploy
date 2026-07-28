@@ -12,11 +12,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	secureupdate "github.com/anrted/opendeploy/internal/update"
 )
 
 const (
-	releasesURL   = "https://api.github.com/repos/anrted/opendeploy/releases?per_page=1"
-	mainCommitURL = "https://api.github.com/repos/anrted/opendeploy/commits/main"
+	releasesURL   = "https://api.github.com/repos/anrted/opendeploy/releases/latest"
 	updateRequest = "/var/lib/opendeploy/update.request"
 )
 
@@ -31,7 +32,8 @@ type Status struct {
 	PublishedAt     *time.Time `json:"published_at,omitempty"`
 }
 
-type agentWriter interface {
+type agentFiles interface {
+	FileRead(ctx context.Context, path string) ([]byte, error)
 	FileWrite(ctx context.Context, path string, content []byte, mode uint32) error
 }
 
@@ -39,13 +41,13 @@ type Service struct {
 	client         *http.Client
 	currentVersion string
 	currentCommit  string
-	agent          agentWriter
+	agent          agentFiles
 	mu             sync.Mutex
 	cached         *Status
 	cachedAt       time.Time
 }
 
-func NewService(currentVersion, currentCommit string, agent agentWriter) *Service {
+func NewService(currentVersion, currentCommit string, agent agentFiles) *Service {
 	return &Service{
 		currentVersion: currentVersion,
 		currentCommit:  currentCommit,
@@ -62,39 +64,45 @@ func (s *Service) Check(ctx context.Context) (*Status, error) {
 		return &copy, nil
 	}
 
-	var releases []struct {
+	var latest struct {
 		TagName     string    `json:"tag_name"`
 		HTMLURL     string    `json:"html_url"`
 		PublishedAt time.Time `json:"published_at"`
 		Draft       bool      `json:"draft"`
+		Prerelease  bool      `json:"prerelease"`
+		Assets      []struct {
+			Name string `json:"name"`
+		} `json:"assets"`
 	}
-	if err := s.getGitHub(ctx, releasesURL, &releases); err != nil {
+	if err := s.getGitHub(ctx, releasesURL, &latest); err != nil {
 		return nil, err
 	}
-	if len(releases) == 0 || releases[0].Draft {
-		return nil, fmt.Errorf("updates: no published release found")
+	if latest.TagName == "" || latest.Draft || latest.Prerelease {
+		return nil, fmt.Errorf("updates: no published stable release found")
 	}
-	latest := releases[0]
-	var commit struct {
-		SHA     string `json:"sha"`
-		HTMLURL string `json:"html_url"`
+	requiredAssets := map[string]bool{
+		"release-manifest.json":        false,
+		"release-manifest.json.bundle": false,
 	}
-	if err := s.getGitHub(ctx, mainCommitURL, &commit); err != nil {
-		return nil, err
+	for _, asset := range latest.Assets {
+		if _, required := requiredAssets[asset.Name]; required {
+			requiredAssets[asset.Name] = true
+		}
+	}
+	for name, present := range requiredAssets {
+		if !present && compareVersions(latest.TagName, s.currentVersion) > 0 {
+			return nil, fmt.Errorf("updates: latest release is missing signed asset %s", name)
+		}
 	}
 	updateAvailable := compareVersions(latest.TagName, s.currentVersion) > 0
-	if strings.Contains(s.currentVersion, "nightly") || strings.Contains(s.currentVersion, "dev") {
-		updateAvailable = s.currentCommit != "" && commit.SHA != "" && !strings.HasPrefix(commit.SHA, s.currentCommit)
-	}
 
 	result := &Status{
 		CurrentVersion:  s.currentVersion,
 		CurrentCommit:   s.currentCommit,
 		LatestVersion:   latest.TagName,
-		LatestCommit:    commit.SHA,
 		UpdateAvailable: updateAvailable,
 		ReleaseURL:      latest.HTMLURL,
-		UpdateURL:       commit.HTMLURL,
+		UpdateURL:       latest.HTMLURL,
 		PublishedAt:     &latest.PublishedAt,
 	}
 	s.cached = result
@@ -107,18 +115,65 @@ func (s *Service) Apply(ctx context.Context, updateType string) error {
 	if s.agent == nil {
 		return fmt.Errorf("updates: Agent is unavailable")
 	}
+	if updateType != "" && updateType != "release" && updateType != "stable" {
+		return fmt.Errorf("updates: only signed stable releases can be installed")
+	}
 	status, err := s.Check(ctx)
 	if err != nil {
 		return err
 	}
-	if !status.UpdateAvailable && updateType != "dev" {
+	if !status.UpdateAvailable {
 		return fmt.Errorf("updates: OpenDeploy is already up to date")
 	}
-	content := time.Now().UTC().Format(time.RFC3339)
-	if updateType == "dev" {
-		content = "dev"
+	request := secureupdate.UpdateRequest{
+		Schema: "opendeploy.update-request/v1", Operation: "apply",
+		Tag: status.LatestVersion, RequestedAt: time.Now().UTC(),
 	}
-	return s.agent.FileWrite(ctx, updateRequest, []byte(content+"\n"), 0o600)
+	content, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("updates: encode request: %w", err)
+	}
+	return s.agent.FileWrite(ctx, updateRequest, append(content, '\n'), 0o600)
+}
+
+func (s *Service) History(ctx context.Context) ([]secureupdate.HistoryEntry, error) {
+	if s.agent == nil {
+		return nil, fmt.Errorf("updates: Agent is unavailable")
+	}
+	data, err := s.agent.FileRead(ctx, "/var/lib/opendeploy/updates/history.jsonl")
+	if err != nil {
+		return nil, fmt.Errorf("updates: read history: %w", err)
+	}
+	var entries []secureupdate.HistoryEntry
+	for index, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry secureupdate.HistoryEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("updates: invalid history line %d: %w", index+1, err)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func (s *Service) Rollback(ctx context.Context, transactionID string) error {
+	if s.agent == nil {
+		return fmt.Errorf("updates: Agent is unavailable")
+	}
+	if strings.ContainsAny(transactionID, "/\\\x00\r\n") || len(transactionID) > 128 {
+		return fmt.Errorf("updates: invalid rollback transaction ID")
+	}
+	request := secureupdate.UpdateRequest{
+		Schema: "opendeploy.update-request/v1", Operation: "rollback",
+		TransactionID: transactionID, RequestedAt: time.Now().UTC(),
+	}
+	content, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	return s.agent.FileWrite(ctx, updateRequest, append(content, '\n'), 0o600)
 }
 
 func (s *Service) getGitHub(ctx context.Context, url string, destination any) error {
