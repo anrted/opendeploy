@@ -2,8 +2,6 @@ package module
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -13,7 +11,6 @@ import (
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/internal/platform/events"
 	"github.com/anrted/opendeploy/pkg/contract"
-	"github.com/google/uuid"
 )
 
 const moduleJobTimeout = 30 * time.Minute
@@ -284,85 +281,4 @@ func (s *Service) Restart(ctx context.Context, id, userID, ip string) error {
 	}
 	s.recordAudit(ctx, userID, "module.restart", id, ip, audit.StatusSuccess)
 	return nil
-}
-
-// ExecuteAction executes a dynamic module action.
-func (s *Service) ExecuteAction(ctx context.Context, id, actionID, userID, ip string) error {
-	m := s.registry.Find(id)
-	if m == nil {
-		return apperrors.New(404, apperrors.CodeModuleNotFound, "module not found: "+id)
-	}
-	if err := m.ExecuteAction(ctx, actionID); err != nil {
-		return apperrors.Internal(fmt.Sprintf("execute action %s on module %s", actionID, id), err)
-	}
-	s.recordAudit(ctx, userID, "module.action."+actionID, id, ip, audit.StatusSuccess)
-	return nil
-}
-
-// ─── internal helpers ──────────────────────────────────────────────────────
-
-// startJob creates a Job record and launches an async goroutine.
-func (s *Service) startJob(
-	ctx context.Context,
-	jobType JobType,
-	moduleID string,
-	work func(ctx context.Context) error,
-	onSuccess func(ctx context.Context),
-) (string, error) {
-	payload, _ := json.Marshal(map[string]string{"module_id": moduleID})
-	job := &Job{
-		ID:        uuid.New().String(),
-		Name:      fmt.Sprintf("%s %s", jobType, moduleID),
-		Type:      jobType,
-		Payload:   string(payload),
-		State:     JobPending,
-		CreatedAt: nowUTC(),
-		Progress:  0,
-	}
-	if err := s.jobs.Create(ctx, job); err != nil {
-		return "", apperrors.Internal("create job", err)
-	}
-
-	// Detached goroutine — use background context so it outlives the request.
-	bgCtx, cancel := context.WithTimeout(context.Background(), moduleJobTimeout)
-	s.cancelMu.Lock()
-	s.cancels[job.ID] = cancel
-	s.cancelMu.Unlock()
-	go func() {
-		defer func() {
-			cancel()
-			s.cancelMu.Lock()
-			delete(s.cancels, job.ID)
-			s.cancelMu.Unlock()
-		}()
-		_ = s.jobs.UpdateState(bgCtx, job.ID, JobRunning, "", "")
-
-		if err := work(bgCtx); err != nil {
-			s.logger.Error("module job failed", "job_id", job.ID, "type", jobType, "error", err)
-			persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer persistCancel()
-			state := JobError
-			if errors.Is(err, context.Canceled) {
-				state = JobCanceled
-			}
-			_ = s.jobs.UpdateState(persistCtx, job.ID, state, "", err.Error())
-			s.publishEvent(persistCtx, "job.error", map[string]string{"job_id": job.ID})
-			return
-		}
-		if bgCtx.Err() != nil {
-			persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer persistCancel()
-			_ = s.jobs.UpdateState(persistCtx, job.ID, JobCanceled, "", bgCtx.Err().Error())
-			s.publishEvent(persistCtx, "job.canceled", map[string]string{"job_id": job.ID})
-			return
-		}
-
-		persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer persistCancel()
-		onSuccess(persistCtx)
-		_ = s.jobs.UpdateState(persistCtx, job.ID, JobSuccess, "", "")
-		s.publishEvent(persistCtx, "job.done", map[string]string{"job_id": job.ID})
-	}()
-
-	return job.ID, nil
 }
