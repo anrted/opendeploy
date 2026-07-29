@@ -14,7 +14,7 @@ func discoverSystemJobs(managedPath string) []Job {
 	entries, _ := os.ReadDir("/etc/cron.d")
 	for _, entry := range entries {
 		path := filepath.Join("/etc/cron.d", entry.Name())
-		if entry.IsDir() || filepath.Clean(path) == filepath.Clean(managedPath) {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Clean(path) == filepath.Clean(managedPath) {
 			continue
 		}
 		jobs = append(jobs, parseSystemFile(path, "System", true)...)
@@ -22,7 +22,7 @@ func discoverSystemJobs(managedPath string) []Job {
 	for _, spool := range []string{"/var/spool/cron/crontabs", "/var/spool/cron"} {
 		entries, _ := os.ReadDir(spool)
 		for _, entry := range entries {
-			if entry.IsDir() {
+			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 				continue
 			}
 			jobs = append(jobs, parseSystemFile(filepath.Join(spool, entry.Name()), "User", false)...)
@@ -32,6 +32,8 @@ func discoverSystemJobs(managedPath string) []Job {
 }
 
 func parseSystemFile(path, source string, hasUser bool) []Job {
+	// #nosec G304 -- callers construct path only from fixed root-owned cron
+	// directories and symlink entries are rejected before this function.
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil

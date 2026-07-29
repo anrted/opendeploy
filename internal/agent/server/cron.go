@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 
 	agentCron "github.com/anrted/opendeploy/internal/agent/cron"
@@ -165,10 +166,17 @@ func cronJobToProto(job agentCron.Job) *agentv1.CronJob {
 }
 
 func cronRunToProto(run agentCron.Run) *agentv1.CronRunRecord {
+	exitCode := run.ExitCode
+	if exitCode > math.MaxInt32 {
+		exitCode = math.MaxInt32
+	}
+	if exitCode < math.MinInt32 {
+		exitCode = math.MinInt32
+	}
 	return &agentv1.CronRunRecord{
 		Id: run.ID, JobId: run.JobID, StartedAt: run.StartedAt.UnixMilli(),
 		FinishedAt: run.FinishedAt.UnixMilli(), DurationMs: run.Duration.Milliseconds(),
-		ExitCode: int32(run.ExitCode), Stdout: run.Stdout, Stderr: run.Stderr,
+		ExitCode: int32(exitCode), Stdout: run.Stdout, Stderr: run.Stderr,
 		Triggered: run.Triggered, Actor: run.Actor,
 	}
 }

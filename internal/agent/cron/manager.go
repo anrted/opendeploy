@@ -162,6 +162,8 @@ func (m *Manager) Run(ctx context.Context, id, trigger, actor string) (Run, erro
 	}
 	started := m.now().UTC()
 	run := Run{ID: fmt.Sprintf("%s-%d", id, started.UnixNano()), JobID: id, StartedAt: started, Triggered: trigger, Actor: actor}
+	// #nosec G204 -- user and command came from the typed Cron store and were
+	// revalidated by ValidateJob before the atomic store commit.
 	command := exec.CommandContext(ctx, "runuser", "-u", job.User, "--", "/bin/sh", "-c", job.Command)
 	if job.WorkingDir != "" {
 		command.Dir = job.WorkingDir
@@ -293,7 +295,7 @@ func atomicWrite(path string, content []byte, mode os.FileMode) error {
 		return err
 	}
 	tempName := temp.Name()
-	defer os.Remove(tempName)
+	defer func() { _ = os.Remove(tempName) }()
 	if err := temp.Chmod(mode); err != nil {
 		_ = temp.Close()
 		return err

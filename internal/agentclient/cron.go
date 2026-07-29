@@ -2,6 +2,7 @@ package agentclient
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -80,6 +81,12 @@ func (c *Client) CronRun(ctx context.Context, id, trigger, actor string) (*contr
 }
 
 func (c *Client) CronHistory(ctx context.Context, id string, limit int) ([]contract.CronRun, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
 	response, err := c.stub.CronHistory(ctx, &agentv1.CronHistoryRequest{Id: id, Limit: int32(limit)})
 	if err != nil {
 		return nil, err

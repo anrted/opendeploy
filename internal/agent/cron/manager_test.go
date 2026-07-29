@@ -14,7 +14,7 @@ func TestManagerWritesManagedCronAtomically(t *testing.T) {
 	if _, err := manager.Create(job); err != nil {
 		t.Fatal(err)
 	}
-	content, err := os.ReadFile(filepath.Join(root, "cron.d", "opendeploy"))
+	content, err := os.ReadFile(filepath.Join(root, "cron.d", "opendeploy")) // #nosec G304 -- test temp directory
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestManagerWritesManagedCronAtomically(t *testing.T) {
 	if _, err := manager.SetEnabled("backup", false); err != nil {
 		t.Fatal(err)
 	}
-	content, _ = os.ReadFile(filepath.Join(root, "cron.d", "opendeploy"))
+	content, _ = os.ReadFile(filepath.Join(root, "cron.d", "opendeploy")) // #nosec G304 -- test temp directory
 	if strings.Contains(string(content), "opendeploy:backup") {
 		t.Fatalf("disabled job remained in cron file: %s", content)
 	}
