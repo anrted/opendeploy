@@ -126,9 +126,6 @@
             <button v-if="updateStatus.update_available" type="button" class="btn-primary" :disabled="applyingUpdate" @click="applyUpdate('stable')">
               {{ applyingUpdate ? $t('settings.updates.updating') : 'Обновить до стабильной версии' }}
             </button>
-            <button type="button" class="btn-secondary" :disabled="applyingUpdate" @click="applyUpdate('dev')">
-              Обновить до тестовой сборки
-            </button>
             <a :href="updateStatus.update_url || updateStatus.release_url" target="_blank" rel="noopener noreferrer" class="btn-secondary inline-flex">
               {{ $t('settings.updates.viewChanges') }}
             </a>

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -21,7 +22,7 @@ func HTTPMiddleware(next http.Handler) http.Handler {
 					"stack", string(debug.Stack()),
 					"path", r.URL.Path,
 				)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				apperrors.WriteHTTP(w, apperrors.Internal("unexpected server error", nil))
 			}
 		}()
 		next.ServeHTTP(w, r)

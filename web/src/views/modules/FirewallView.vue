@@ -4,9 +4,11 @@ import api, { apiErrorMessage } from '@/api/client'
 import EmptyState from '@/components/EmptyState.vue'
 import { useConfirmStore } from '@/stores/confirm'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '@/stores/auth'
 
 const confirm = useConfirmStore()
 const { t } = useI18n()
+const auth = useAuthStore()
 const activeTab = ref('overview')
 const status = ref(null)
 const rules = ref([])
@@ -25,6 +27,39 @@ const newRule = ref({
   ip_version: 'both'
 })
 const adding = ref(false)
+const editingId = ref('')
+
+function emptyRule() {
+  return {
+    port: '', protocol: 'tcp', action: 'allow', direction: 'in',
+    source: '', destination: '', comment: '', ip_version: 'both'
+  }
+}
+
+function startCreate() {
+  editingId.value = ''
+  newRule.value = emptyRule()
+  activeTab.value = 'add'
+}
+
+function startEdit(rule) {
+  if (rule.port === '443' || rule.port === '5888') {
+    error.value = t('firewall.protectedPort', { port: rule.port })
+    return
+  }
+  editingId.value = rule.id
+  newRule.value = {
+    port: rule.port || '',
+    protocol: rule.protocol || 'any',
+    action: rule.action || 'allow',
+    direction: rule.direction || 'in',
+    source: rule.source || '',
+    destination: rule.destination === 'Anywhere' ? '' : (rule.destination || ''),
+    comment: rule.comment || '',
+    ip_version: rule.ip_version || 'both'
+  }
+  activeTab.value = 'add'
+}
 
 async function fetchStatus() {
   loading.value = true
@@ -102,6 +137,19 @@ async function resetFirewall() {
   }
 }
 
+async function reloadFirewall() {
+  loading.value = true
+  error.value = ''
+  try {
+    await api.post('/modules/firewall/reload')
+    await refreshAll()
+  } catch (e) {
+    error.value = apiErrorMessage(e, t('firewall.reloadFailed'))
+  } finally {
+    loading.value = false
+  }
+}
+
 async function addRule() {
   // Basic validation
   if (!newRule.value.port && !newRule.value.source && !newRule.value.destination) {
@@ -123,13 +171,15 @@ async function addRule() {
   adding.value = true
   error.value = ''
   try {
-    await api.post('/modules/firewall/rules', newRule.value)
+    if (editingId.value) {
+      await api.put(`/modules/firewall/rules/${editingId.value}`, newRule.value)
+    } else {
+      await api.post('/modules/firewall/rules', newRule.value)
+    }
     
     // Reset form
-    newRule.value.port = ''
-    newRule.value.source = ''
-    newRule.value.destination = ''
-    newRule.value.comment = ''
+    editingId.value = ''
+    newRule.value = emptyRule()
     
     activeTab.value = 'rules'
     await fetchRules()
@@ -243,10 +293,13 @@ const tabs = computed(() => ['overview', 'rules', 'add', 'settings'].map(id => (
             <div class="text-3xl font-bold text-white mb-4">
               {{ status?.active ? t('common.active') : t('firewall.inactive') }}
             </div>
-            <button @click="toggleFirewall" :disabled="loading" 
+            <button v-if="auth.hasPermission('module:configure')" @click="toggleFirewall" :disabled="loading"
                     :class="['w-full py-2 px-4 rounded-lg font-medium transition-all duration-200',
                              status?.active ? 'bg-white/5 text-white hover:bg-red-500/20 hover:text-red-400 border border-white/10 hover:border-red-500/50' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25']">
               {{ status?.active ? t('firewall.disable') : t('firewall.enable') }}
+            </button>
+            <button v-if="status?.active && auth.hasPermission('module:configure')" @click="reloadFirewall" :disabled="loading" class="mt-2 w-full rounded-lg border border-white/10 px-4 py-2 font-medium text-slate-300 hover:bg-white/5">
+              {{ t('common.reload') }}
             </button>
           </div>
 
@@ -278,7 +331,7 @@ const tabs = computed(() => ['overview', 'rules', 'add', 'settings'].map(id => (
           <div class="relative w-64">
             <!-- Optional Search Input Could Go Here -->
           </div>
-          <button @click="activeTab = 'add'" class="btn-primary">
+          <button v-if="auth.hasPermission('module:configure')" @click="startCreate" class="btn-primary">
             + {{ t('firewall.newRule') }}
           </button>
         </div>
@@ -308,7 +361,7 @@ const tabs = computed(() => ['overview', 'rules', 'add', 'settings'].map(id => (
                 <td colspan="6" class="p-0">
                   <EmptyState :title="t('firewall.noRules')" :description="t('firewall.noRulesDescription')">
                     <template #action>
-                      <button class="btn-primary" @click="activeTab = 'add'">{{ t('firewall.newRule') }}</button>
+                      <button class="btn-primary" @click="startCreate">{{ t('firewall.newRule') }}</button>
                     </template>
                   </EmptyState>
                 </td>
@@ -335,7 +388,10 @@ const tabs = computed(() => ['overview', 'rules', 'add', 'settings'].map(id => (
                 </td>
                 <td class="px-6 py-4 text-slate-300">{{ rule.source || t('firewall.anywhere') }}</td>
                 <td class="px-6 py-4 text-right">
-                  <button @click="deleteRule(rule)" class="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-2 hover:bg-white/5 rounded-lg" :title="t('firewall.deleteRule')">
+                  <button v-if="auth.hasPermission('module:configure')" @click="startEdit(rule)" class="text-slate-500 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100 p-2 hover:bg-white/5 rounded-lg" :title="t('common.edit')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 15l-1 4 4-1 7.768-7.768a2.5 2.5 0 00-3.536-3.536L9 15z"/></svg>
+                  </button>
+                  <button v-if="auth.hasPermission('module:configure')" @click="deleteRule(rule)" class="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-2 hover:bg-white/5 rounded-lg" :title="t('firewall.deleteRule')">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                   </button>
                 </td>
@@ -348,7 +404,7 @@ const tabs = computed(() => ['overview', 'rules', 'add', 'settings'].map(id => (
       <!-- ADD RULE TAB -->
       <div v-else-if="activeTab === 'add'" class="max-w-2xl">
         <form @submit.prevent="addRule" class="card p-8 space-y-6">
-          <h3 class="text-xl font-bold text-white border-b border-white/10 pb-4">{{ t('firewall.createRule') }}</h3>
+          <h3 class="text-xl font-bold text-white border-b border-white/10 pb-4">{{ editingId ? t('common.edit') : t('firewall.createRule') }}</h3>
           
           <div class="grid grid-cols-2 gap-6">
             <div class="space-y-2">
@@ -417,7 +473,7 @@ const tabs = computed(() => ['overview', 'rules', 'add', 'settings'].map(id => (
 
           <div class="pt-6 flex gap-4">
             <button type="submit" class="btn-primary flex-1 py-3 text-base shadow-lg shadow-blue-500/25" :disabled="adding">
-              {{ adding ? t('firewall.applying') : t('firewall.addRule') }}
+              {{ adding ? t('firewall.applying') : (editingId ? t('common.save') : t('firewall.addRule')) }}
             </button>
             <button type="button" @click="activeTab = 'rules'" class="btn-secondary px-8">
               {{ t('common.cancel') }}
@@ -472,7 +528,7 @@ const tabs = computed(() => ['overview', 'rules', 'add', 'settings'].map(id => (
               <h4 class="text-slate-200 font-medium">{{ t('firewall.reset') }}</h4>
               <p class="text-sm text-slate-500 mt-1 max-w-md">{{ t('firewall.resetDescription') }}</p>
             </div>
-            <button @click="resetFirewall" :disabled="loading" class="btn-secondary whitespace-nowrap bg-transparent text-red-400 hover:text-white hover:bg-red-500 border-red-500/50">
+            <button v-if="auth.hasPermission('module:configure')" @click="resetFirewall" :disabled="loading" class="btn-secondary whitespace-nowrap bg-transparent text-red-400 hover:text-white hover:bg-red-500 border-red-500/50">
               {{ t('firewall.resetDefaults') }}
             </button>
           </div>

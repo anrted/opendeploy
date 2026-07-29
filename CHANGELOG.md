@@ -5,6 +5,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.19] - 2026-07-29
+
+### Added
+
+- Firewall rule editing with conflict detection and IPv4, IPv6, CIDR, port
+  range, protocol, direction, action, and comment validation.
+- Explicit Firewall reload operation and post-toggle state verification.
+- Protected-process policy for PID 1, OpenDeploy, critical Linux, kernel, and
+  systemd-managed processes.
+- Server and frontend RBAC matrices, including a dedicated process-management
+  permission.
+- Uniform API error envelopes with codes, details, recommendations, correlation
+  IDs, and global frontend toast notifications.
+
+### Changed
+
+- `core.default_php` now supplies the PHP version only when creating a PHP site
+  that does not specify one explicitly.
+- Firewall changes are validated by Core and revalidated at the privileged
+  Agent boundary.
+
+### Fixed
+
+- Prevented Viewer accounts from terminating processes.
+- Prevented Process Manager from terminating OpenDeploy or critical host
+  services and replaced opaque failures with an actionable conflict response.
+- Fixed Firewall disable/reload status drift and surfaced real UFW failures.
+- Removed the unsupported development-channel update action from Settings.
+
 ## [0.1.18] - 2026-07-29
 
 ### Added

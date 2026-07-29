@@ -1,4 +1,5 @@
 /.cache/
+/.gocache/
 /.tools/
 /.agents/
 /bin/

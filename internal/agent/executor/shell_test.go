@@ -75,6 +75,21 @@ func TestValidatorAllowsFail2BanManualBan(t *testing.T) {
 	}
 }
 
+func TestValidatorAllowsTypedFirewallOperations(t *testing.T) {
+	validator := NewValidator()
+	for _, args := range [][]string{
+		{"reload"},
+		{"allow", "in", "proto", "tcp", "from", "10.0.0.0/8", "to", "any", "port", "443", "comment", "Panel HTTPS"},
+	} {
+		if err := validator.Validate("ufw", args); err != nil {
+			t.Errorf("ufw %v rejected: %v", args, err)
+		}
+	}
+	if err := validator.Validate("ufw", []string{"allow", "80", "comment", "bad\ncomment"}); err == nil {
+		t.Fatal("unsafe firewall comment accepted")
+	}
+}
+
 func TestValidatorAllowsBoundedNginxDiagnostics(t *testing.T) {
 	validator := NewValidator()
 	for _, test := range []struct {

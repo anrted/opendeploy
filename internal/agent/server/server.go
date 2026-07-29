@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"strings"
@@ -439,6 +440,9 @@ func (s *Service) ProcessList(_ context.Context, _ *agentv1.ProcessListRequest) 
 
 func (s *Service) ProcessKill(_ context.Context, req *agentv1.ProcessKillRequest) (*agentv1.ProcessKillResponse, error) {
 	if err := s.stats.KillProcess(req.GetPid(), req.GetForce()); err != nil {
+		if errors.Is(err, stats.ErrProtectedProcess) {
+			return nil, status.Error(codes.FailedPrecondition, "process is protected; use service management for system services")
+		}
 		return nil, internalError(err)
 	}
 	return &agentv1.ProcessKillResponse{Success: true}, nil

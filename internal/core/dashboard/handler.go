@@ -193,13 +193,5 @@ func respond(w http.ResponseWriter, status int, data any) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	ae := apperrors.AsAppError(err)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(ae.HTTPStatus)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]any{
-			"code":    ae.Code,
-			"message": ae.Message,
-		},
-	})
+	apperrors.WriteHTTP(w, err)
 }

@@ -8,6 +8,23 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref(JSON.parse(localStorage.getItem('od_user') || 'null'))
 
   const isAuthenticated = computed(() => !!accessToken.value)
+  const rolePermissions = {
+    admin: ['*'],
+    operator: [
+      'dashboard:view', 'process:manage', 'module:view', 'module:enable',
+      'module:disable', 'module:configure', 'site:view', 'site:create',
+      'site:update', 'site:delete', 'service:view', 'service:manage',
+      'settings:view', 'audit:view'
+    ],
+    viewer: [
+      'dashboard:view', 'module:view', 'site:view', 'service:view',
+      'settings:view', 'audit:view'
+    ]
+  }
+  function hasPermission(permission) {
+    const granted = rolePermissions[user.value?.role] || []
+    return granted.includes('*') || granted.includes(permission)
+  }
 
   async function login(username, password) {
     const { data } = await axios.post('/api/v1/auth/login', { username, password })
@@ -47,5 +64,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('od_user')
   }
 
-  return { accessToken, refreshToken, user, isAuthenticated, login, refresh, logout }
+  return { accessToken, refreshToken, user, isAuthenticated, hasPermission, login, refresh, logout }
 })

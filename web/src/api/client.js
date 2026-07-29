@@ -64,7 +64,7 @@ api.interceptors.response.use(
     const originalRequest = error.config
     
     // Refresh CSRF if it was forbidden
-    if (error.response?.status === 403 && error.response?.data?.error?.code === 'forbidden' && !originalRequest._csrfRetry) {
+    if (error.response?.status === 403 && error.response?.data?.error?.code?.toLowerCase() === 'forbidden' && !originalRequest._csrfRetry) {
       originalRequest._csrfRetry = true
       csrfToken = null // refresh both the token and its matching cookie
       const token = await fetchCsrfToken()
@@ -86,6 +86,16 @@ api.interceptors.response.use(
         auth.logout()
         window.location.href = '/login'
       }
+    }
+    const payload = error.response?.data?.error
+    if (error.response?.status !== 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('opendeploy:toast', {
+        detail: {
+          message: payload?.message || error.message || 'Request failed',
+          recommendation: payload?.recommendation || '',
+          error_id: payload?.error_id || ''
+        }
+      }))
     }
     return Promise.reject(error)
   }

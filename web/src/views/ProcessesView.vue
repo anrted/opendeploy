@@ -38,7 +38,7 @@
               <td class="px-4 py-3 text-text-muted">{{ formatBytes(proc.mem_rss) }}</td>
               <td class="max-w-xs truncate px-4 py-3 font-mono text-xs text-text-muted" :title="proc.cmdline">{{ proc.name }} {{ proc.cmdline }}</td>
               <td class="px-4 py-3 text-right">
-                <button @click="killProcess(proc.pid, proc.name)" class="rounded-md p-1.5 text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500" :title="t('processes.kill')">
+                <button v-if="auth.hasPermission('process:manage')" @click="killProcess(proc.pid, proc.name)" class="rounded-md p-1.5 text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500" :title="t('processes.kill')">
                   <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
               </td>
@@ -53,9 +53,11 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import api from '@/api/client'
+import api, { apiErrorMessage } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
+const auth = useAuthStore()
 const processes = ref([])
 const loading = ref(true)
 const searchQuery = ref('')
@@ -89,7 +91,7 @@ async function killProcess(pid, name) {
     await api.post(`/system/processes/${pid}/kill`)
     fetchProcesses()
   } catch (error) {
-    alert(t('processes.killFailed', { error: error.message }))
+    alert(t('processes.killFailed', { error: apiErrorMessage(error) }))
   }
 }
 

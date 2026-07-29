@@ -3,11 +3,14 @@ package firewall
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
+	"github.com/go-chi/chi/v5"
 )
 
 const moduleID = "firewall"
@@ -66,8 +69,10 @@ func (m *Module) RegisterRoutes(r contract.Router) {
 	r.Get("/status", m.handleStatus)
 	r.Get("/rules", m.handleList)
 	r.Post("/rules", m.handleAdd)
+	r.Put("/rules/{id}", m.handleUpdate)
 	r.Delete("/rules", m.handleDelete)
 	r.Post("/toggle", m.handleToggle)
+	r.Post("/reload", m.handleReload)
 	r.Post("/reset", m.handleReset)
 }
 
@@ -103,7 +108,27 @@ func (m *Module) Disable(ctx context.Context) error {
 
 func (m *Module) Restart(ctx context.Context) error {
 	m.logger.InfoContext(ctx, "firewall: restart")
-	return nil
+	_, _, _, err := m.deps.Agent.CommandExecute(ctx, "ufw", "reload")
+	return err
+}
+
+func (m *Module) handleReload(wAny interface{}, rAny interface{}) {
+	w := wAny.(http.ResponseWriter)
+	r := rAny.(*http.Request)
+	status, err := m.deps.Agent.FirewallStatus(r.Context())
+	if err != nil {
+		m.writeError(w, apperrors.Internal("failed to inspect firewall state", err))
+		return
+	}
+	if !status.Active {
+		m.writeError(w, apperrors.New(http.StatusConflict, apperrors.CodeConflict, "cannot reload an inactive firewall"))
+		return
+	}
+	if _, _, _, err := m.deps.Agent.CommandExecute(r.Context(), "ufw", "reload"); err != nil {
+		m.writeError(w, apperrors.Internal("failed to reload firewall", err))
+		return
+	}
+	m.respond(w, http.StatusOK, map[string]string{"message": "firewall reloaded successfully"})
 }
 
 func (m *Module) Capabilities() contract.ModuleCapabilities {
@@ -111,7 +136,7 @@ func (m *Module) Capabilities() contract.ModuleCapabilities {
 		SupportsService:  true,
 		SupportsSettings: false,
 		SupportsLogs:     false,
-		SupportsRestart:  false,
+		SupportsRestart:  true,
 		SupportsUpdate:   true,
 	}
 }
@@ -198,8 +223,20 @@ func (m *Module) handleAdd(wAny interface{}, rAny interface{}) {
 		return
 	}
 
-	if req.Action == "" {
-		req.Action = "allow"
+	if err := validateRule(&req); err != nil {
+		m.writeError(w, err)
+		return
+	}
+	rules, err := m.deps.Agent.FirewallList(r.Context())
+	if err != nil {
+		m.writeError(w, apperrors.Internal("failed to inspect firewall rules", err))
+		return
+	}
+	for _, rule := range rules {
+		if sameRule(rule, &req) {
+			m.writeError(w, apperrors.New(http.StatusConflict, apperrors.CodeConflict, "an equivalent firewall rule already exists"))
+			return
+		}
 	}
 
 	if err := m.deps.Agent.FirewallRule(r.Context(), &req); err != nil {
@@ -207,6 +244,55 @@ func (m *Module) handleAdd(wAny interface{}, rAny interface{}) {
 		return
 	}
 	m.respond(w, http.StatusOK, map[string]string{"message": "rule added successfully"})
+}
+
+func (m *Module) handleUpdate(wAny interface{}, rAny interface{}) {
+	w := wAny.(http.ResponseWriter)
+	r := rAny.(*http.Request)
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		m.writeError(w, apperrors.InvalidInput("rule id is required"))
+		return
+	}
+	var req contract.FirewallRuleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.writeError(w, apperrors.InvalidInput("malformed JSON body"))
+		return
+	}
+	if err := validateRule(&req); err != nil {
+		m.writeError(w, err)
+		return
+	}
+	rules, err := m.deps.Agent.FirewallList(r.Context())
+	if err != nil {
+		m.writeError(w, apperrors.Internal("failed to inspect firewall rules", err))
+		return
+	}
+	found := false
+	for _, rule := range rules {
+		if rule.ID == id {
+			found = true
+			if rule.Port == "443" || rule.Port == "5888" {
+				m.writeError(w, apperrors.New(http.StatusConflict, apperrors.CodeConflict, "protected panel and HTTPS rules cannot be edited"))
+				return
+			}
+			continue
+		}
+		if sameRule(rule, &req) {
+			m.writeError(w, apperrors.New(http.StatusConflict, apperrors.CodeConflict, "an equivalent firewall rule already exists"))
+			return
+		}
+	}
+	if !found {
+		m.writeError(w, apperrors.NotFound("firewall rule"))
+		return
+	}
+	req.ID = id
+	if err := m.deps.Agent.FirewallRule(r.Context(), &req); err != nil {
+		m.writeError(w, apperrors.Internal("failed to update firewall rule", err))
+		return
+	}
+	m.respond(w, http.StatusOK, map[string]string{"message": "rule updated successfully"})
 }
 
 type deleteRequest struct {
@@ -271,6 +357,15 @@ func (m *Module) handleToggle(wAny interface{}, rAny interface{}) {
 		m.writeError(w, err)
 		return
 	}
+	status, err := m.deps.Agent.FirewallStatus(r.Context())
+	if err != nil {
+		m.writeError(w, apperrors.Internal("firewall changed but status verification failed", err))
+		return
+	}
+	if status.Active != req.Enable {
+		m.writeError(w, apperrors.New(http.StatusConflict, apperrors.CodeConflict, "firewall did not reach the requested state"))
+		return
+	}
 	m.respond(w, http.StatusOK, map[string]string{"message": "firewall toggled successfully"})
 }
 
@@ -293,9 +388,11 @@ func (m *Module) respond(w http.ResponseWriter, status int, data any) {
 
 func (m *Module) writeError(w http.ResponseWriter, err error) {
 	m.logger.Error("request failed", "error", err)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": err.Error()}})
+	var appErr *apperrors.AppError
+	if !errors.As(err, &appErr) {
+		err = apperrors.Internal("firewall operation failed", err)
+	}
+	apperrors.WriteHTTP(w, err)
 }
 
 func (m *Module) Actions() []contract.ActionDef { return nil }

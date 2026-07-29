@@ -1,5 +1,6 @@
 <template>
   <div class="min-h-screen flex bg-bg-base text-text-main transition-colors duration-200">
+    <ToastHost />
     <div v-if="mobileOpen" class="fixed inset-0 z-40 bg-black/60 lg:hidden" @click="mobileOpen = false"></div>
     <!-- Sidebar -->
     <aside
@@ -89,6 +90,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import ToastHost from '@/components/ToastHost.vue'
 
 const themeStore = useThemeStore()
 const mobileOpen = ref(false)

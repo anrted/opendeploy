@@ -21,6 +21,7 @@ const messages = {
   en: {
     common: {
       refresh: 'Refresh',
+      reload: 'Reload',
       loading: 'Loading...',
       enabled: 'Enabled',
       disabled: 'Disabled',
@@ -271,8 +272,8 @@ const messages = {
       proceed: 'Proceed', deleteRule: 'Delete Rule', deleteRuleMessage: 'Delete rule {id}?',
       protectedPort: 'Deleting the rule for port {port} is forbidden by system policy.',
       fetchStatusFailed: 'Failed to fetch status', fetchRulesFailed: 'Failed to fetch rules',
-      toggleFailed: 'Failed to toggle firewall', resetFailed: 'Failed to reset firewall',
-      addFailed: 'Failed to add rule', deleteFailed: 'Failed to delete rule',
+      toggleFailed: 'Failed to toggle firewall', reloadFailed: 'Failed to reload firewall', resetFailed: 'Failed to reset firewall',
+      addFailed: 'Failed to save rule', deleteFailed: 'Failed to delete rule',
     },
     dashboard: {
       title: 'Dashboard', subtitle: 'System overview & live metrics', retry: 'Retry',
@@ -423,6 +424,7 @@ const messages = {
   ru: {
     common: {
       refresh: 'Обновить',
+      reload: 'Перезагрузить',
       loading: 'Загрузка...',
       enabled: 'Включён',
       disabled: 'Выключен',
@@ -673,8 +675,8 @@ const messages = {
       proceed: 'Продолжить', deleteRule: 'Удаление правила', deleteRuleMessage: 'Удалить правило {id}?',
       protectedPort: 'Удаление правила для порта {port} запрещено системной политикой.',
       fetchStatusFailed: 'Не удалось получить состояние', fetchRulesFailed: 'Не удалось загрузить правила',
-      toggleFailed: 'Не удалось изменить состояние файрвола', resetFailed: 'Не удалось сбросить файрвол',
-      addFailed: 'Не удалось добавить правило', deleteFailed: 'Не удалось удалить правило',
+      toggleFailed: 'Не удалось изменить состояние файрвола', reloadFailed: 'Не удалось перезагрузить файрвол', resetFailed: 'Не удалось сбросить файрвол',
+      addFailed: 'Не удалось сохранить правило', deleteFailed: 'Не удалось удалить правило',
     },
     dashboard: {
       title: 'Обзор', subtitle: 'Состояние системы и метрики в реальном времени', retry: 'Повторить',

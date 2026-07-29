@@ -28,6 +28,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/settings"
 	"github.com/anrted/opendeploy/internal/core/site"
 	"github.com/anrted/opendeploy/internal/core/webui"
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/internal/platform/config"
 	"github.com/anrted/opendeploy/internal/platform/websocket"
 )
@@ -140,9 +141,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				"has_cookie", cookieErr == nil,
 				"has_header", r.Header.Get("X-CSRF-Token") != "",
 			)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte(`{"error":{"code":"forbidden","message":"CSRF token invalid or missing"}}`))
+			apperrors.WriteHTTP(w, apperrors.Forbidden("CSRF token invalid or missing"))
 		})),
 	)
 	protect := csrfMiddleware
@@ -240,7 +239,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 
 				// System processes
 				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Get("/system/processes", deps.DashboardHandler.ListProcesses)
-				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Post("/system/processes/{pid}/kill", deps.DashboardHandler.KillProcess)
+				r.With(coreMiddleware.RequirePermission(auth.PermProcessManage)).Post("/system/processes/{pid}/kill", deps.DashboardHandler.KillProcess)
 			}
 
 			// Site routes

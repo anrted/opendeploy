@@ -45,6 +45,29 @@ func TestRequirePermissionRejectsViewerMutation(t *testing.T) {
 	}
 }
 
+func TestProcessManagementPermissionMatrix(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handler := RequirePermission(auth.PermProcessManage)(next)
+	for _, test := range []struct {
+		role auth.Role
+		want int
+	}{
+		{auth.RoleViewer, http.StatusForbidden},
+		{auth.RoleOperator, http.StatusNoContent},
+		{auth.RoleAdmin, http.StatusNoContent},
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/system/processes/42/kill", nil)
+		request = request.WithContext(auth.WithPrincipal(request.Context(), &auth.Principal{Role: test.role}))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != test.want {
+			t.Errorf("role %s: status = %d, want %d", test.role, response.Code, test.want)
+		}
+	}
+}
+
 func TestRequirePermissionAllowsAdminMutation(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

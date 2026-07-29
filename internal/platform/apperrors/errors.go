@@ -6,6 +6,9 @@
 package apperrors
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -60,6 +63,9 @@ type AppError struct {
 	Message string
 	// Cause is the underlying error; not sent to clients.
 	Cause error
+	// Details and Recommendation are safe, actionable context returned to API clients.
+	Details        string
+	Recommendation string
 }
 
 // Error implements the error interface.
@@ -77,12 +83,57 @@ func (e *AppError) Unwrap() error {
 
 // New creates a new AppError.
 func New(status int, code ErrorCode, message string) *AppError {
-	return &AppError{HTTPStatus: status, Code: code, Message: message}
+	return &AppError{
+		HTTPStatus: status, Code: code, Message: message,
+		Details: message, Recommendation: recommendation(status),
+	}
 }
 
 // Wrap creates a new AppError with an underlying cause.
 func Wrap(status int, code ErrorCode, message string, cause error) *AppError {
-	return &AppError{HTTPStatus: status, Code: code, Message: message, Cause: cause}
+	err := New(status, code, message)
+	err.Cause = cause
+	return err
+}
+
+// WriteHTTP writes the uniform public error envelope. Causes remain server-side
+// while every response receives a correlation ID suitable for logs/support.
+func WriteHTTP(w http.ResponseWriter, err error) {
+	appErr := AsAppError(err)
+	errorID := make([]byte, 8)
+	if _, randomErr := rand.Read(errorID); randomErr != nil {
+		errorID = []byte("fallback")
+	}
+	encodedID := hex.EncodeToString(errorID)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Error-ID", encodedID)
+	w.WriteHeader(appErr.HTTPStatus)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+		"code":           appErr.Code,
+		"message":        appErr.Message,
+		"details":        appErr.Details,
+		"recommendation": appErr.Recommendation,
+		"error_id":       encodedID,
+	}})
+}
+
+func recommendation(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "Check the submitted fields and try again."
+	case http.StatusUnauthorized:
+		return "Sign in again and retry the request."
+	case http.StatusForbidden:
+		return "Ask an administrator for the required permission."
+	case http.StatusNotFound:
+		return "Refresh the page and verify that the resource still exists."
+	case http.StatusConflict:
+		return "Refresh the current state, resolve the conflict, and retry."
+	case http.StatusServiceUnavailable:
+		return "Check the OpenDeploy Agent and retry when it is healthy."
+	default:
+		return "Retry once; if the problem persists, use the error ID to inspect server logs."
+	}
 }
 
 // — Pre-built constructors for common cases —

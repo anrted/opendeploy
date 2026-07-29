@@ -431,6 +431,9 @@ func (c *Collector) CollectProcesses() ([]contract.ProcessStats, error) {
 }
 
 func (c *Collector) KillProcess(pid int32, force bool) error {
+	if reason := protectedProcessReason(pid); reason != "" {
+		return fmt.Errorf("%w: %s", ErrProtectedProcess, reason)
+	}
 	p, err := process.NewProcess(pid)
 	if err != nil {
 		return err

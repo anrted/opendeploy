@@ -24,6 +24,7 @@ type Permission string
 
 const (
 	PermDashboardView Permission = "dashboard:view"
+	PermProcessManage Permission = "process:manage"
 
 	PermModuleView      Permission = "module:view"
 	PermModuleInstall   Permission = "module:install"
@@ -52,6 +53,7 @@ const (
 var rolePermissions = map[Role][]Permission{
 	RoleAdmin: {
 		PermDashboardView,
+		PermProcessManage,
 		PermModuleView, PermModuleInstall, PermModuleUninstall,
 		PermModuleEnable, PermModuleDisable, PermModuleConfigure,
 		PermSiteView, PermSiteCreate, PermSiteUpdate, PermSiteDelete,
@@ -61,6 +63,7 @@ var rolePermissions = map[Role][]Permission{
 	},
 	RoleOperator: {
 		PermDashboardView,
+		PermProcessManage,
 		PermModuleView, PermModuleEnable, PermModuleDisable, PermModuleConfigure,
 		PermSiteView, PermSiteCreate, PermSiteUpdate, PermSiteDelete,
 		PermServiceView, PermServiceManage,

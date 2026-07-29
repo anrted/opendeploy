@@ -26,6 +26,7 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", lw.statusCode,
+				"error_id", lw.Header().Get("X-Error-ID"),
 				"latency_ms", time.Since(start).Milliseconds(),
 				"remote", r.RemoteAddr,
 				"user_agent", r.UserAgent(),

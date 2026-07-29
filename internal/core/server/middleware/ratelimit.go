@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net"
 	"net/http"
@@ -127,13 +126,5 @@ func Recover(next http.Handler) http.Handler {
 
 // writeError serialises an AppError to JSON and writes it to w.
 func writeError(w http.ResponseWriter, err error) {
-	ae := apperrors.AsAppError(err)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(ae.HTTPStatus)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]any{
-			"code":    ae.Code,
-			"message": ae.Message,
-		},
-	})
+	apperrors.WriteHTTP(w, err)
 }

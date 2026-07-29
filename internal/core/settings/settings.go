@@ -146,7 +146,7 @@ var CoreSettings = []contract.SettingSpec{
 	{
 		Key:         "core.default_php",
 		Label:       "Default PHP Version",
-		Description: "The default PHP version for new sites.",
+		Description: "Applied only when a new PHP site is created without an explicit PHP version. Existing sites and PHP-FPM pools are not changed.",
 		Type:        contract.SettingTypeSelect,
 		Options:     []string{"", "8.1", "8.2", "8.3", "8.4"},
 	},
@@ -345,10 +345,5 @@ func respond(w http.ResponseWriter, status int, data any) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	ae := apperrors.AsAppError(err)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(ae.HTTPStatus)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]any{"code": ae.Code, "message": ae.Message},
-	})
+	apperrors.WriteHTTP(w, err)
 }

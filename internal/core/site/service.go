@@ -30,6 +30,17 @@ type Service struct {
 	backup interface {
 		CreateBackupAndWait(context.Context, string) error
 	}
+	settings interface {
+		Get(context.Context, string) (string, error)
+	}
+}
+
+// SetSettings connects global defaults without coupling the site domain to the
+// concrete settings repository.
+func (s *Service) SetSettings(reader interface {
+	Get(context.Context, string) (string, error)
+}) {
+	s.settings = reader
 }
 
 func (s *Service) SetBackupGuard(guard interface {
@@ -74,6 +85,9 @@ func (s *Service) Get(ctx context.Context, id string) (*Site, error) {
 
 // Create validates and persists a new site.
 func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip string) (*Site, error) {
+	if err := s.applyDefaultPHP(ctx, &req); err != nil {
+		return nil, err
+	}
 	// Validate inputs.
 	if err := validateDomain(req.Domain); err != nil {
 		return nil, err
@@ -187,6 +201,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	s.publishLifecycle(ctx, EventCreated, site, userID, ip)
 	s.logger.InfoContext(ctx, "site: created", "id", site.ID, "domain", req.Domain)
 	return site, nil
+}
+
+func (s *Service) applyDefaultPHP(ctx context.Context, req *CreateRequest) error {
+	if req.AppType != "php" || (req.AppVersion != nil && strings.TrimSpace(*req.AppVersion) != "") || s.settings == nil {
+		return nil
+	}
+	defaultPHP, err := s.settings.Get(ctx, "core.default_php")
+	if err != nil {
+		return apperrors.Internal("failed to resolve the default PHP version", err)
+	}
+	defaultPHP = strings.TrimSpace(defaultPHP)
+	if defaultPHP != "" {
+		req.AppVersion = &defaultPHP
+	}
+	return nil
 }
 
 // Update applies partial updates to a site.

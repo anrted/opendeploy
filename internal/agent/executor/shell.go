@@ -40,7 +40,7 @@ var allowlist = []AllowedCommand{
 		"SubState", "--value",
 	}},
 	{Binary: "journalctl", AllowedArgs: []string{"-u", "-n", "-f", "--no-pager", "-o", "short", "short-precise"}},
-	{Binary: "ufw", AllowedArgs: []string{"allow", "deny", "reject", "delete", "status", "numbered", "enable", "disable", "reset", "--force"}},
+	{Binary: "ufw", AllowedArgs: []string{"allow", "deny", "reject", "delete", "status", "numbered", "enable", "disable", "reload", "reset", "--force"}},
 	{Binary: "nginx", AllowedArgs: []string{"-t", "-T", "-s", "reload", "stop", "quit", "-v", "-V"}},
 	{Binary: "openssl", AllowedArgs: []string{"x509", "-in", "-noout", "-issuer", "-subject", "-dates", "-ext", "subjectAltName"}},
 	{Binary: "ss", AllowedArgs: []string{"-tuln"}},
@@ -66,6 +66,7 @@ var (
 	safeService = regexp.MustCompile(`^[A-Za-z0-9_.@-]+$`)
 	safePackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+._:-]*$`)
 	decimal     = regexp.MustCompile(`^[0-9]+$`)
+	safeComment = regexp.MustCompile(`^[\pL\pN _.,:/@+()-]{1,128}$`)
 )
 
 func (v *Validator) Validate(binary string, args []string) error {
@@ -82,9 +83,12 @@ func (v *Validator) Validate(binary string, args []string) error {
 	if allowed == nil {
 		return fmt.Errorf("validator: binary %q is not on the allowlist", binary)
 	}
-	for _, arg := range args {
+	for index, arg := range args {
 		if arg == "" || len(arg) > maxCommandArgument || strings.ContainsAny(arg, "\x00\r\n") {
 			return fmt.Errorf("validator: malformed argument for %q", binary)
+		}
+		if binary == "ufw" && index > 0 && args[index-1] == "comment" && safeComment.MatchString(arg) {
+			continue
 		}
 		if !isAllowedArg(arg, allowed.AllowedArgs) {
 			return fmt.Errorf("validator: argument %q is not permitted for %q", arg, binary)

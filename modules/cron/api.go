@@ -3,12 +3,14 @@ package cron
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -200,11 +202,18 @@ func decodeJSON(r *http.Request, target any) error {
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any, err error) {
-	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		status = http.StatusBadRequest
-		data = map[string]any{"error": map[string]string{"code": "cron_error", "message": err.Error()}}
+		var appErr *apperrors.AppError
+		if errors.As(err, &appErr) {
+			apperrors.WriteHTTP(w, appErr)
+		} else if status >= http.StatusInternalServerError {
+			apperrors.WriteHTTP(w, apperrors.Internal("cron operation failed", err))
+		} else {
+			apperrors.WriteHTTP(w, apperrors.InvalidInput(err.Error()))
+		}
+		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
 }

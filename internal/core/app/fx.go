@@ -176,9 +176,10 @@ func provideModuleService(registry *module.Registry, repo module.Repository, job
 	return service
 }
 
-func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent *agentclient.Client, registry *module.Registry, bus *events.MemoryBus, updates *updater.Service, log *slog.Logger) *site.Service {
+func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent *agentclient.Client, registry *module.Registry, bus *events.MemoryBus, updates *updater.Service, settingsSvc *settings.Service, log *slog.Logger) *site.Service {
 	service := site.NewService(repo, auditSvc, agent, registry, bus, log)
 	service.SetBackupGuard(updates)
+	service.SetSettings(settingsSvc)
 	return service
 }
 
