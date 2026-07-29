@@ -76,6 +76,10 @@ type mockAgent struct {
 
 func (m *mockAgent) DirCreate(ctx context.Context, path string, mode uint32) error  { return nil }
 func (m *mockAgent) FileChown(ctx context.Context, path string, uid, gid int) error { return nil }
+func (m *mockAgent) FileDelete(ctx context.Context, path string) error { return nil }
+func (m *mockAgent) CommandExecute(ctx context.Context, command string, args ...string) (int, string, string, error) {
+	return 0, "200", "", nil
+}
 
 func TestCreateCompensatesNginxWhenPersistenceFails(t *testing.T) {
 	repo := &lifecycleRepo{fail: errors.New("database unavailable")}
