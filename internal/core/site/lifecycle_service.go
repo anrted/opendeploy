@@ -15,6 +15,11 @@ func (s *Service) Delete(ctx context.Context, id string, userID, ip string) erro
 	if err != nil {
 		return err
 	}
+	if site.App.AppType != "" {
+		if err := s.applyAppConfig(ctx, site.App.AppType, contract.SiteDelete, site); err != nil {
+			s.logger.ErrorContext(ctx, "failed to remove app server config during site deletion", "error", err, "site_id", id)
+		}
+	}
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site); err != nil {
 		s.logger.ErrorContext(ctx, "failed to remove web server config during site deletion", "error", err, "site_id", id)
 	}
@@ -55,6 +60,15 @@ func (s *Service) setState(
 	site.State = state
 	if err := s.repo.Update(ctx, site); err != nil {
 		return err
+	}
+	if site.App.AppType != "" {
+		if err := s.applyAppConfig(ctx, site.App.AppType, action, site); err != nil {
+			message := "failed to enable app server config"
+			if action == contract.SiteDisable {
+				message = "failed to disable app server config"
+			}
+			s.logger.ErrorContext(ctx, message, "error", err, "site_id", id)
+		}
 	}
 	if err := s.applySiteConfig(ctx, site.ModuleID, action, site); err != nil {
 		message := "failed to enable web server config"

@@ -41,6 +41,18 @@ func (s *DeployService) ObtainCertificate(ctx context.Context, domain, rootPath 
 	return certbot.ObtainCert(ctx, domain, rootPath)
 }
 
+func (s *DeployService) ApplyApp(ctx context.Context, appType string, action contract.SiteAction, current *Site) error {
+	registeredModule := s.registry.Find(appType)
+	if registeredModule == nil {
+		return fmt.Errorf("app module not found: %s", appType)
+	}
+	appServer, ok := registeredModule.(contract.AppServerPlugin)
+	if !ok {
+		return fmt.Errorf("module %s does not implement AppServerPlugin", appType)
+	}
+	return appServer.ApplyApp(ctx, action, siteSpec(current))
+}
+
 func siteSpec(current *Site) contract.SiteSpec {
 	var primaryDomain string
 	aliases := make([]string, 0, len(current.Domains))

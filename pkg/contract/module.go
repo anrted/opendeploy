@@ -64,6 +64,12 @@ type WebServerPlugin interface {
 	ApplySite(ctx context.Context, action SiteAction, spec SiteSpec) error
 }
 
+// AppServerPlugin extends Module to provide application server configurations (PHP-FPM, Node).
+type AppServerPlugin interface {
+	Module
+	ApplyApp(ctx context.Context, action SiteAction, spec SiteSpec) error
+}
+
 // ModuleDependencies describes the requirements and conflicts of a module.
 type ModuleDependencies struct {
 	Required    []string `json:"required"`

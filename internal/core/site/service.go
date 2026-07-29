@@ -189,12 +189,38 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		}
 	}
 
+	if site.App.AppType != "" {
+		if err := s.applyAppConfig(ctx, site.App.AppType, contract.SiteUpsert, site); err != nil {
+			_ = s.agent.FileDelete(ctx, site.RootPath)
+			s.recordAudit(ctx, userID, "site.create", req.Domain, ip, audit.StatusError)
+			return nil, fmt.Errorf("site service: provision app server: %w", err)
+		}
+	}
+
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
+		if site.App.AppType != "" {
+			_ = s.applyAppConfig(ctx, site.App.AppType, contract.SiteDelete, site)
+		}
+		_ = s.agent.FileDelete(ctx, site.RootPath)
 		s.recordAudit(ctx, userID, "site.create", req.Domain, ip, audit.StatusError)
 		return nil, fmt.Errorf("site service: provision web server: %w", err)
 	}
+
+	if err := s.verifySiteHealth(ctx, site); err != nil {
+		_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
+		if site.App.AppType != "" {
+			_ = s.applyAppConfig(ctx, site.App.AppType, contract.SiteDelete, site)
+		}
+		_ = s.agent.FileDelete(ctx, site.RootPath)
+		s.recordAudit(ctx, userID, "site.create", req.Domain, ip, audit.StatusError)
+		return nil, fmt.Errorf("site service: health check failed: %w", err)
+	}
+
 	if err := s.repo.Create(ctx, site); err != nil {
 		_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteDelete, site)
+		if site.App.AppType != "" {
+			_ = s.applyAppConfig(ctx, site.App.AppType, contract.SiteDelete, site)
+		}
 		return nil, err
 	}
 
@@ -327,13 +353,33 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 		}
 	}
 
+	if site.App.AppType != "" {
+		if err := s.applyAppConfig(ctx, site.App.AppType, contract.SiteUpsert, site); err != nil {
+			return nil, fmt.Errorf("site service: re-provision app server: %w", err)
+		}
+	}
+
 	if err := s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site); err != nil {
+		if site.App.AppType != "" {
+			_ = s.applyAppConfig(ctx, previous.App.AppType, contract.SiteUpsert, &previous)
+		}
 		return nil, fmt.Errorf("site service: re-provision web server: %w", err)
+	}
+
+	if err := s.verifySiteHealth(ctx, site); err != nil {
+		_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
+		if previous.App.AppType != "" {
+			_ = s.applyAppConfig(ctx, previous.App.AppType, contract.SiteUpsert, &previous)
+		}
+		return nil, fmt.Errorf("site service: health check failed: %w", err)
 	}
 
 	if err := s.repo.Update(ctx, site); err != nil {
 		// Rollback web config on DB failure
 		_ = s.applySiteConfig(ctx, previous.ModuleID, contract.SiteUpsert, &previous)
+		if previous.App.AppType != "" {
+			_ = s.applyAppConfig(ctx, previous.App.AppType, contract.SiteUpsert, &previous)
+		}
 		return nil, err
 	}
 

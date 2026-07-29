@@ -4,12 +4,14 @@ package php
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/anrted/opendeploy/pkg/contract"
 )
+
+var _ contract.AppServerPlugin = (*Module)(nil)
 
 const moduleID = "php"
 
@@ -52,49 +54,56 @@ func (m *Module) Bootstrap(deps contract.ModuleDeps) error {
 	m.logger = deps.Logger.With("module", moduleID)
 	m.logger.Info("php module bootstrapped")
 
-	m.deps.Events.Subscribe("site.created", m.handleSiteEvent)
-	m.deps.Events.Subscribe("site.updated", m.handleSiteEvent)
-	m.deps.Events.Subscribe("site.deleted", m.handleSiteEvent)
-
 	return nil
 }
 
-func (m *Module) handleSiteEvent(ctx context.Context, event contract.Event) error {
-	b, err := json.Marshal(event.Payload())
-	if err != nil {
-		return nil // gracefully ignore invalid payloads
-	}
-	var data struct {
-		AppType       string `json:"app_type"`
-		AppVersion    string `json:"app_version"`
-		PrimaryDomain string `json:"primary_domain"`
-	}
-	if err := json.Unmarshal(b, &data); err != nil {
+func (m *Module) ApplyApp(ctx context.Context, action contract.SiteAction, site contract.SiteSpec) error {
+	if site.AppType != "php" || site.PrimaryDomain == "" {
 		return nil
 	}
 
-	if data.AppType != "php" || data.PrimaryDomain == "" {
-		return nil
-	}
-
-	version := data.AppVersion
+	version := site.AppVersion
 	if version == "" {
 		version = m.deps.Config.Get("default_version", "8.3")
 	}
 
-	switch event.Type() {
-	case "site.created", "site.updated":
+	switch action {
+	case contract.SiteUpsert, contract.SiteEnable:
 		cfg := PoolConfig{
-			Name: data.PrimaryDomain, User: "www-data", Group: "www-data",
-			Listen: fmt.Sprintf("/run/php/php%s-fpm-%s.sock", version, data.PrimaryDomain),
+			Name: site.PrimaryDomain, User: "www-data", Group: "www-data",
+			Listen: fmt.Sprintf("/run/php/php%s-fpm-%s.sock", version, site.PrimaryDomain),
 			MaxChildren: 5, StartServers: 2, MinSpareServers: 1, MaxSpareServers: 3,
 		}
 		if err := m.CreatePool(ctx, version, cfg); err != nil {
-			m.logger.ErrorContext(ctx, "failed to create php pool", "error", err, "domain", data.PrimaryDomain)
+			return fmt.Errorf("failed to create php pool: %w", err)
 		}
-	case "site.deleted":
-		if err := m.DeletePool(ctx, version, data.PrimaryDomain); err != nil {
-			m.logger.ErrorContext(ctx, "failed to delete php pool", "error", err, "domain", data.PrimaryDomain)
+		
+		// Wait for socket to appear
+		timeout := time.After(5 * time.Second)
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		socketReady := false
+		
+		for {
+			select {
+			case <-timeout:
+				return fmt.Errorf("php-fpm socket %s did not appear after 5 seconds", cfg.Listen)
+			case <-ticker.C:
+				exitCode, _, _, _ := m.deps.Agent.CommandExecute(ctx, "test", "-S", cfg.Listen)
+				if exitCode == 0 {
+					socketReady = true
+				}
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			if socketReady {
+				break
+			}
+		}
+
+	case contract.SiteDisable, contract.SiteDelete:
+		if err := m.DeletePool(ctx, version, site.PrimaryDomain); err != nil {
+			return fmt.Errorf("failed to delete php pool: %w", err)
 		}
 	}
 	return nil
