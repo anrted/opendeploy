@@ -2,6 +2,8 @@ package recovery
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -17,12 +19,14 @@ func HTTPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
+				appErr := apperrors.Internal("unexpected server error", nil)
 				slog.Error("panic recovered in HTTP handler",
+					"error_id", appErr.ErrorID,
 					"error", err,
 					"stack", string(debug.Stack()),
 					"path", r.URL.Path,
 				)
-				apperrors.WriteHTTP(w, apperrors.Internal("unexpected server error", nil))
+				apperrors.WriteHTTP(w, appErr)
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -39,12 +43,16 @@ func GRPCUnaryInterceptor() grpc.UnaryServerInterceptor {
 	) (resp interface{}, err error) {
 		defer func() {
 			if r := recover(); r != nil {
+				errorIDBytes := make([]byte, 8)
+				rand.Read(errorIDBytes)
+				encodedID := hex.EncodeToString(errorIDBytes)
 				slog.Error("panic recovered in gRPC unary handler",
+					"error_id", encodedID,
 					"error", r,
 					"stack", string(debug.Stack()),
 					"method", info.FullMethod,
 				)
-				err = status.Error(codes.Internal, "internal agent error")
+				err = status.Error(codes.Internal, "internal agent error: "+encodedID)
 			}
 		}()
 		return handler(ctx, req)
@@ -61,12 +69,16 @@ func GRPCStreamInterceptor() grpc.StreamServerInterceptor {
 	) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
+				errorIDBytes := make([]byte, 8)
+				rand.Read(errorIDBytes)
+				encodedID := hex.EncodeToString(errorIDBytes)
 				slog.Error("panic recovered in gRPC stream handler",
+					"error_id", encodedID,
 					"error", r,
 					"stack", string(debug.Stack()),
 					"method", info.FullMethod,
 				)
-				err = status.Error(codes.Internal, "internal agent error")
+				err = status.Error(codes.Internal, "internal agent error: "+encodedID)
 			}
 		}()
 		return handler(srv, ss)

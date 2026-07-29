@@ -14,6 +14,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/internal/core/auth"
 	"github.com/anrted/opendeploy/internal/core/dashboard"
+	"github.com/anrted/opendeploy/internal/core/logs"
 	"github.com/anrted/opendeploy/internal/core/module"
 	"github.com/anrted/opendeploy/internal/core/server"
 	"github.com/anrted/opendeploy/internal/core/service"
@@ -82,6 +83,9 @@ var Module = fx.Options(
 		site.NewHandler,
 		service.NewHandler,
 		settings.NewHandler,
+		logs.NewRepository,
+		logs.NewService,
+		logs.NewHandler,
 
 		// Server
 		provideServer,
@@ -119,6 +123,9 @@ func provideDatabase(lc fx.Lifecycle, cfg *config.Config, log *slog.Logger) (*da
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
+
+	// Inject DB into global logger so it can persist system logs
+	logger.SetDB(db.DB)
 
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {

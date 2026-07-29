@@ -126,6 +126,9 @@ const TasksIcon = {
 const CronIcon = {
   template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M12 7v5l3 2"/></svg>`
 }
+const LogsIcon = {
+  template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`
+}
 
 const allNavItems = [
   { name: 'dashboard', label: 'Dashboard', to: '/', icon: DashboardIcon },
@@ -135,6 +138,7 @@ const allNavItems = [
   { name: 'tasks',     label: 'Tasks',     to: '/tasks', icon: TasksIcon },
   { name: 'cron',      label: 'Cron',      to: '/cron', icon: CronIcon },
   { name: 'processes', label: 'Processes', to: '/processes', icon: ProcessesIcon },
+  { name: 'logs',      label: 'System Logs', to: '/logs', icon: LogsIcon },
   { name: 'users',     label: 'Users',     to: '/users', icon: UsersIcon, adminOnly: true },
   { name: 'firewall',  label: 'Firewall',  to: '/modules/firewall', icon: FirewallIcon },
   { name: 'settings',  label: 'Settings',  to: '/settings', icon: SettingsIcon },

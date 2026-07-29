@@ -69,6 +69,11 @@ const routes = [
         name: 'processes',
         component: () => import('@/views/ProcessesView.vue'),
       },
+      {
+        path: 'logs',
+        name: 'logs',
+        component: () => import('@/views/LogsView.vue'),
+      },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },

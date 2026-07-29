@@ -22,6 +22,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/core/auth"
 	"github.com/anrted/opendeploy/internal/core/dashboard"
+	"github.com/anrted/opendeploy/internal/core/logs"
 	"github.com/anrted/opendeploy/internal/core/module"
 	coreMiddleware "github.com/anrted/opendeploy/internal/core/server/middleware"
 	"github.com/anrted/opendeploy/internal/core/service"
@@ -50,6 +51,7 @@ type Dependencies struct {
 	SiteHandler      *site.Handler
 	ServiceHandler   *service.Handler
 	SettingsHandler  *settings.Handler
+	LogsHandler      *logs.Handler
 	ModuleRegistry   *module.Registry
 }
 
@@ -283,6 +285,11 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsView)).Get("/backups/history", deps.SettingsHandler.BackupHistory)
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsSecurity)).Post("/backups", deps.SettingsHandler.CreateBackup)
 				r.With(coreMiddleware.RequirePermission(auth.PermSettingsSecurity)).Post("/backups/restore", deps.SettingsHandler.RestoreBackup)
+			}
+
+			// Logs routes
+			if deps.LogsHandler != nil {
+				r.With(coreMiddleware.RequirePermission(auth.PermDashboardView)).Mount("/logs", deps.LogsHandler.Routes())
 			}
 		})
 	})

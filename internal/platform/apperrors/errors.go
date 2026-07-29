@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -66,6 +67,8 @@ type AppError struct {
 	// Details and Recommendation are safe, actionable context returned to API clients.
 	Details        string
 	Recommendation string
+	// ErrorID is a unique identifier generated for this specific error instance.
+	ErrorID string
 }
 
 // Error implements the error interface.
@@ -83,9 +86,15 @@ func (e *AppError) Unwrap() error {
 
 // New creates a new AppError.
 func New(status int, code ErrorCode, message string) *AppError {
+	errorIDBytes := make([]byte, 8)
+	if _, err := rand.Read(errorIDBytes); err != nil {
+		errorIDBytes = []byte("fallback")
+	}
+	encodedID := hex.EncodeToString(errorIDBytes)
 	return &AppError{
 		HTTPStatus: status, Code: code, Message: message,
 		Details: message, Recommendation: recommendation(status),
+		ErrorID: encodedID,
 	}
 }
 
@@ -100,20 +109,28 @@ func Wrap(status int, code ErrorCode, message string, cause error) *AppError {
 // while every response receives a correlation ID suitable for logs/support.
 func WriteHTTP(w http.ResponseWriter, err error) {
 	appErr := AsAppError(err)
-	errorID := make([]byte, 8)
-	if _, randomErr := rand.Read(errorID); randomErr != nil {
-		errorID = []byte("fallback")
+
+	logFields := []any{
+		"error_id", appErr.ErrorID,
+		"code", appErr.Code,
+		"cause", appErr.Cause,
 	}
-	encodedID := hex.EncodeToString(errorID)
+
+	if appErr.HTTPStatus >= 500 {
+		slog.Error("internal server error", logFields...)
+	} else if appErr.HTTPStatus >= 400 {
+		slog.Warn("client error", logFields...)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Error-ID", encodedID)
+	w.Header().Set("X-Error-ID", appErr.ErrorID)
 	w.WriteHeader(appErr.HTTPStatus)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
 		"code":           appErr.Code,
 		"message":        appErr.Message,
 		"details":        appErr.Details,
 		"recommendation": appErr.Recommendation,
-		"error_id":       encodedID,
+		"error_id":       appErr.ErrorID,
 	}})
 }
 

@@ -7,6 +7,7 @@ package logger
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"log/slog"
 	"os"
@@ -49,7 +50,19 @@ func New(level, format, filePath string) (*slog.Logger, error) {
 		handler = slog.NewJSONHandler(w, opts)
 	}
 
-	return slog.New(handler), nil
+	dbHandler := NewDBHandler(handler)
+	globalDBHandler = dbHandler
+
+	return slog.New(dbHandler), nil
+}
+
+var globalDBHandler *DBHandler
+
+// SetDB injects the database connection into the global DB logger.
+func SetDB(db *sql.DB) {
+	if globalDBHandler != nil {
+		globalDBHandler.SetDB(db)
+	}
 }
 
 // WithContext stores the logger in the context and returns the derived context.
