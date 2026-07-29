@@ -271,6 +271,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers", deps.RemoteHandler.List)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers", deps.RemoteHandler.Create)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}", deps.RemoteHandler.Get)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers/{id}/enrollment", deps.RemoteHandler.ReissueEnrollment)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Delete("/servers/{id}", deps.RemoteHandler.Delete)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers/{id}/actions/{action}", deps.RemoteHandler.Action)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}/events", deps.RemoteHandler.Events)

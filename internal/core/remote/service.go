@@ -64,6 +64,30 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, coreURL string)
 	if err := s.repo.Create(ctx, &server); err != nil {
 		return nil, err
 	}
+	enrollment, err := s.createEnrollment(ctx, server, coreURL, false)
+	if err != nil {
+		_ = s.repo.Delete(ctx, server.ID)
+		return nil, err
+	}
+	return enrollment, nil
+}
+
+func (s *Service) ReissueEnrollment(ctx context.Context, serverID, coreURL string) (*Enrollment, error) {
+	server, err := s.repo.Get(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if server == nil {
+		return nil, ErrServerNotFound
+	}
+	if server.Status != "pending" {
+		return nil, ErrServerNotPending
+	}
+	return s.createEnrollment(ctx, *server, coreURL, true)
+}
+
+func (s *Service) createEnrollment(ctx context.Context, server Server, coreURL string, replace bool) (*Enrollment, error) {
+	now := s.now()
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return nil, err
@@ -71,8 +95,11 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, coreURL string)
 	token := "odreg_" + base64.RawURLEncoding.EncodeToString(raw)
 	hash := sha256.Sum256([]byte(token))
 	expires := now.Add(30 * time.Minute)
-	if err := s.repo.SaveToken(ctx, uuid.NewString(), server.ID, hex.EncodeToString(hash[:]), expires, now); err != nil {
-		_ = s.repo.Delete(ctx, server.ID)
+	save := s.repo.SaveToken
+	if replace {
+		save = s.repo.ReplaceToken
+	}
+	if err := save(ctx, uuid.NewString(), server.ID, hex.EncodeToString(hash[:]), expires, now); err != nil {
 		return nil, err
 	}
 	codeBytes := sha256.Sum256([]byte(token))

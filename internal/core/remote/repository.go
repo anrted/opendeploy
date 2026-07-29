@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +13,11 @@ import (
 type Repository struct{ db *sql.DB }
 
 func NewRepository(db *sql.DB) *Repository { return &Repository{db: db} }
+
+var (
+	ErrServerNotFound   = errors.New("server not found")
+	ErrServerNotPending = errors.New("server is not pending")
+)
 
 func scanServer(scanner interface{ Scan(...any) error }) (*Server, error) {
 	var s Server
@@ -120,6 +126,31 @@ func (r *Repository) List(ctx context.Context, query, status, tag, sort string, 
 func (r *Repository) SaveToken(ctx context.Context, id, serverID, hash string, expires, created time.Time) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO server_tokens(id,server_id,token_hash,expires_at,created_at) VALUES(?,?,?,?,?)`, id, serverID, hash, expires, created)
 	return err
+}
+
+func (r *Repository) ReplaceToken(ctx context.Context, id, serverID, hash string, expires, created time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var status string
+	if err = tx.QueryRowContext(ctx, `SELECT status FROM servers WHERE id=?`, serverID).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrServerNotFound
+		}
+		return err
+	}
+	if status != "pending" {
+		return ErrServerNotPending
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE server_tokens SET used_at=? WHERE server_id=? AND used_at IS NULL`, created, serverID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO server_tokens(id,server_id,token_hash,expires_at,created_at) VALUES(?,?,?,?,?)`, id, serverID, hash, expires, created); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) ConsumeToken(ctx context.Context, hash string, now time.Time) (string, error) {

@@ -23,7 +23,11 @@ done
 [ "$(id -u)" -eq 0 ] || die "run this installer as root"
 [ -n "$CORE_URL" ] || die "--server is required"
 [ -n "$REGISTRATION_TOKEN" ] || die "--token is required"
-case "$CORE_URL" in https://*|http://127.0.0.1:*|http://localhost:*) ;; *) die "Core URL must use HTTPS" ;; esac
+case "$CORE_URL" in
+    https://*) ;;
+    http://*) printf '\033[1;33m!\033[0m %s\n' "Core URL uses unencrypted HTTP; enrollment tokens and agent traffic can be intercepted" >&2 ;;
+    *) die "Core URL must start with http:// or https://" ;;
+esac
 
 step "Detect OS"
 [ -r /etc/os-release ] || die "unsupported OS: /etc/os-release is missing"

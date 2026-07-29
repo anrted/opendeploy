@@ -2,7 +2,7 @@
   <div v-if="server">
     <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div><router-link to="/servers" class="text-sm text-indigo-300">← Servers</router-link><h1 class="page-title mt-2">{{ server.name }}</h1><p class="page-subtitle">{{ server.hostname || server.id }}</p></div>
-      <div class="flex flex-wrap gap-2"><button class="btn-secondary" @click="run('refresh_information')">Refresh</button><button class="btn-secondary" @click="run('health_check')">Health Check</button><button class="btn-secondary" @click="run(server.maintenance?'maintenance_off':'maintenance_on')">Maintenance</button><button class="btn-primary" @click="run('update_agent')">Update Agent</button><button class="btn-danger" @click="remove">Delete</button></div>
+      <div class="flex flex-wrap gap-2"><button v-if="server.status==='pending'" class="btn-primary" @click="reissueEnrollment">Generate new token</button><template v-else><button class="btn-secondary" @click="run('refresh_information')">Refresh</button><button class="btn-secondary" @click="run('health_check')">Health Check</button><button class="btn-secondary" @click="run(server.maintenance?'maintenance_off':'maintenance_on')">Maintenance</button><button class="btn-primary" @click="run('update_agent')">Update Agent</button></template><button class="btn-danger" @click="remove">Delete</button></div>
     </div>
     <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-300">{{ errorMessage }}</div>
     <div class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -17,17 +17,29 @@
     </div>
     <div class="mt-6 card"><div class="mb-4 flex gap-2"><button v-for="name in ['tasks','events','heartbeats']" :key="name" :class="tab===name?'btn-primary':'btn-secondary'" @click="tab=name">{{ name }}</button></div><div class="space-y-2"><div v-for="item in activeItems" :key="item.id" class="rounded-lg border border-border-subtle p-3 text-sm"><div class="flex justify-between gap-4"><strong>{{ item.action || item.type || item.state }}</strong><span class="text-text-muted">{{ new Date(item.created_at).toLocaleString() }}</span></div><div class="mt-1 text-text-muted">{{ item.message || item.output || `${item.cpu_usage?.toFixed?.(1)||0}% CPU · ${item.memory_usage?.toFixed?.(1)||0}% RAM` }}</div></div></div></div>
   </div><div v-else class="py-20 text-center">{{ loading?'Loading…':'Server not found' }}</div>
+    <div v-if="enrollment" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div class="card w-full max-w-2xl">
+        <div class="mb-5 flex justify-between"><h2 class="text-xl font-semibold">New enrollment token</h2><button @click="enrollment=null">✕</button></div>
+        <div class="space-y-4">
+          <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Previous tokens are no longer valid. This token is shown once and expires {{ new Date(enrollment.expires_at).toLocaleString() }}.</div>
+          <div><label class="label">Registration Code</label><div class="rounded-lg bg-black/30 p-3 font-mono text-lg tracking-wider">{{ enrollment.registration_code }}</div></div>
+          <div><label class="label">Installation Command</label><pre class="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[#090d16] p-4 text-xs text-green-300">{{ enrollment.installation_command }}</pre></div>
+          <div class="flex justify-end gap-2"><button class="btn-secondary" @click="copyCommand">Copy</button><button class="btn-primary" @click="enrollment=null">Done</button></div>
+        </div>
+      </div>
+    </div>
 </template>
 <script setup>
 import { computed, defineComponent, h, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { apiErrorMessage } from '@/api/client'
-const route=useRoute(),router=useRouter(),server=ref(null),loading=ref(true),errorMessage=ref(''),tasks=ref([]),events=ref([]),heartbeats=ref([]),tab=ref('tasks')
+const route=useRoute(),router=useRouter(),server=ref(null),loading=ref(true),errorMessage=ref(''),tasks=ref([]),events=ref([]),heartbeats=ref([]),tab=ref('tasks'),enrollment=ref(null)
 const Metric=defineComponent({props:{label:String,value:Number},setup(p){return()=>h('div',{class:'mb-4'},[h('div',{class:'mb-1 flex justify-between text-sm'},[h('span',p.label),h('span',`${(p.value||0).toFixed(1)}%`)]),h('div',{class:'h-2 rounded bg-slate-700'},[h('div',{class:'h-2 rounded bg-indigo-500',style:{width:`${Math.min(100,p.value||0)}%`}})])])}})
 const facts=computed(()=>[['UUID',server.value.id],['Agent',server.value.agent_version],['OS',[server.value.distribution,server.value.os_version].filter(Boolean).join(' ')],['Kernel',server.value.kernel],['Architecture',server.value.architecture],['CPU',`${server.value.cpu_model||''} (${server.value.cpu_cores||0} cores)`],['RAM',bytes(server.value.ram_total)],['Disk',bytes(server.value.disk_total)],['Public IP',server.value.public_ip],['Private IP',server.value.private_ip],['Channel',server.value.update_channel],['Heartbeat',server.value.last_heartbeat?new Date(server.value.last_heartbeat).toLocaleString():'Never']])
 const activeItems=computed(()=>({tasks:tasks.value,events:events.value,heartbeats:heartbeats.value}[tab.value]||[]))
 async function load(){loading.value=true;try{const id=route.params.id,[s,t,e,hb]=await Promise.all([api.get(`/servers/${id}`),api.get(`/servers/${id}/tasks`),api.get(`/servers/${id}/events`),api.get(`/servers/${id}/heartbeats`)]);server.value=s.data;tasks.value=t.data||[];events.value=e.data||[];heartbeats.value=hb.data||[]}catch(e){errorMessage.value=apiErrorMessage(e)}finally{loading.value=false}}
 async function run(action){try{await api.post(`/servers/${route.params.id}/actions/${action}`);await load()}catch(e){errorMessage.value=apiErrorMessage(e)}} async function remove(){if(!window.confirm('Delete this server and its history?'))return;await api.delete(`/servers/${route.params.id}`);router.push('/servers')}
+async function reissueEnrollment(){try{const {data}=await api.post(`/servers/${route.params.id}/enrollment`);enrollment.value=data;errorMessage.value=''}catch(e){errorMessage.value=apiErrorMessage(e)}} async function copyCommand(){await navigator.clipboard.writeText(enrollment.value.installation_command)}
 const badge=v=>v==='online'?'badge-success':v==='warning'?'badge-warning':v==='offline'?'badge-danger':'badge-muted',bytes=v=>v?`${(v/1073741824).toFixed(1)} GB`:'—',duration=v=>v?`${Math.floor(v/86400)}d ${Math.floor((v%86400)/3600)}h`:'—'
 onMounted(load)
 </script>

@@ -2,6 +2,7 @@ package remote
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
@@ -53,6 +54,27 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	enrollment, err := h.service.Create(r.Context(), req, scheme+"://"+r.Host)
 	if err != nil {
 		invalid(w, err.Error())
+		return
+	}
+	respond(w, http.StatusCreated, enrollment)
+}
+
+func (h *Handler) ReissueEnrollment(w http.ResponseWriter, r *http.Request) {
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	enrollment, err := h.service.ReissueEnrollment(r.Context(), chi.URLParam(r, "id"), scheme+"://"+r.Host)
+	if errors.Is(err, ErrServerNotFound) {
+		apperrors.WriteHTTP(w, apperrors.NotFound(err.Error()))
+		return
+	}
+	if errors.Is(err, ErrServerNotPending) {
+		invalid(w, "enrollment can only be regenerated for a pending server")
+		return
+	}
+	if err != nil {
+		internal(w, "regenerate server enrollment", err)
 		return
 	}
 	respond(w, http.StatusCreated, enrollment)
