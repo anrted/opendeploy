@@ -59,21 +59,32 @@ func validateRule(req *contract.FirewallRuleRequest) error {
 		}
 	}
 	for field, value := range map[string]string{"source": req.Source, "destination": req.Destination} {
-		if value != "" && net.ParseIP(value) == nil {
-			if _, _, err := net.ParseCIDR(value); err != nil {
-				return apperrors.InvalidInput(field + " must be an IPv4/IPv6 address or CIDR")
-			}
-		}
-		if value != "" && req.IPVersion != "both" {
-			ip := net.ParseIP(strings.Split(value, "/")[0])
-			isV4 := ip != nil && ip.To4() != nil
-			if (req.IPVersion == "ipv4" && !isV4) || (req.IPVersion == "ipv6" && isV4) {
-				return apperrors.InvalidInput(field + " does not match ip_version")
-			}
+		if err := validateAddress(field, value, req.IPVersion); err != nil {
+			return err
 		}
 	}
 	if !commentPattern.MatchString(req.Comment) {
 		return apperrors.InvalidInput("comment contains unsupported characters or exceeds 128 characters")
+	}
+	return nil
+}
+
+func validateAddress(field, value, ipVersion string) error {
+	if value == "" {
+		return nil
+	}
+	if net.ParseIP(value) == nil {
+		if _, _, err := net.ParseCIDR(value); err != nil {
+			return apperrors.InvalidInput(field + " must be an IPv4/IPv6 address or CIDR")
+		}
+	}
+	if ipVersion == "both" {
+		return nil
+	}
+	ip := net.ParseIP(strings.Split(value, "/")[0])
+	isV4 := ip != nil && ip.To4() != nil
+	if (ipVersion == "ipv4" && !isV4) || (ipVersion == "ipv6" && isV4) {
+		return apperrors.InvalidInput(field + " does not match ip_version")
 	}
 	return nil
 }
