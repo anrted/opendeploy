@@ -2,9 +2,13 @@ package module
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
+	"time"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -76,13 +80,16 @@ func NewLoader(registry *Registry, repo Repository, logger *slog.Logger) *Loader
 }
 
 // Bootstrap seeds the database and injects dependencies into every module.
-// Available modules also need Agent access to detect externally installed
-// software.
+// Runtime detection is kept out of the startup path because Agent calls may be
+// slow and Fx applies one shared deadline to all startup hooks.
 func (l *Loader) Bootstrap(ctx context.Context, deps contract.ModuleDeps) error {
-	for _, m := range l.registry.All() {
+	for _, m := range l.sortedModules() {
 		// Ensure a database record exists for every registered module.
 		existing, err := l.repo.FindByID(ctx, m.ID())
 		if err != nil {
+			if !apperrors.IsAppError(err, apperrors.CodeNotFound) {
+				return fmt.Errorf("module loader: find record %q: %w", m.ID(), err)
+			}
 			// First time seeing this module — create its record.
 			now := nowUTC()
 			rec := &Record{
@@ -93,8 +100,7 @@ func (l *Loader) Bootstrap(ctx context.Context, deps contract.ModuleDeps) error 
 				UpdatedAt: now,
 			}
 			if err := l.repo.Upsert(ctx, rec); err != nil {
-				l.logger.Error("module loader: upsert record", "module", m.ID(), "error", err)
-				continue
+				return fmt.Errorf("module loader: upsert record %q: %w", m.ID(), err)
 			}
 			existing = rec
 		}
@@ -105,40 +111,70 @@ func (l *Loader) Bootstrap(ctx context.Context, deps contract.ModuleDeps) error 
 			_ = l.repo.UpdateState(ctx, m.ID(), StateError)
 			continue
 		}
-		needsSync := existing.State == StateAvailable || existing.Version == nil || *existing.Version == ""
-		if needsSync {
-			status, err := m.Status(ctx)
-			if err != nil {
-				l.logger.Warn("module loader: detect runtime state", "module", m.ID(), "error", err)
-				continue
-			}
-			if status != nil {
-				detected := StateAvailable
-				if status.PackageStatus == contract.PackageInstalled {
-					detected = StateInstalled
-					if m.Capabilities().SupportsService {
-						if status.ServiceStatus == contract.ServiceRunning {
-							detected = StateEnabled
-						} else {
-							detected = StateDisabled
-						}
+	}
+	return nil
+}
+
+// SyncRuntimeStates detects software installed outside OpenDeploy. It is safe
+// to run after the server starts. Every module receives a fresh timeout so one
+// slow Agent call cannot starve the modules that follow it.
+func (l *Loader) SyncRuntimeStates(ctx context.Context, perModuleTimeout time.Duration) {
+	for _, m := range l.sortedModules() {
+		if ctx.Err() != nil {
+			return
+		}
+		moduleCtx, cancel := context.WithTimeout(ctx, perModuleTimeout)
+		l.syncRuntimeState(moduleCtx, m)
+		cancel()
+	}
+}
+
+func (l *Loader) syncRuntimeState(ctx context.Context, m contract.Module) {
+	existing, err := l.repo.FindByID(ctx, m.ID())
+	if err != nil {
+		l.logger.Warn("module loader: load runtime state", "module", m.ID(), "error", err)
+		return
+	}
+	needsSync := existing.State == StateAvailable || existing.Version == nil || *existing.Version == ""
+	if needsSync {
+		status, err := m.Status(ctx)
+		if err != nil {
+			l.logger.Warn("module loader: detect runtime state", "module", m.ID(), "error", err)
+			return
+		}
+		if status != nil {
+			detected := StateAvailable
+			if status.PackageStatus == contract.PackageInstalled {
+				detected = StateInstalled
+				if m.Capabilities().SupportsService {
+					if status.ServiceStatus == contract.ServiceRunning {
+						detected = StateEnabled
+					} else {
+						detected = StateDisabled
 					}
 				}
+			}
 
-				switch detected {
-				case StateInstalled, StateEnabled, StateDisabled:
-					rec := *existing
-					rec.State = detected
-					if status.SoftwareVersion != "" {
-						v := status.SoftwareVersion
-						rec.Version = &v
-					}
-					if err := l.repo.Upsert(ctx, &rec); err != nil {
-						l.logger.Warn("module loader: persist detected state", "module", m.ID(), "error", err)
-					}
+			switch detected {
+			case StateInstalled, StateEnabled, StateDisabled:
+				rec := *existing
+				rec.State = detected
+				if status.SoftwareVersion != "" {
+					v := status.SoftwareVersion
+					rec.Version = &v
+				}
+				if err := l.repo.Upsert(ctx, &rec); err != nil {
+					l.logger.Warn("module loader: persist detected state", "module", m.ID(), "error", err)
 				}
 			}
 		}
 	}
-	return nil
+}
+
+func (l *Loader) sortedModules() []contract.Module {
+	modules := l.registry.All()
+	sort.Slice(modules, func(i, j int) bool {
+		return modules[i].ID() < modules[j].ID()
+	})
+	return modules
 }

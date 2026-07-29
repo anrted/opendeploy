@@ -109,7 +109,10 @@ func (s *Service) Overview(ctx context.Context) (*Overview, error) {
 	if !servercontext.IsLocal(ctx) {
 		overview.ServerStats, err = s.agent.SystemStats(ctx)
 		if err != nil {
-			return nil, err
+			// Older agents may not expose dashboard stats yet. Keep the rest of
+			// the overview available so operators can reach update controls.
+			s.logger.WarnContext(ctx, "dashboard: remote stats unavailable", "error", err)
+			overview.ServerStats = nil
 		}
 	} else if stats != nil {
 		overview.ServerStats = stats.(*contract.SystemStats)

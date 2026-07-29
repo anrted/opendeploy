@@ -20,7 +20,7 @@
           <td><span :class="badge(server.status)">{{ server.status }}</span></td>
           <td>{{ [server.distribution || server.os, server.os_version, server.architecture].filter(Boolean).join(' · ') || '—' }}</td>
           <td>{{ server.agent_version || '—' }}</td><td>{{ formatDate(server.last_heartbeat) }}</td>
-          <td><button class="btn-secondary text-xs" @click="select(server)">Switch</button></td>
+          <td><div class="flex justify-end gap-2"><button v-if="!server.local && server.status!=='pending'" class="btn-primary text-xs" @click="openAgentUpdate(server)">Update</button><button class="btn-secondary text-xs" @click="select(server)">Switch</button></div></td>
         </tr>
       </tbody>
     </table></div>
@@ -45,6 +45,18 @@
         </div>
       </div>
     </div>
+    <div v-if="updateServer" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div class="card w-full max-w-2xl">
+        <div class="mb-5 flex justify-between"><h2 class="text-xl font-semibold">Update agent · {{ updateServer.name }}</h2><button @click="updateServer=null">✕</button></div>
+        <div class="space-y-4">
+          <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+            Agent {{ updateServer.agent_version || 'unknown' }} cannot update itself remotely. Run this command once on the server. Its ID, certificate and configuration will be preserved.
+          </div>
+          <div><label class="label">Update Command</label><pre class="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[#090d16] p-4 text-xs text-green-300">{{ agentUpdateCommand }}</pre></div>
+          <div class="flex justify-end gap-2"><button class="btn-secondary" @click="copyUpdateCommand">Copy</button><button class="btn-primary" @click="updateServer=null">Done</button></div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 <script setup>
@@ -55,6 +67,8 @@ import { useServerStore } from '@/stores/server'
 const router=useRouter(),serverStore=useServerStore()
 const items=ref([]),total=ref(0),loading=ref(false),errorMessage=ref(''),query=ref(''),status=ref(''),sort=ref('created_at'),offset=ref(0),limit=25
 const showWizard=ref(false),wizardStep=ref(1),creating=ref(false),enrollment=ref({}),tagsText=ref('')
+const updateServer=ref(null)
+const agentUpdateCommand='curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install-agent.sh | sudo bash -s -- --update'
 const form=reactive({name:'',description:'',operating_system:'Ubuntu',update_channel:'stable'})
 let debounce
 function debouncedLoad(){clearTimeout(debounce);debounce=setTimeout(()=>{offset.value=0;load()},250)}
@@ -64,5 +78,7 @@ function page(d){offset.value=Math.max(0,offset.value+d*limit);load()} function 
 function openWizard(){wizardStep.value=1;showWizard.value=true}
 async function createEnrollment(){creating.value=true;try{const {data}=await api.post('/servers',{...form,tags:tagsText.value.split(',').map(v=>v.trim()).filter(Boolean)});enrollment.value=data;wizardStep.value=2;await load()}catch(e){errorMessage.value=apiErrorMessage(e)}finally{creating.value=false}}
 async function copyCommand(){await navigator.clipboard.writeText(enrollment.value.installation_command)} function finishWizard(){showWizard.value=false;load()}
+function openAgentUpdate(server){updateServer.value=server}
+async function copyUpdateCommand(){await navigator.clipboard.writeText(agentUpdateCommand)}
 onMounted(load)
 </script>

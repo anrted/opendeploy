@@ -7,6 +7,7 @@ STATE_DIR="/var/lib/opendeploy-agent"
 SYSTEMD_DIR="/etc/systemd/system"
 CORE_URL=""
 REGISTRATION_TOKEN=""
+UPDATE_ONLY=0
 
 step() { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 ok() { printf '\033[1;32m✓\033[0m %s\n' "$1"; }
@@ -16,18 +17,24 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --server) [ "$#" -ge 2 ] || die "--server requires a URL"; CORE_URL=$2; shift 2 ;;
         --token) [ "$#" -ge 2 ] || die "--token requires a value"; REGISTRATION_TOKEN=$2; shift 2 ;;
+        --update) UPDATE_ONLY=1; shift ;;
         *) die "unknown argument: $1" ;;
     esac
 done
 
 [ "$(id -u)" -eq 0 ] || die "run this installer as root"
-[ -n "$CORE_URL" ] || die "--server is required"
-[ -n "$REGISTRATION_TOKEN" ] || die "--token is required"
-case "$CORE_URL" in
-    https://*) ;;
-    http://*) printf '\033[1;33m!\033[0m %s\n' "Core URL uses unencrypted HTTP; enrollment tokens and agent traffic can be intercepted" >&2 ;;
-    *) die "Core URL must start with http:// or https://" ;;
-esac
+if [ "$UPDATE_ONLY" -eq 0 ]; then
+    [ -n "$CORE_URL" ] || die "--server is required"
+    [ -n "$REGISTRATION_TOKEN" ] || die "--token is required"
+    case "$CORE_URL" in
+        https://*) ;;
+        http://*) printf '\033[1;33m!\033[0m %s\n' "Core URL uses unencrypted HTTP; enrollment tokens and agent traffic can be intercepted" >&2 ;;
+        *) die "Core URL must start with http:// or https://" ;;
+    esac
+else
+    [ -f "$CONFIG_DIR/agent.yaml" ] || [ -f "$CONFIG_DIR/opendeploy.yaml" ] ||
+        die "existing agent configuration was not found"
+fi
 
 step "Detect OS"
 [ -r /etc/os-release ] || die "unsupported OS: /etc/os-release is missing"
@@ -65,6 +72,15 @@ curl -fsSL "https://github.com/$REPOSITORY/releases/download/$TAG/checksums.txt"
 tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR" opendeploy-agent
 install -m 0755 "$TMP_DIR/opendeploy-agent" /usr/local/bin/opendeploy-agent
 ok "Install Agent: $TAG"
+
+if [ "$UPDATE_ONLY" -eq 1 ]; then
+    systemctl restart opendeploy-agent.service
+    sleep 2
+    systemctl is-active --quiet opendeploy-agent.service || die "updated agent did not start"
+    ok "Update Agent: $TAG"
+    ok "Done"
+    exit 0
+fi
 
 install -d -m 0700 "$CONFIG_DIR" "$STATE_DIR"
 MACHINE_ID=$(cat /etc/machine-id 2>/dev/null || openssl rand -hex 16)

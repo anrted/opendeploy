@@ -350,6 +350,7 @@ func registerDomainSubscribers(lc fx.Lifecycle, bus *events.MemoryBus, auditSvc 
 }
 
 func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Repository, moduleService *module.Service, agent *agentclient.Client, db *database.Database, bus *events.MemoryBus, log *slog.Logger) {
+	backgroundCtx, cancelBackground := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			if err := moduleService.RecoverInterruptedJobs(ctx); err != nil {
@@ -363,7 +364,15 @@ func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Re
 				Logger: log,
 				Tasks:  moduleService,
 			}
-			return loader.Bootstrap(ctx, deps)
+			if err := loader.Bootstrap(ctx, deps); err != nil {
+				return err
+			}
+			go loader.SyncRuntimeStates(backgroundCtx, 10*time.Second)
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			cancelBackground()
+			return nil
 		},
 	})
 }
