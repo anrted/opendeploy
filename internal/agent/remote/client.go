@@ -109,7 +109,7 @@ func (c *Client) heartbeat(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("core returned HTTP %d", resp.StatusCode)
 	}

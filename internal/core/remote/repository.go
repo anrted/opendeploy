@@ -91,11 +91,12 @@ func (r *Repository) List(ctx context.Context, query, status, tag, sort string, 
 	if order == "" {
 		order = "created_at"
 	}
+	// #nosec G202 -- every dynamic fragment is built from fixed predicates and an allow-listed sort column.
 	rows, err := r.db.QueryContext(ctx, `SELECT `+serverColumns+` FROM servers WHERE `+clause+` ORDER BY `+order+` DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]Server, 0)
 	for rows.Next() {
 		s, scanErr := scanServer(rows)
@@ -117,7 +118,7 @@ func (r *Repository) ConsumeToken(ctx context.Context, hash string, now time.Tim
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var id, serverID string
 	var expiresText string
 	err = tx.QueryRowContext(ctx, `SELECT id,server_id,expires_at FROM server_tokens WHERE token_hash=? AND used_at IS NULL`, hash).Scan(&id, &serverID, &expiresText)
@@ -144,7 +145,7 @@ func (r *Repository) Register(ctx context.Context, id string, req RegistrationRe
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `UPDATE servers SET hostname=?,machine_id=?,status='online',agent_version=?,os=?,distribution=?,
 		os_version=?,kernel=?,architecture=?,cpu_model=?,cpu_cores=?,ram_total=?,disk_total=?,public_ip=?,private_ip=?,
 		health_status='healthy',last_heartbeat=?,updated_at=? WHERE id=?`,
@@ -178,7 +179,7 @@ func (r *Repository) Heartbeat(ctx context.Context, serverID string, hb Heartbea
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `INSERT INTO server_heartbeats(server_id,state,cpu_usage,memory_usage,disk_usage,uptime,running_tasks,agent_version,latency_ms,created_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?)`, serverID, hb.State, hb.CPUUsage, hb.MemoryUsage, hb.DiskUsage, hb.Uptime, hb.RunningTasks, hb.AgentVersion, latency, now)
 	if err != nil {
@@ -215,7 +216,7 @@ func (r *Repository) PendingTasks(ctx context.Context, serverID string, now time
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tasks []Task
 	for rows.Next() {
 		var t Task
@@ -264,7 +265,7 @@ func (r *Repository) Events(ctx context.Context, id string, limit int) ([]Event,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var items []Event
 	for rows.Next() {
 		var e Event
@@ -283,7 +284,7 @@ func (r *Repository) Heartbeats(ctx context.Context, id string, limit int) ([]He
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var items []Heartbeat
 	for rows.Next() {
 		var h Heartbeat
@@ -302,7 +303,7 @@ func (r *Repository) Tasks(ctx context.Context, id string, limit int) ([]Task, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var items []Task
 	for rows.Next() {
 		var t Task
