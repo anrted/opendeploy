@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -519,10 +521,20 @@ func (m *Module) bannedIPs(ctx context.Context, jail string) ([]string, error) {
 func (m *Module) fail2BanClientOutput(ctx context.Context, args ...string) (string, error) {
 	exitCode, stdout, stderr, err := m.agent.CommandExecute(ctx, "fail2ban-client", args...)
 	if err != nil {
-		return "", err
+		if strings.Contains(err.Error(), "executable file not found") {
+			return "", apperrors.AgentUnavailable(fmt.Errorf("Fail2Ban is not installed"))
+		}
+		return "", apperrors.Internal("failed to execute fail2ban-client", err)
 	}
 	if exitCode != 0 {
-		return "", fmt.Errorf("fail2ban-client %s failed: %s", strings.Join(args, " "), strings.TrimSpace(stderr))
+		errText := strings.TrimSpace(stderr)
+		if strings.Contains(errText, "Failed to access socket") || strings.Contains(errText, "Connection refused") || strings.Contains(errText, "No such file") || strings.Contains(errText, "server is not running") {
+			return "", apperrors.New(http.StatusServiceUnavailable, apperrors.CodeAgentUnavailable, "Fail2Ban service is not running")
+		}
+		if strings.Contains(errText, "Permission denied") {
+			return "", apperrors.Forbidden("Permission denied to access Fail2Ban")
+		}
+		return "", apperrors.New(http.StatusUnprocessableEntity, apperrors.CodeInvalidInput, fmt.Sprintf("fail2ban-client failed: %s", errText))
 	}
 	return stdout, nil
 }

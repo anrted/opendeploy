@@ -22,9 +22,13 @@
     <div class="card flex flex-col gap-3 p-4 lg:flex-row">
       <input v-model="search" class="input flex-1" placeholder="Search name, command, user…" />
       <select v-model="statusFilter" class="input lg:w-44">
-        <option value="">All statuses</option>
+        <option value="">All types & statuses</option>
         <option value="enabled">Enabled</option>
         <option value="disabled">Disabled</option>
+        <option value="SYSTEM">System</option>
+        <option value="PACKAGE">Package</option>
+        <option value="OPENDEPLOY">OpenDeploy</option>
+        <option value="USER">User</option>
       </select>
       <select v-model="sortBy" class="input lg:w-48">
         <option value="name">Sort by name</option>
@@ -64,7 +68,14 @@
           <tbody class="divide-y divide-border-subtle">
             <tr v-for="job in pagedJobs" :key="job.id" class="hover:bg-white/[0.02]">
               <td class="px-4 py-3">
-                <div class="font-medium text-text-main">{{ job.name }}</div>
+                <div class="font-medium text-text-main flex items-center gap-1">
+                  <span v-if="job.type === 'USER'" title="User Job">🟢</span>
+                  <span v-else-if="job.type === 'OPENDEPLOY'" title="OpenDeploy Job">🔵</span>
+                  <span v-else-if="job.type === 'PACKAGE'" title="Package Job">🟡</span>
+                  <span v-else-if="job.type === 'SYSTEM'" title="System Job">🔴</span>
+                  {{ job.name }}
+                  <span v-if="job.is_protected" title="Protected" class="text-xs">🔒</span>
+                </div>
                 <div class="max-w-52 truncate text-xs text-text-muted">{{ job.description || job.id }}</div>
               </td>
               <td class="max-w-xs px-4 py-3"><code class="block truncate text-xs text-indigo-300">{{ job.command }}</code></td>
@@ -74,16 +85,24 @@
                 <div class="text-xs text-text-muted">{{ job.timezone || 'Server timezone' }}</div>
               </td>
               <td class="px-4 py-3"><span class="badge" :class="job.enabled ? 'badge-success' : 'badge-muted'">{{ job.enabled ? 'Enabled' : 'Disabled' }}</span></td>
-              <td class="px-4 py-3"><span class="badge badge-muted">{{ job.source || 'OpenDeploy' }}</span></td>
-              <td class="px-4 py-3 text-text-muted">{{ formatDate(job.updated_at) }}</td>
+              <td class="px-4 py-3">
+                <div class="flex flex-col gap-1">
+                  <span class="badge badge-muted">{{ job.source || 'OpenDeploy' }}</span>
+                  <span v-if="job.package_name" class="text-[10px] text-text-muted">pkg: {{ job.package_name }}</span>
+                </div>
+              </td>
+              <td class="px-4 py-3 text-text-muted">
+                {{ formatDate(job.updated_at) }}
+                <div v-if="job.lock_reason" class="text-[10px] text-orange-300 truncate max-w-xs" :title="job.lock_reason">{{ job.lock_reason }}</div>
+              </td>
               <td class="px-4 py-3">
                 <div class="flex justify-end gap-1">
-                  <button class="btn-icon" title="Run now" :disabled="busy === job.id || job.read_only" @click="run(job)">▶</button>
+                  <button class="btn-icon" title="Run now" :disabled="busy === job.id || !job.can_edit" @click="run(job)">▶</button>
                   <button class="btn-icon" title="History" @click="showHistory(job)">☷</button>
-                  <button class="btn-icon" title="Edit" :disabled="job.read_only" @click="openEdit(job)">✎</button>
-                  <button class="btn-icon" :disabled="job.read_only" :title="job.enabled ? 'Disable' : 'Enable'" @click="toggle(job)">{{ job.enabled ? 'Ⅱ' : '●' }}</button>
-                  <button class="btn-icon" title="Duplicate" :disabled="job.read_only" @click="duplicate(job)">⧉</button>
-                  <button class="btn-icon text-red-400" title="Delete" :disabled="job.read_only" @click="remove(job)">×</button>
+                  <button class="btn-icon" title="Edit" :disabled="!job.can_edit" @click="openEdit(job)">✎</button>
+                  <button class="btn-icon" :disabled="!job.can_edit" :title="job.enabled ? 'Disable' : 'Enable'" @click="toggle(job)">{{ job.enabled ? 'Ⅱ' : '●' }}</button>
+                  <button class="btn-icon" title="Duplicate" :disabled="!job.can_edit" @click="duplicate(job)">⧉</button>
+                  <button class="btn-icon text-red-400" title="Delete" :disabled="!job.can_delete" @click="remove(job)">×</button>
                 </div>
               </td>
             </tr>
@@ -189,8 +208,12 @@ let historyTimer
 const blank = () => ({ id: '', name: '', description: '', command: '', working_dir: '', user: 'www-data', environment: {}, expression: '0 3 * * *', timezone: '', enabled: true })
 const form = ref(blank())
 const filteredJobs = computed(() => jobs.value.filter(job => {
-  const text = `${job.name} ${job.command} ${job.user} ${job.description}`.toLowerCase()
-  return text.includes(search.value.toLowerCase()) && (!statusFilter.value || (job.enabled ? 'enabled' : 'disabled') === statusFilter.value)
+  const text = `${job.name} ${job.command} ${job.user} ${job.description} ${job.type} ${job.package_name}`.toLowerCase()
+  let matchStatus = true;
+  if (statusFilter.value === 'enabled') matchStatus = job.enabled;
+  else if (statusFilter.value === 'disabled') matchStatus = !job.enabled;
+  else if (statusFilter.value) matchStatus = job.type === statusFilter.value;
+  return text.includes(search.value.toLowerCase()) && matchStatus;
 }).sort((a, b) => String(a[sortBy.value] || '').localeCompare(String(b[sortBy.value] || ''))))
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredJobs.value.length / pageSize)))
 const pagedJobs = computed(() => filteredJobs.value.slice((page.value - 1) * pageSize, page.value * pageSize))

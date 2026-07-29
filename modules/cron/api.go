@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/anrted/opendeploy/internal/core/auth"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
@@ -67,18 +68,45 @@ func (m *Module) httpCreate(w, r interface{}) {
 }
 func (m *Module) httpUpdate(w, r interface{}) {
 	req := request(r)
+	principal := auth.PrincipalFromContext(req.Context())
+	
 	var job contract.CronJob
 	if err := decodeJSON(req, &job); err != nil {
 		writeJSON(writer(w), http.StatusBadRequest, nil, err)
 		return
 	}
 	job.ID = jobID(req)
+	
+	// Check existing job for RBAC
+	existing, err := m.agent.CronGet(req.Context(), job.ID)
+	if err == nil {
+		if existing.Type == "SYSTEM" || existing.Type == "PACKAGE" || existing.Type == "OPENDEPLOY" {
+			if principal != nil && string(principal.Role) != "admin" {
+				writeJSON(writer(w), http.StatusForbidden, nil, errors.New("only administrators can modify this job type"))
+				return
+			}
+		}
+	}
+	
 	updated, err := m.agent.CronUpdate(req.Context(), job)
 	writeJSON(writer(w), http.StatusOK, updated, err)
 }
 func (m *Module) httpDelete(w, r interface{}) {
 	req := request(r)
-	err := m.agent.CronDelete(req.Context(), jobID(req))
+	principal := auth.PrincipalFromContext(req.Context())
+	id := jobID(req)
+	
+	existing, err := m.agent.CronGet(req.Context(), id)
+	if err == nil {
+		if existing.Type == "SYSTEM" || existing.Type == "PACKAGE" || existing.Type == "OPENDEPLOY" {
+			if principal != nil && string(principal.Role) != "admin" {
+				writeJSON(writer(w), http.StatusForbidden, nil, errors.New("only administrators can modify this job type"))
+				return
+			}
+		}
+	}
+	
+	err = m.agent.CronDelete(req.Context(), id)
 	writeJSON(writer(w), http.StatusOK, map[string]bool{"success": err == nil}, err)
 }
 func (m *Module) httpEnable(w, r interface{}) {

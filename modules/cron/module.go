@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -167,7 +168,7 @@ func (m *Module) DataGridData(ctx context.Context, pageID string) ([]map[string]
 	if pageID == "history" {
 		runs, err := m.agent.CronHistory(ctx, "", 500)
 		if err != nil {
-			return nil, err
+			return nil, apperrors.AgentUnavailable(err)
 		}
 		rows := make([]map[string]any, 0, len(runs))
 		for _, run := range runs {

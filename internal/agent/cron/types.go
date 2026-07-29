@@ -2,6 +2,16 @@ package cron
 
 import "time"
 
+type JobType string
+
+const (
+	JobTypeUnknown    JobType = "UNKNOWN"
+	JobTypeSystem     JobType = "SYSTEM"
+	JobTypePackage    JobType = "PACKAGE"
+	JobTypeOpenDeploy JobType = "OPENDEPLOY"
+	JobTypeUser       JobType = "USER"
+)
+
 type Job struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
@@ -17,6 +27,12 @@ type Job struct {
 	UpdatedAt   time.Time         `json:"updated_at"`
 	Source      string            `json:"source,omitempty"`
 	ReadOnly    bool              `json:"read_only,omitempty"`
+	Type        JobType           `json:"type,omitempty"`
+	PackageName string            `json:"package_name,omitempty"`
+	IsProtected bool              `json:"is_protected,omitempty"`
+	CanEdit     bool              `json:"can_edit,omitempty"`
+	CanDelete   bool              `json:"can_delete,omitempty"`
+	LockReason  string            `json:"lock_reason,omitempty"`
 }
 
 type Run struct {

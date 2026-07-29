@@ -392,6 +392,14 @@ message FirewallResetResponse {
 
 // ─── Cron management ─────────────────────────────────────────────────────
 
+enum CronJobType {
+    CRON_JOB_TYPE_UNKNOWN = 0;
+    CRON_JOB_TYPE_SYSTEM = 1;
+    CRON_JOB_TYPE_PACKAGE = 2;
+    CRON_JOB_TYPE_OPENDEPLOY = 3;
+    CRON_JOB_TYPE_USER = 4;
+}
+
 message CronJob {
     string id = 1;
     string name = 2;
@@ -407,6 +415,12 @@ message CronJob {
     int64 updated_at = 12;
     string source = 13;
     bool read_only = 14;
+    CronJobType type = 15;
+    string package_name = 16;
+    bool is_protected = 17;
+    bool can_edit = 18;
+    bool can_delete = 19;
+    string lock_reason = 20;
 }
 
 message CronListRequest {}

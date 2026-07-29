@@ -21,6 +21,8 @@ type LifecycleEventData struct {
 	ModuleID      string    `json:"module_id"`
 	RootPath      string    `json:"root_path"`
 	State         State     `json:"state"`
+	AppType       string    `json:"app_type"`
+	AppVersion    string    `json:"app_version,omitempty"`
 	ActorID       string    `json:"actor_id,omitempty"`
 	IPAddress     string    `json:"ip_address,omitempty"`
 	OccurredAt    time.Time `json:"occurred_at"`
@@ -34,9 +36,14 @@ func newLifecycleEvent(eventType string, current *Site, actorID, ipAddress strin
 			break
 		}
 	}
+	appVersion := ""
+	if current.App.AppVersion != nil {
+		appVersion = *current.App.AppVersion
+	}
 	data := LifecycleEventData{
 		SiteID: current.ID, Name: current.Name, PrimaryDomain: primaryDomain,
 		ModuleID: current.ModuleID, RootPath: current.RootPath, State: current.State,
+		AppType: current.App.AppType, AppVersion: appVersion,
 		ActorID: actorID, IPAddress: ipAddress, OccurredAt: time.Now().UTC(),
 	}
 	return events.NewBaseEvent(eventType, data)

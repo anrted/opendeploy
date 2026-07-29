@@ -146,22 +146,56 @@ func cronJobFromProto(job *agentv1.CronJob) agentCron.Job {
 	if job == nil {
 		return agentCron.Job{}
 	}
+	var jobType agentCron.JobType
+	switch job.GetType() {
+	case agentv1.CronJobType_CRON_JOB_TYPE_SYSTEM:
+		jobType = agentCron.JobTypeSystem
+	case agentv1.CronJobType_CRON_JOB_TYPE_PACKAGE:
+		jobType = agentCron.JobTypePackage
+	case agentv1.CronJobType_CRON_JOB_TYPE_OPENDEPLOY:
+		jobType = agentCron.JobTypeOpenDeploy
+	case agentv1.CronJobType_CRON_JOB_TYPE_USER:
+		jobType = agentCron.JobTypeUser
+	default:
+		jobType = agentCron.JobTypeUnknown
+	}
+
 	return agentCron.Job{
 		ID: job.GetId(), Name: job.GetName(), Description: job.GetDescription(),
 		Command: job.GetCommand(), WorkingDir: job.GetWorkingDir(), User: job.GetUser(),
 		Environment: job.GetEnvironment(), Expression: job.GetExpression(),
 		Timezone: job.GetTimezone(), Enabled: job.GetEnabled(),
 		Source: job.GetSource(), ReadOnly: job.GetReadOnly(),
+		Type: jobType, PackageName: job.GetPackageName(),
+		IsProtected: job.GetIsProtected(), CanEdit: job.GetCanEdit(),
+		CanDelete: job.GetCanDelete(), LockReason: job.GetLockReason(),
 	}
 }
 
 func cronJobToProto(job agentCron.Job) *agentv1.CronJob {
+	var protoType agentv1.CronJobType
+	switch job.Type {
+	case agentCron.JobTypeSystem:
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_SYSTEM
+	case agentCron.JobTypePackage:
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_PACKAGE
+	case agentCron.JobTypeOpenDeploy:
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_OPENDEPLOY
+	case agentCron.JobTypeUser:
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_USER
+	default:
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_UNKNOWN
+	}
+
 	return &agentv1.CronJob{
 		Id: job.ID, Name: job.Name, Description: job.Description, Command: job.Command,
 		WorkingDir: job.WorkingDir, User: job.User, Environment: job.Environment,
 		Expression: job.Expression, Timezone: job.Timezone, Enabled: job.Enabled,
 		CreatedAt: job.CreatedAt.UnixMilli(), UpdatedAt: job.UpdatedAt.UnixMilli(),
 		Source: job.Source, ReadOnly: job.ReadOnly,
+		Type: protoType, PackageName: job.PackageName,
+		IsProtected: job.IsProtected, CanEdit: job.CanEdit,
+		CanDelete: job.CanDelete, LockReason: job.LockReason,
 	}
 }
 

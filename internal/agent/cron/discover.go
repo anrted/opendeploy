@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -31,6 +32,18 @@ func discoverSystemJobs(managedPath string) []Job {
 	return jobs
 }
 
+func determinePackage(path string) string {
+	cmd := exec.Command("dpkg-query", "-S", path)
+	out, err := cmd.Output()
+	if err == nil {
+		parts := strings.SplitN(string(out), ":", 2)
+		if len(parts) == 2 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	return ""
+}
+
 func parseSystemFile(path, source string, hasUser bool) []Job {
 	// #nosec G304 -- callers construct path only from fixed root-owned cron
 	// directories and symlink entries are rejected before this function.
@@ -38,6 +51,30 @@ func parseSystemFile(path, source string, hasUser bool) []Job {
 	if err != nil {
 		return nil
 	}
+	
+	jobType := JobTypeSystem
+	isProtected := false
+	lockReason := ""
+	pkgName := ""
+	canEdit := false
+	canDelete := false
+
+	if source == "User" {
+		jobType = JobTypeUser
+		canEdit = true
+		canDelete = true
+	} else if source == "System" {
+		isProtected = true
+		pkgName = determinePackage(path)
+		if pkgName != "" {
+			jobType = JobTypePackage
+			lockReason = fmt.Sprintf("Managed by Package (%s)", pkgName)
+		} else {
+			jobType = JobTypeSystem
+			lockReason = "Managed by OS"
+		}
+	}
+
 	var jobs []Job
 	for lineNumber, raw := range strings.Split(string(content), "\n") {
 		line := strings.TrimSpace(raw)
@@ -67,6 +104,8 @@ func parseSystemFile(path, source string, hasUser bool) []Job {
 			ID: id, Name: fmt.Sprintf("%s:%d", filepath.Base(path), lineNumber+1),
 			Command: command, User: user, Expression: expression, Enabled: true,
 			Source: source, ReadOnly: true,
+			Type: jobType, PackageName: pkgName, IsProtected: isProtected,
+			CanEdit: canEdit, CanDelete: canDelete, LockReason: lockReason,
 		})
 	}
 	return jobs

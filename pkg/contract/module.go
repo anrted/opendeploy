@@ -452,6 +452,12 @@ type CronJob struct {
 	UpdatedAt   time.Time         `json:"updated_at"`
 	Source      string            `json:"source,omitempty"`
 	ReadOnly    bool              `json:"read_only,omitempty"`
+	Type        string            `json:"type,omitempty"`
+	PackageName string            `json:"package_name,omitempty"`
+	IsProtected bool              `json:"is_protected,omitempty"`
+	CanEdit     bool              `json:"can_edit,omitempty"`
+	CanDelete   bool              `json:"can_delete,omitempty"`
+	LockReason  string            `json:"lock_reason,omitempty"`
 }
 
 type CronRun struct {

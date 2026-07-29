@@ -34,11 +34,18 @@
             </td>
           </tr>
           <tr v-else-if="filteredData.length === 0" class="border-t border-[#334155]">
-            <td :colspan="schema.columns.length + 1" class="p-0">
-              <EmptyState :title="t('dataGrid.noData')" :description="t('dataGrid.noDataDescription')" />
+            <td :colspan="schema.columns.length + (schema.row_actions?.length ? 1 : 0)" class="px-6 py-12">
+              <div v-if="error" class="text-center">
+                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10 mb-4">
+                  <i class="feather icon-alert-triangle text-xl text-red-400"></i>
+                </div>
+                <h3 class="text-base font-semibold text-white mb-1">{{ t('dataGrid.errorLoadingData', 'Error loading data') }}</h3>
+                <p class="text-sm text-red-400">{{ error }}</p>
+              </div>
+              <EmptyState v-else :title="t('dataGrid.noData')" :description="t('dataGrid.noDataDescription')" />
             </td>
           </tr>
-          <tr v-for="(row, idx) in filteredData" :key="idx" class="border-t border-[#334155] hover:bg-[#334155]/30 transition-colors">
+          <tr v-else v-for="(row, idx) in filteredData" :key="idx" class="border-t border-[#334155] hover:bg-[#334155]/30 transition-colors">
             <td v-for="col in schema.columns" :key="col.key" class="px-6 py-4">
               <span v-if="col.type === 'badge'" class="px-2 py-1 text-xs rounded-full bg-slate-700 text-slate-300">
                 {{ row[col.key] }}
@@ -103,6 +110,7 @@ const props = defineProps({
 const schema = ref({ columns: [], actions: [], row_actions: [] })
 const data = ref([])
 const loading = ref(true)
+const error = ref(null)
 const actionLoading = ref('')
 const searchQuery = ref('')
 const inputAction = ref(null)
@@ -113,15 +121,23 @@ const actionTitle = (action) => t(`moduleActions.${action.id}.title`, action.tit
 const inputTitle = (input) => t(`dataGrid.inputs.${input.key}`, input.label)
 
 const fetchSchema = async () => {
-  const { data } = await api.get(`/modules/${props.module.id}/datagrid/${props.page.id}/schema`)
-  schema.value = data
+  try {
+    const { data } = await api.get(`/modules/${props.module.id}/datagrid/${props.page.id}/schema`)
+    schema.value = data
+  } catch (err) {
+    error.value = apiErrorMessage(err)
+  }
 }
 
 const fetchData = async () => {
   loading.value = true
+  error.value = null
   try {
     const response = await api.get(`/modules/${props.module.id}/datagrid/${props.page.id}/data`)
     data.value = Array.isArray(response.data) ? response.data : []
+  } catch (err) {
+    error.value = apiErrorMessage(err)
+    data.value = []
   } finally {
     loading.value = false
   }
@@ -206,9 +222,11 @@ const filteredData = computed(() => {
 
 onMounted(async () => {
   try {
-    await Promise.all([fetchSchema(), fetchData()])
-  } catch (error) {
-    console.error('Failed to load data grid:', apiErrorMessage(error))
+    await fetchSchema()
+    await fetchData()
+  } catch (err) {
+    console.error('Failed to load data grid schema:', apiErrorMessage(err))
+    error.value = apiErrorMessage(err)
     loading.value = false
   }
 })

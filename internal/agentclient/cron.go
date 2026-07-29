@@ -108,21 +108,55 @@ func (c *Client) CronValidate(ctx context.Context, job contract.CronJob) (*contr
 }
 
 func cronJobToProto(job contract.CronJob) *agentv1.CronJob {
+	var protoType agentv1.CronJobType
+	switch job.Type {
+	case "SYSTEM":
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_SYSTEM
+	case "PACKAGE":
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_PACKAGE
+	case "OPENDEPLOY":
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_OPENDEPLOY
+	case "USER":
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_USER
+	default:
+		protoType = agentv1.CronJobType_CRON_JOB_TYPE_UNKNOWN
+	}
+
 	return &agentv1.CronJob{
 		Id: job.ID, Name: job.Name, Description: job.Description, Command: job.Command,
 		WorkingDir: job.WorkingDir, User: job.User, Environment: job.Environment,
 		Expression: job.Expression, Timezone: job.Timezone, Enabled: job.Enabled,
 		Source: job.Source, ReadOnly: job.ReadOnly,
+		Type: protoType, PackageName: job.PackageName,
+		IsProtected: job.IsProtected, CanEdit: job.CanEdit,
+		CanDelete: job.CanDelete, LockReason: job.LockReason,
 	}
 }
 
 func cronJobFromProto(job *agentv1.CronJob) contract.CronJob {
+	var jobType string
+	switch job.GetType() {
+	case agentv1.CronJobType_CRON_JOB_TYPE_SYSTEM:
+		jobType = "SYSTEM"
+	case agentv1.CronJobType_CRON_JOB_TYPE_PACKAGE:
+		jobType = "PACKAGE"
+	case agentv1.CronJobType_CRON_JOB_TYPE_OPENDEPLOY:
+		jobType = "OPENDEPLOY"
+	case agentv1.CronJobType_CRON_JOB_TYPE_USER:
+		jobType = "USER"
+	default:
+		jobType = "UNKNOWN"
+	}
+
 	return contract.CronJob{
 		ID: job.GetId(), Name: job.GetName(), Description: job.GetDescription(),
 		Command: job.GetCommand(), WorkingDir: job.GetWorkingDir(), User: job.GetUser(),
 		Environment: job.GetEnvironment(), Expression: job.GetExpression(),
 		Timezone: job.GetTimezone(), Enabled: job.GetEnabled(),
 		Source: job.GetSource(), ReadOnly: job.GetReadOnly(),
+		Type: jobType, PackageName: job.GetPackageName(),
+		IsProtected: job.GetIsProtected(), CanEdit: job.GetCanEdit(),
+		CanDelete: job.GetCanDelete(), LockReason: job.GetLockReason(),
 		CreatedAt: time.UnixMilli(job.GetCreatedAt()).UTC(), UpdatedAt: time.UnixMilli(job.GetUpdatedAt()).UTC(),
 	}
 }

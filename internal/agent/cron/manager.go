@@ -49,6 +49,11 @@ func (m *Manager) List() ([]Job, error) {
 	sort.Slice(store.Jobs, func(i, j int) bool { return store.Jobs[i].Name < store.Jobs[j].Name })
 	for index := range store.Jobs {
 		store.Jobs[index].Source = "OpenDeploy"
+		if store.Jobs[index].Type == "" {
+			store.Jobs[index].Type = JobTypeOpenDeploy
+			store.Jobs[index].IsProtected = true
+			store.Jobs[index].LockReason = "Managed by OpenDeploy"
+		}
 	}
 	return append(store.Jobs, discoverSystemJobs(m.cronPath)...), nil
 }
@@ -61,6 +66,16 @@ func (m *Manager) Get(id string) (Job, error) {
 		return Job{}, err
 	}
 	for _, job := range store.Jobs {
+		if job.ID == id {
+			if job.Type == "" {
+				job.Type = JobTypeOpenDeploy
+				job.IsProtected = true
+				job.LockReason = "Managed by OpenDeploy"
+			}
+			return job, nil
+		}
+	}
+	for _, job := range discoverSystemJobs(m.cronPath) {
 		if job.ID == id {
 			return job, nil
 		}
@@ -83,9 +98,19 @@ func (m *Manager) Create(job Job) (Job, error) {
 			return Job{}, fmt.Errorf("cron job %q already exists", job.ID)
 		}
 	}
+	for _, existing := range discoverSystemJobs(m.cronPath) {
+		if existing.ID == job.ID {
+			return Job{}, fmt.Errorf("cron job %q already exists as a system job", job.ID)
+		}
+	}
 	now := m.now().UTC()
 	job.CreatedAt, job.UpdatedAt = now, now
 	job.Source, job.ReadOnly = "OpenDeploy", false
+	if job.Type == "" {
+		job.Type = JobTypeUser
+		job.CanEdit = true
+		job.CanDelete = true
+	}
 	store.Jobs = append(store.Jobs, job)
 	if err := m.commit(store); err != nil {
 		return Job{}, err
@@ -103,12 +128,23 @@ func (m *Manager) Update(job Job) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	for _, existing := range discoverSystemJobs(m.cronPath) {
+		if existing.ID == job.ID && existing.IsProtected {
+			return Job{}, fmt.Errorf("cannot modify protected job: %s", existing.LockReason)
+		}
+	}
 	found := false
 	for index := range store.Jobs {
 		if store.Jobs[index].ID == job.ID {
+			if store.Jobs[index].IsProtected || store.Jobs[index].Type == JobTypeOpenDeploy {
+				return Job{}, fmt.Errorf("cannot modify protected OpenDeploy job")
+			}
 			job.CreatedAt = store.Jobs[index].CreatedAt
 			job.UpdatedAt = m.now().UTC()
 			job.Source, job.ReadOnly = "OpenDeploy", false
+			if job.Type == "" {
+				job.Type = store.Jobs[index].Type
+			}
 			store.Jobs[index] = job
 			found = true
 			break
@@ -130,10 +166,18 @@ func (m *Manager) Delete(id string) error {
 	if err != nil {
 		return err
 	}
+	for _, job := range discoverSystemJobs(m.cronPath) {
+		if job.ID == id && job.IsProtected {
+			return fmt.Errorf("cannot delete protected job: %s", job.LockReason)
+		}
+	}
 	filtered := store.Jobs[:0]
 	found := false
 	for _, job := range store.Jobs {
 		if job.ID == id {
+			if job.IsProtected || job.Type == JobTypeOpenDeploy {
+				return fmt.Errorf("cannot delete protected OpenDeploy job")
+			}
 			found = true
 			continue
 		}
@@ -150,6 +194,9 @@ func (m *Manager) SetEnabled(id string, enabled bool) (Job, error) {
 	job, err := m.Get(id)
 	if err != nil {
 		return Job{}, err
+	}
+	if job.IsProtected {
+		return Job{}, fmt.Errorf("cannot modify enabled state of protected job: %s", job.LockReason)
 	}
 	job.Enabled = enabled
 	return m.Update(job)
