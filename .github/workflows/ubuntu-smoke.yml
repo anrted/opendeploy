@@ -35,7 +35,6 @@ jobs:
           sudo sh deployments/install-dev.sh
       - name: Start services
         run: |
-          echo "OD_ADMIN_PASSWORD=SmokeTestPassword123!" | sudo tee -a /etc/opendeploy/env
           sudo systemctl start opendeploy-agent
           sudo systemctl start opendeploy-core
           timeout 30 sh -c 'until curl -fsS http://127.0.0.1:5888/health; do sleep 1; done'
