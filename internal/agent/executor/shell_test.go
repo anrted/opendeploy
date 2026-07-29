@@ -99,6 +99,7 @@ func TestValidatorAllowsBoundedNginxDiagnostics(t *testing.T) {
 		{"nginx", []string{"-V"}},
 		{"ss", []string{"-tuln"}},
 		{"curl", []string{"-s", "--max-time", "1", "http://127.0.0.1/nginx_status"}},
+		{"curl", []string{"-s", "-o", "/dev/null", "-w", "%{http_code}", "-H", "Host: smoke.local", "http://127.0.0.1/"}},
 		{"openssl", []string{"x509", "-in", "/etc/letsencrypt/live/example.com/fullchain.pem", "-noout", "-issuer", "-dates"}},
 		{"certbot", []string{"renew", "--cert-name", "example.com", "--non-interactive"}},
 	} {
@@ -108,6 +109,9 @@ func TestValidatorAllowsBoundedNginxDiagnostics(t *testing.T) {
 	}
 	if err := validator.Validate("curl", []string{"-s", "https://example.com"}); err == nil {
 		t.Fatal("external curl target was accepted")
+	}
+	if err := validator.Validate("curl", []string{"-s", "-o", "/dev/null", "-w", "%{http_code}", "-H", "Host: smoke.local\nX-Evil: yes", "http://127.0.0.1/"}); err == nil {
+		t.Fatal("curl Host header injection was accepted")
 	}
 	if err := validator.Validate("openssl", []string{"x509", "-in", "/etc/shadow", "-noout"}); err == nil {
 		t.Fatal("certificate path outside managed roots was accepted")

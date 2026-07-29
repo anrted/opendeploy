@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +68,7 @@ var (
 	safePackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+._:-]*$`)
 	decimal     = regexp.MustCompile(`^[0-9]+$`)
 	safeComment = regexp.MustCompile(`^[\pL\pN _.,:/@+()-]{1,128}$`)
+	safeHost    = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
 )
 
 func (v *Validator) Validate(binary string, args []string) error {
@@ -82,6 +84,9 @@ func (v *Validator) Validate(binary string, args []string) error {
 	}
 	if allowed == nil {
 		return fmt.Errorf("validator: binary %q is not on the allowlist", binary)
+	}
+	if binary == "curl" {
+		return validateCurlArgs(args)
 	}
 	for index, arg := range args {
 		if arg == "" || len(arg) > maxCommandArgument || strings.ContainsAny(arg, "\x00\r\n") {
@@ -159,16 +164,6 @@ func validateOperands(binary string, args []string) error {
 		if len(args) != 1 || args[0] != "-tuln" {
 			return fmt.Errorf("validator: only socket-listing diagnostics are permitted")
 		}
-	case "curl":
-		expected := []string{"-s", "--max-time", "1", "http://127.0.0.1/nginx_status"}
-		if len(args) != len(expected) {
-			return fmt.Errorf("validator: only the local nginx status endpoint is permitted")
-		}
-		for index := range expected {
-			if args[index] != expected[index] {
-				return fmt.Errorf("validator: only the local nginx status endpoint is permitted")
-			}
-		}
 	case "git":
 		// Generic Git mutation is intentionally unavailable until repository
 		// roots and remote URLs are carried by a typed RPC.
@@ -179,6 +174,30 @@ func validateOperands(binary string, args []string) error {
 		}
 	}
 	return nil
+}
+
+func validateCurlArgs(args []string) error {
+	statusArgs := []string{"-s", "--max-time", "1", "http://127.0.0.1/nginx_status"}
+	if slices.Equal(args, statusArgs) {
+		return nil
+	}
+
+	if len(args) == 8 &&
+		args[0] == "-s" &&
+		args[1] == "-o" &&
+		args[2] == "/dev/null" &&
+		args[3] == "-w" &&
+		args[4] == "%{http_code}" &&
+		args[5] == "-H" &&
+		strings.HasPrefix(args[6], "Host: ") &&
+		args[7] == "http://127.0.0.1/" {
+		host := strings.TrimPrefix(args[6], "Host: ")
+		if safeHost.MatchString(host) && !strings.Contains(host, "..") {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("validator: only local nginx health endpoints are permitted")
 }
 
 func isPackageAction(value string) bool {
