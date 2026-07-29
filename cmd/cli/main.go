@@ -80,14 +80,18 @@ func runUpdate(args []string) {
 		if err := json.Unmarshal(data, &request); err != nil || request.Validate() != nil {
 			log.Fatal("Update request is malformed")
 		}
+		removeRequest := func() {
+			if err := os.Remove(requestFile); err != nil && !os.IsNotExist(err) {
+				log.Printf("warning: request cleanup failed: %v", err)
+			}
+		}
 		if request.Operation == "rollback" {
 			entry, err := engine.Rollback(ctx, request.TransactionID)
 			if err != nil {
+				removeRequest()
 				log.Fatalf("Rollback failed: %v", err)
 			}
-			if err := os.Remove(requestFile); err != nil && !os.IsNotExist(err) {
-				log.Printf("warning: rollback succeeded but request cleanup failed: %v", err)
-			}
+			removeRequest()
 			fmt.Printf("Rollback %s completed successfully.\n", entry.ID)
 			return
 		}
@@ -96,11 +100,10 @@ func runUpdate(args []string) {
 		if request.Operation == "backup" {
 			manifest, path, err := backupEngine.Create(ctx, request.Reason)
 			if err != nil {
+				removeRequest()
 				log.Fatalf("Backup failed: %v", err)
 			}
-			if err := os.Remove(requestFile); err != nil && !os.IsNotExist(err) {
-				log.Printf("warning: backup succeeded but request cleanup failed: %v", err)
-			}
+			removeRequest()
 			fmt.Printf("Backup %s created: %s\n", manifest.ID, path)
 			return
 		}
@@ -108,22 +111,20 @@ func runUpdate(args []string) {
 			archivePath := filepath.Join(systembackup.DefaultConfig().BackupDir, request.Archive)
 			manifest, err := backupEngine.Restore(ctx, archivePath)
 			if err != nil {
+				removeRequest()
 				log.Fatalf("Restore failed: %v", err)
 			}
-			if err := os.Remove(requestFile); err != nil && !os.IsNotExist(err) {
-				log.Printf("warning: restore succeeded but request cleanup failed: %v", err)
-			}
+			removeRequest()
 			fmt.Printf("Backup %s restored successfully.\n", manifest.ID)
 			return
 		}
 		fmt.Printf("Applying signed OpenDeploy release %s...\n", request.Tag)
 		entry, err := engine.Apply(ctx, request.Tag, version.Version)
 		if err != nil {
+			removeRequest()
 			log.Fatalf("Update failed (transaction %s): %v", entry.ID, err)
 		}
-		if err := os.Remove(requestFile); err != nil && !os.IsNotExist(err) {
-			log.Printf("warning: update succeeded but request cleanup failed: %v", err)
-		}
+		removeRequest()
 		fmt.Printf("Update %s completed successfully.\n", entry.ID)
 		return
 	}

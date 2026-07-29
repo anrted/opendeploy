@@ -11,6 +11,9 @@ set -e
 
 REPO="anrted/opendeploy"
 GITHUB_API="https://api.github.com/repos/$REPO/releases/latest"
+COSIGN_VERSION="v3.0.6"
+COSIGN_AMD64_SHA256="c956e5dfcac53d52bcf058360d579472f0c1d2d9b69f55209e256fe7783f4c74"
+COSIGN_ARM64_SHA256="bedac92e8c3729864e13d4a17048007cfafa79d5deca993a43a90ffe018ef2b8"
 
 PREFIX="/usr/bin"
 CONFIG_DIR="/etc/opendeploy"
@@ -318,7 +321,19 @@ chown opendeploy:opendeploy /var/lib/opendeploy/migration-backups
 chmod 0700 /var/lib/opendeploy/migration-backups
 chmod 0755 /opt/opendeploy /opt/opendeploy/releases
 if [ ! -x /usr/bin/cosign ] && ! grep -Eq '^OD_UPDATE_(COSIGN_PATH|GPG_KEYRING)=' /etc/opendeploy/update.env 2>/dev/null; then
-    print_warning "Для автоматических обновлений установите /usr/bin/cosign либо настройте trust-параметры в /etc/opendeploy/update.env"
+    print_step "Installing the pinned Sigstore verifier"
+    case "$ARCH" in
+        amd64) COSIGN_SHA256="$COSIGN_AMD64_SHA256" ;;
+        arm64) COSIGN_SHA256="$COSIGN_ARM64_SHA256" ;;
+        *) die "Cosign is not available for architecture $ARCH" ;;
+    esac
+    COSIGN_URL="https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${ARCH}"
+    curl -fsSL --retry 3 "$COSIGN_URL" -o "$TMP_DIR/cosign"
+    printf '%s  %s\n' "$COSIGN_SHA256" "$TMP_DIR/cosign" | sha256sum -c - >/dev/null 2>&1 ||
+        die "Cosign checksum verification failed"
+    install -m 0755 "$TMP_DIR/cosign" /usr/bin/cosign
+    /usr/bin/cosign version >/dev/null 2>&1 || die "Installed Cosign binary is unusable"
+    print_success "Cosign ${COSIGN_VERSION} installed with pinned SHA256"
 fi
 
 systemctl daemon-reload

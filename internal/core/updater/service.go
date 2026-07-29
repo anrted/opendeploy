@@ -4,6 +4,7 @@ package updater
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,10 @@ const (
 	releasesURL   = "https://api.github.com/repos/anrted/opendeploy/releases/latest"
 	updateRequest = "/var/lib/opendeploy/update.request"
 )
+
+// ErrOperationQueued means the privileged worker has not consumed the current
+// request yet. HTTP callers should report this as a conflict, not a generic 500.
+var ErrOperationQueued = errors.New("updates: privileged operation is already queued")
 
 type Status struct {
 	CurrentVersion  string     `json:"current_version"`
@@ -253,7 +258,7 @@ func (s *Service) writeRequest(ctx context.Context, request secureupdate.UpdateR
 		return err
 	}
 	if current, err := s.agent.FileRead(ctx, updateRequest); err == nil && strings.TrimSpace(string(current)) != "" {
-		return fmt.Errorf("updates: another privileged operation is already queued or requires operator attention")
+		return fmt.Errorf("%w or requires operator attention", ErrOperationQueued)
 	}
 	content, err := json.Marshal(request)
 	if err != nil {

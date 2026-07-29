@@ -255,6 +255,14 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	if err := h.updates.Apply(r.Context(), req.Type); err != nil {
+		if errors.Is(err, updater.ErrOperationQueued) {
+			writeError(w, apperrors.New(
+				http.StatusConflict,
+				apperrors.CodeConflict,
+				"another update operation is pending; inspect update history and updater service logs",
+			))
+			return
+		}
 		writeError(w, apperrors.Internal("start update", err))
 		return
 	}

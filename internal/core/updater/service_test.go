@@ -3,6 +3,7 @@ package updater
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -75,6 +76,18 @@ func TestApplyRejectsDevelopmentChannel(t *testing.T) {
 	service := NewService("v0.1.0", "old", &recordingAgent{})
 	if err := service.Apply(context.Background(), "dev"); err == nil {
 		t.Fatal("development update channel was accepted")
+	}
+}
+
+func TestApplyReportsQueuedOperation(t *testing.T) {
+	agent := &recordingAgent{data: []byte("{\"operation\":\"apply\"}\n")}
+	service := NewService("v0.1.0", "old", agent)
+	service.cached = &Status{UpdateAvailable: true, LatestVersion: "v0.2.0"}
+	service.cachedAt = time.Now()
+
+	err := service.Apply(context.Background(), "stable")
+	if !errors.Is(err, ErrOperationQueued) {
+		t.Fatalf("Apply error = %v, want ErrOperationQueued", err)
 	}
 }
 
