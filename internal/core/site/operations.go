@@ -3,6 +3,7 @@ package site
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -59,16 +60,29 @@ func (s *Service) verifySiteHealth(ctx context.Context, site *Site) error {
 		// Alternatively, we can just allow 301, 200, 302, 403. Basically any valid HTTP response from Nginx.
 	}
 	
-	exitCode, stdout, stderr, err := s.agent.CommandExecute(ctx, "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-H", fmt.Sprintf("Host: %s", primaryDomain), "http://127.0.0.1/")
+	var exitCode int
+	var stdout, stderr string
+	var err error
+
+	// Retry up to 10 times (2 seconds) to allow Nginx to finish reloading
+	for i := 0; i < 10; i++ {
+		exitCode, stdout, stderr, err = s.agent.CommandExecute(ctx, "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-H", fmt.Sprintf("Host: %s", primaryDomain), "http://127.0.0.1/")
+		if err == nil && exitCode == 0 {
+			// Accept 200 (OK), 301/302 (Redirects), 403 (Forbidden if no index), 404 (Not Found if no index)
+			if stdout == "200" || stdout == "301" || stdout == "302" || stdout == "403" || stdout == "404" {
+				return nil
+			}
+		}
+		// wait 200ms before next retry
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+
 	if err != nil {
 		return fmt.Errorf("health check execution failed: %w", err)
 	}
-	
-	// Accept 200 (OK), 301/302 (Redirects), 403 (Forbidden if no index), 404 (Not Found if no index)
-	// We mainly want to ensure it's not 502 Bad Gateway or 500 Internal Server Error.
-	if exitCode == 0 && (stdout == "200" || stdout == "301" || stdout == "302" || stdout == "403" || stdout == "404") {
-		return nil
-	}
-	
 	return fmt.Errorf("health check failed for %s: received HTTP %s. Error: %s", primaryDomain, stdout, stderr)
 }
