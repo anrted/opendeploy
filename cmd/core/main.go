@@ -8,6 +8,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/app"
 	moduleApache "github.com/anrted/opendeploy/modules/apache"
 	moduleCertbot "github.com/anrted/opendeploy/modules/certbot"
+	moduleCron "github.com/anrted/opendeploy/modules/cron"
 	moduleFail2Ban "github.com/anrted/opendeploy/modules/fail2ban"
 	moduleFirewall "github.com/anrted/opendeploy/modules/firewall"
 	moduleGit "github.com/anrted/opendeploy/modules/git"
@@ -49,6 +50,7 @@ func main() {
 					modulePostgreSQL.New(),
 					moduleFirewall.New(),
 					moduleFail2Ban.New(),
+					moduleCron.New(),
 				}
 			},
 		),

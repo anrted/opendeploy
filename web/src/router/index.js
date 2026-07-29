@@ -60,6 +60,11 @@ const routes = [
         component: () => import('@/views/TasksView.vue'),
       },
       {
+        path: 'cron',
+        name: 'cron',
+        component: () => import('@/views/CronView.vue'),
+      },
+      {
         path: 'processes',
         name: 'processes',
         component: () => import('@/views/ProcessesView.vue'),

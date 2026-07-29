@@ -11,6 +11,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	agentCron "github.com/anrted/opendeploy/internal/agent/cron"
 	"github.com/anrted/opendeploy/internal/agent/executor"
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
@@ -35,6 +36,7 @@ type Agent struct {
 	pkgs    packages.Manager
 	fs      *filesystem.Manager
 	fw      *firewall.UFWManager
+	cron    *agentCron.Manager
 }
 
 // New wires the Agent dependency graph.
@@ -49,6 +51,7 @@ func New(cfg *config.Config) (*Agent, error) {
 	systemdMgr := agentSystemd.NewManager(shell, log)
 	fsMgr := filesystem.NewManager()
 	fwMgr := firewall.NewUFWManager(shell, log)
+	cronMgr := agentCron.NewManager()
 
 	pkgMgr, err := packages.Detect(shell, log)
 	if err != nil {
@@ -63,6 +66,7 @@ func New(cfg *config.Config) (*Agent, error) {
 		pkgs:    pkgMgr,
 		fs:      fsMgr,
 		fw:      fwMgr,
+		cron:    cronMgr,
 	}, nil
 }
 
@@ -91,7 +95,7 @@ func (a *Agent) Start() error {
 		grpc.ChainUnaryInterceptor(recovery.GRPCUnaryInterceptor()),
 		grpc.ChainStreamInterceptor(recovery.GRPCStreamInterceptor()),
 	)
-	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector(), a.shell).Register(a.grpcServer)
+	agentServer.New(a.systemd, a.pkgs, a.fs, a.fw, stats.NewCollector(), a.shell, a.cron).Register(a.grpcServer)
 
 	a.logger.Info("agent: gRPC server started", "socket", socketPath)
 	return a.grpcServer.Serve(lis)

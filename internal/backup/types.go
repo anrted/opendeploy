@@ -44,6 +44,8 @@ func DefaultConfig() Config {
 			{ID: "ssl", Path: "/etc/letsencrypt"},
 			{ID: "nginx", Path: "/etc/nginx"},
 			{ID: "fail2ban", Path: "/etc/fail2ban"},
+			{ID: "cron", Path: "/etc/cron.d/opendeploy", File: true},
+			{ID: "cron-state", Path: "/var/lib/opendeploy/cron"},
 			{ID: "ufw", Path: "/etc/ufw"},
 			{ID: "nftables", Path: "/etc/nftables.conf", File: true},
 			{ID: "apache", Path: "/etc/apache2"},

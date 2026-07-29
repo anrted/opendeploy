@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/anrted/opendeploy/internal/agent/archive"
+	agentCron "github.com/anrted/opendeploy/internal/agent/cron"
 	executor "github.com/anrted/opendeploy/internal/agent/executor"
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
@@ -32,10 +33,11 @@ type Service struct {
 	fw      firewall.Provider
 	stats   *stats.Collector
 	shell   *executor.Shell
+	cron    *agentCron.Manager
 }
 
-func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager firewall.Provider, collector *stats.Collector, shell *executor.Shell) *Service {
-	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector, shell: shell}
+func New(systemdManager *systemd.Manager, packageManager packages.Manager, fileManager *filesystem.Manager, firewallManager firewall.Provider, collector *stats.Collector, shell *executor.Shell, cronManager *agentCron.Manager) *Service {
+	return &Service{systemd: systemdManager, pkgs: packageManager, fs: fileManager, fw: firewallManager, stats: collector, shell: shell, cron: cronManager}
 }
 
 func (s *Service) Register(registrar grpc.ServiceRegistrar) {

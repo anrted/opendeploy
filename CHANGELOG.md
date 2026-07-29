@@ -5,6 +5,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.18] - 2026-07-29
+
+### Added
+
+- Cron module with typed Agent RPCs, atomic managed crontab updates, privilege
+  dropping and bounded execution history.
+- Cron CRUD, validation, enable/disable, manual run, duplication, templates,
+  JSON/YAML/crontab import and export.
+- Read-only discovery of system and per-user crontabs.
+- Task Manager integration for manual Cron runs.
+- Dedicated Cron UI with search, filters, sorting, pagination, schedule
+  builder and automatically refreshed logs.
+- Backup and recovery coverage for managed Cron configuration and state.
+
 ### Added
 
 - Live Fail2Ban protection preset cards with jail, log, threshold, ban duration,

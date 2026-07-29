@@ -121,6 +121,9 @@ const UsersIcon = {
 const TasksIcon = {
   template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12h14V7a2 2 0 00-2-2h-2M9 5a3 3 0 006 0M9 12l2 2 4-4"/></svg>`
 }
+const CronIcon = {
+  template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M12 7v5l3 2"/></svg>`
+}
 
 const allNavItems = [
   { name: 'dashboard', label: 'Dashboard', to: '/', icon: DashboardIcon },
@@ -128,6 +131,7 @@ const allNavItems = [
   { name: 'sites',     label: 'Sites',     to: '/sites', icon: SitesIcon },
   { name: 'services',  label: 'Services',  to: '/services', icon: ServicesIcon },
   { name: 'tasks',     label: 'Tasks',     to: '/tasks', icon: TasksIcon },
+  { name: 'cron',      label: 'Cron',      to: '/cron', icon: CronIcon },
   { name: 'processes', label: 'Processes', to: '/processes', icon: ProcessesIcon },
   { name: 'users',     label: 'Users',     to: '/users', icon: UsersIcon, adminOnly: true },
   { name: 'firewall',  label: 'Firewall',  to: '/modules/firewall', icon: FirewallIcon },

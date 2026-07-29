@@ -261,6 +261,7 @@ func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Re
 				DB:     db.DB,
 				Events: eventBusAdapter{bus},
 				Logger: log,
+				Tasks:  moduleService,
 			}
 			return loader.Bootstrap(ctx, deps)
 		},

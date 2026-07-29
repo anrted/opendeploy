@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	agentapp "github.com/anrted/opendeploy/internal/agent/app"
+	agentCron "github.com/anrted/opendeploy/internal/agent/cron"
 	"github.com/anrted/opendeploy/internal/platform/config"
 	"github.com/anrted/opendeploy/pkg/version"
 )
@@ -22,11 +23,20 @@ import (
 func main() {
 	configPath := flag.String("config", "/etc/opendeploy/opendeploy.yaml", "path to config file")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	cronRun := flag.String("cron-run", "", "execute a managed Cron job and exit")
 	flag.Parse()
 
 	if *showVersion {
 		log.Println(version.Info())
 		os.Exit(0)
+	}
+	if *cronRun != "" {
+		run, err := agentCron.NewManager().Run(context.Background(), *cronRun, "cron", "cron")
+		if err != nil {
+			log.Printf("cron job %s failed (exit %d): %v", *cronRun, run.ExitCode, err)
+			os.Exit(1)
+		}
+		os.Exit(run.ExitCode)
 	}
 
 	cfg, err := config.Load(*configPath)

@@ -49,6 +49,21 @@ service AgentService {
     rpc FirewallToggle (FirewallToggleRequest) returns (FirewallToggleResponse);
     rpc FirewallReset (FirewallResetRequest) returns (FirewallResetResponse);
 
+    // ── Cron management ──────────────────────────────────────────────────
+    rpc CronList (CronListRequest) returns (CronListResponse);
+    rpc CronGet (CronGetRequest) returns (CronJob);
+    rpc CronCreate (CronMutationRequest) returns (CronJob);
+    rpc CronUpdate (CronMutationRequest) returns (CronJob);
+    rpc CronDelete (CronIDRequest) returns (CronOperationResponse);
+    rpc CronEnable (CronIDRequest) returns (CronJob);
+    rpc CronDisable (CronIDRequest) returns (CronJob);
+    rpc CronRun (CronRunRequest) returns (CronRunRecord);
+    rpc CronHistory (CronHistoryRequest) returns (CronHistoryResponse);
+    rpc CronLogs (CronLogsRequest) returns (CronHistoryResponse);
+    rpc CronImport (CronImportRequest) returns (CronListResponse);
+    rpc CronExport (CronExportRequest) returns (CronExportResponse);
+    rpc CronValidate (CronMutationRequest) returns (CronValidationResponse);
+
     // ── System information ─────────────────────────────────────────────────
     rpc SystemStats (SystemStatsRequest) returns (SystemStatsResponse);
     rpc ProcessList (ProcessListRequest) returns (ProcessListResponse);
@@ -373,6 +388,73 @@ message FirewallResetRequest {}
 message FirewallResetResponse {
     bool   success = 1;
     string message = 2;
+}
+
+// ─── Cron management ─────────────────────────────────────────────────────
+
+message CronJob {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    string command = 4;
+    string working_dir = 5;
+    string user = 6;
+    map<string, string> environment = 7;
+    string expression = 8;
+    string timezone = 9;
+    bool enabled = 10;
+    int64 created_at = 11;
+    int64 updated_at = 12;
+    string source = 13;
+    bool read_only = 14;
+}
+
+message CronListRequest {}
+message CronListResponse { repeated CronJob jobs = 1; }
+message CronGetRequest { string id = 1; }
+message CronIDRequest { string id = 1; }
+message CronMutationRequest { CronJob job = 1; }
+message CronOperationResponse { bool success = 1; }
+message CronRunRequest {
+    string id = 1;
+    string trigger = 2;
+    string actor = 3;
+}
+message CronRunRecord {
+    string id = 1;
+    string job_id = 2;
+    int64 started_at = 3;
+    int64 finished_at = 4;
+    int64 duration_ms = 5;
+    int32 exit_code = 6;
+    string stdout = 7;
+    string stderr = 8;
+    string triggered = 9;
+    string actor = 10;
+}
+message CronHistoryRequest {
+    string id = 1;
+    int32 limit = 2;
+}
+message CronLogsRequest {
+    string id = 1;
+    int32 limit = 2;
+}
+message CronHistoryResponse { repeated CronRunRecord runs = 1; }
+message CronImportRequest {
+    string format = 1;
+    bytes content = 2;
+    bool replace = 3;
+}
+message CronExportRequest { string format = 1; }
+message CronExportResponse {
+    string format = 1;
+    bytes content = 2;
+}
+message CronValidationResponse {
+    bool valid = 1;
+    repeated string warnings = 2;
+    string error = 3;
 }
 
 // ─── System information ────────────────────────────────────────────────────

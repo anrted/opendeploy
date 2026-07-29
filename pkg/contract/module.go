@@ -224,6 +224,11 @@ type ModuleDeps struct {
 	Events EventBus     // in-process event bus
 	Logger *slog.Logger // structured logger pre-configured with module context
 	Config ModuleConfig // module-specific config (key-value map from YAML)
+	Tasks  TaskRunner   // background operations exposed in Task Manager
+}
+
+type TaskRunner interface {
+	StartTask(ctx context.Context, name, taskType string, payload map[string]string, work func(context.Context) (string, error)) (string, error)
 }
 
 // ModuleConfig provides typed access to module-specific configuration.
@@ -414,6 +419,58 @@ type AgentClient interface {
 	SystemStats(ctx context.Context) (*SystemStats, error)
 	ProcessList(ctx context.Context) ([]ProcessStats, error)
 	ProcessKill(ctx context.Context, pid int, force bool) error
+}
+
+// CronAgentClient is an optional typed extension implemented by the real
+// Agent client. Keeping it separate preserves compatibility for external
+// modules and test doubles that implement AgentClient.
+type CronAgentClient interface {
+	CronList(ctx context.Context) ([]CronJob, error)
+	CronGet(ctx context.Context, id string) (*CronJob, error)
+	CronCreate(ctx context.Context, job CronJob) (*CronJob, error)
+	CronUpdate(ctx context.Context, job CronJob) (*CronJob, error)
+	CronDelete(ctx context.Context, id string) error
+	CronEnable(ctx context.Context, id string) (*CronJob, error)
+	CronDisable(ctx context.Context, id string) (*CronJob, error)
+	CronRun(ctx context.Context, id, trigger, actor string) (*CronRun, error)
+	CronHistory(ctx context.Context, id string, limit int) ([]CronRun, error)
+	CronValidate(ctx context.Context, job CronJob) (*CronValidation, error)
+}
+
+type CronJob struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Command     string            `json:"command"`
+	WorkingDir  string            `json:"working_dir,omitempty"`
+	User        string            `json:"user"`
+	Environment map[string]string `json:"environment,omitempty"`
+	Expression  string            `json:"expression"`
+	Timezone    string            `json:"timezone,omitempty"`
+	Enabled     bool              `json:"enabled"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	Source      string            `json:"source,omitempty"`
+	ReadOnly    bool              `json:"read_only,omitempty"`
+}
+
+type CronRun struct {
+	ID         string        `json:"id"`
+	JobID      string        `json:"job_id"`
+	StartedAt  time.Time     `json:"started_at"`
+	FinishedAt time.Time     `json:"finished_at"`
+	Duration   time.Duration `json:"duration"`
+	ExitCode   int           `json:"exit_code"`
+	Stdout     string        `json:"stdout,omitempty"`
+	Stderr     string        `json:"stderr,omitempty"`
+	Triggered  string        `json:"triggered"`
+	Actor      string        `json:"actor,omitempty"`
+}
+
+type CronValidation struct {
+	Valid    bool     `json:"valid"`
+	Warnings []string `json:"warnings,omitempty"`
+	Error    string   `json:"error,omitempty"`
 }
 
 type SiteAction string

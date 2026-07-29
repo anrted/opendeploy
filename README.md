@@ -112,6 +112,7 @@ make dev-core
 | PostgreSQL | Relational database management | Planned |
 | Apache | Web server | Planned |
 | Fail2ban | Intrusion-prevention jail management | Alpha |
+| Cron | Scheduled task management and execution history | Alpha |
 
 ---
 
