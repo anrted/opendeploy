@@ -82,9 +82,9 @@ jobs:
             -H "X-OpenDeploy-Cert-Fingerprint: $fingerprint" \
             -H 'Content-Type: application/json' \
             -d '{"state":"online","cpu_usage":12.5,"memory_usage":34.5,"disk_usage":45.5,"uptime":120,"agent_version":"0.1.23"}' |
-            jq -e '.next_heartbeat_seconds > 0'
+            jq -e '.heartbeat_interval > 0'
           curl --fail-with-body -sS \
-            "http://127.0.0.1:5888/api/v1/servers?search=Smoke%20remote%20agent" \
+            "http://127.0.0.1:5888/api/v1/servers?query=Smoke%20remote%20agent" \
             -H "Authorization: Bearer $token" |
             jq -e --arg id "$server_id" '.items[] | select(.id == $id and .status == "online")'
           curl -fsS http://127.0.0.1:5888/api/v1/modules \
