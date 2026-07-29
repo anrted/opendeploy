@@ -2,7 +2,6 @@ package agentclient
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -84,8 +83,10 @@ func (c *Client) CronHistory(ctx context.Context, id string, limit int) ([]contr
 	if limit < 0 {
 		limit = 0
 	}
-	if limit > math.MaxInt32 {
-		limit = math.MaxInt32
+	// Keep literal bounds: CodeQL can prove this architecture-dependent int
+	// conversion safe only when the int32 maximum is compared as a constant.
+	if limit > 2147483647 {
+		limit = 2147483647
 	}
 	response, err := c.stub.CronHistory(ctx, &agentv1.CronHistoryRequest{Id: id, Limit: int32(limit)})
 	if err != nil {
