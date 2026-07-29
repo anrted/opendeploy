@@ -54,6 +54,13 @@ func TestIssueClientCertificateRejectsInvalidCSR(t *testing.T) {
 	}
 }
 
+func TestParseSQLiteTimestamp(t *testing.T) {
+	got := parseTime("2026-07-29 18:01:37.493799347+00:00")
+	if got.IsZero() || got.UTC().Format(time.RFC3339Nano) != "2026-07-29T18:01:37.493799347Z" {
+		t.Fatalf("unexpected parsed time: %v", got)
+	}
+}
+
 func TestHeartbeatHealthThresholds(t *testing.T) {
 	if got := healthFromHeartbeat(HeartbeatRequest{State: "online", CPUUsage: 25, MemoryUsage: 40, DiskUsage: 50}); got != "healthy" {
 		t.Fatalf("healthy heartbeat classified as %q", got)

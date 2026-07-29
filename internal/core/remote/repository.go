@@ -39,8 +39,17 @@ func scanServer(scanner interface{ Scan(...any) error }) (*Server, error) {
 }
 
 func parseTime(value string) time.Time {
-	parsed, _ := time.Parse(time.RFC3339Nano, value)
-	return parsed
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05-07:00",
+	} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }
 
 const serverColumns = `id,name,hostname,description,machine_id,status,agent_version,os,distribution,
