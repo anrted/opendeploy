@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/google/uuid"
 )
@@ -30,7 +31,8 @@ func (s *Service) startJob(
 		return "", apperrors.Internal("create job", err)
 	}
 
-	bgCtx, cancel := context.WithTimeout(context.Background(), moduleJobTimeout)
+	serverID := servercontext.ID(ctx)
+	bgCtx, cancel := context.WithTimeout(servercontext.WithID(context.Background(), serverID), moduleJobTimeout)
 	s.cancelMu.Lock()
 	s.cancels[job.ID] = cancel
 	s.cancelMu.Unlock()
@@ -45,7 +47,7 @@ func (s *Service) startJob(
 
 		if err := work(bgCtx); err != nil {
 			s.logger.Error("module job failed", "job_id", job.ID, "type", jobType, "error", err)
-			persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			persistCtx, persistCancel := context.WithTimeout(servercontext.WithID(context.Background(), serverID), 5*time.Second)
 			defer persistCancel()
 			state := JobError
 			if errors.Is(err, context.Canceled) {
@@ -56,14 +58,14 @@ func (s *Service) startJob(
 			return
 		}
 		if bgCtx.Err() != nil {
-			persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			persistCtx, persistCancel := context.WithTimeout(servercontext.WithID(context.Background(), serverID), 5*time.Second)
 			defer persistCancel()
 			_ = s.jobs.UpdateState(persistCtx, job.ID, JobCanceled, "", bgCtx.Err().Error())
 			s.publishEvent(persistCtx, "job.canceled", map[string]string{"job_id": job.ID})
 			return
 		}
 
-		persistCtx, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		persistCtx, persistCancel := context.WithTimeout(servercontext.WithID(context.Background(), serverID), 5*time.Second)
 		defer persistCancel()
 		onSuccess(persistCtx)
 		_ = s.jobs.UpdateState(persistCtx, job.ID, JobSuccess, "", "")

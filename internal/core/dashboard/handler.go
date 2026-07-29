@@ -9,6 +9,7 @@ import (
 	gorilla "github.com/gorilla/websocket"
 
 	"github.com/anrted/opendeploy/internal/core/auth"
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	wsHub "github.com/anrted/opendeploy/internal/platform/websocket"
 )
@@ -44,7 +45,7 @@ func (h *Handler) IssueWebSocketTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, apperrors.Unauthorized("not authenticated"))
 		return
 	}
-	ticket, expiresAt, err := h.tickets.Issue(principal.ID, time.Now())
+	ticket, expiresAt, err := h.tickets.Issue(principal.ID, servercontext.ID(r.Context()), time.Now())
 	if err != nil {
 		writeError(w, apperrors.Internal("issue websocket ticket", err))
 		return
@@ -78,7 +79,8 @@ func (h *Handler) Snapshots(w http.ResponseWriter, r *http.Request) {
 // WebSocket handles GET /api/v1/dashboard/ws
 // Upgrades the connection and subscribes the client to real-time stats.
 func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
-	if !h.tickets.Consume(r.URL.Query().Get("ticket"), time.Now()) {
+	serverID, valid := h.tickets.Consume(r.URL.Query().Get("ticket"), time.Now())
+	if !valid {
 		writeError(w, apperrors.Unauthorized("invalid or expired websocket ticket"))
 		return
 	}
@@ -90,7 +92,7 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a hub-compatible client and register it.
-	client := newGorillaClient(conn, "dashboard", h.hub, h.logger)
+	client := newGorillaClient(conn, "dashboard:"+serverID, h.hub, h.logger)
 	h.hub.Register(client)
 
 	// Run the client pump in the background; it unregisters on close.

@@ -3,20 +3,55 @@ package remote
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/controlplane"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/anrted/opendeploy/pkg/version"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
-	service *Service
-	repo    *Repository
+	service          *Service
+	repo             *Repository
+	control          *controlplane.Manager
+	controlPlanePort int
+	controlPlaneCert string
 }
+
+func (h *Handler) SetControlPlane(manager *controlplane.Manager) { h.control = manager }
+func (h *Handler) ConfigureControlPlane(port int, certificate string) {
+	h.controlPlanePort, h.controlPlaneCert = port, certificate
+}
+
+func (h *Handler) Capabilities(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	names := []string{"dashboard", "processes", "services", "files", "firewall", "cron", "packages", "system"}
+	if id != LocalServerID {
+		if h.control == nil {
+			names = nil
+		} else {
+			names = h.control.Capabilities(id)
+		}
+	}
+	items := make([]map[string]any, 0, len(names))
+	for _, name := range names {
+		items = append(items, map[string]any{
+			"name": name, "version": "v1", "available": true,
+			"experimental": false, "deprecated": false, "required_version": "0.1.25",
+		})
+	}
+	respond(w, http.StatusOK, map[string]any{"server_id": id, "items": items})
+}
+
+const LocalServerID = "local"
 
 func NewHandler(service *Service, repo *Repository) *Handler {
 	return &Handler{service: service, repo: repo}
@@ -91,6 +126,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		apperrors.WriteHTTP(w, apperrors.New(http.StatusUnauthorized, apperrors.CodeTokenInvalid, err.Error()))
 		return
 	}
+	if h.controlPlanePort > 0 {
+		host := r.Host
+		if parsed, _, splitErr := net.SplitHostPort(r.Host); splitErr == nil {
+			host = parsed
+		}
+		result.ControlPlaneAddress = net.JoinHostPort(host, fmt.Sprint(h.controlPlanePort))
+		if certificate, readErr := os.ReadFile(h.controlPlaneCert); readErr == nil {
+			result.ControlPlaneCA = string(certificate)
+		}
+	}
 	respond(w, http.StatusCreated, result)
 }
 
@@ -123,10 +168,21 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		internal(w, "list remote servers", err)
 		return
 	}
+	if offset == 0 && localMatches(r.URL.Query().Get("query"), r.URL.Query().Get("status"), r.URL.Query().Get("tag")) {
+		page.Items = append([]Server{localServer()}, page.Items...)
+		page.Total++
+		if len(page.Items) > limit {
+			page.Items = page.Items[:limit]
+		}
+	}
 	respond(w, http.StatusOK, page)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	if chi.URLParam(r, "id") == LocalServerID {
+		respond(w, http.StatusOK, localServer())
+		return
+	}
 	item, err := h.repo.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		internal(w, "get remote server", err)
@@ -140,11 +196,42 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	if chi.URLParam(r, "id") == LocalServerID {
+		invalid(w, "the local server cannot be deleted")
+		return
+	}
 	if err := h.repo.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
 		internal(w, "delete remote server", err)
 		return
 	}
 	respond(w, http.StatusOK, map[string]string{"message": "server deleted"})
+}
+
+func localServer() Server {
+	hostname, _ := os.Hostname()
+	now := time.Now().UTC()
+	return Server{
+		ID: LocalServerID, Local: true, Name: "Localhost", Hostname: hostname, Status: "online",
+		AgentVersion: version.Version, APIVersion: "v1", OS: runtime.GOOS, Architecture: runtime.GOARCH,
+		HealthStatus: "healthy", UpdateChannel: "stable", LastHeartbeat: &now,
+		CreatedAt: now, UpdatedAt: now,
+	}
+}
+
+func localMatches(query, status, tag string) bool {
+	if status != "" && status != "online" {
+		return false
+	}
+	if tag != "" {
+		return false
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return true
+	}
+	server := localServer()
+	return strings.Contains(strings.ToLower(server.Name), query) ||
+		strings.Contains(strings.ToLower(server.Hostname), query)
 }
 
 func (h *Handler) Action(w http.ResponseWriter, r *http.Request) {

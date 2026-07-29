@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { useServerStore } from '@/stores/server'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -38,6 +39,10 @@ api.interceptors.request.use(async (config) => {
   const auth = useAuthStore()
   if (auth.accessToken) {
     config.headers.Authorization = `Bearer ${auth.accessToken}`
+  }
+  if (config.serverContext !== false) {
+    const servers = useServerStore()
+    config.headers['X-Server-ID'] = servers.currentServerId
   }
 
   // Attach CSRF for mutating requests

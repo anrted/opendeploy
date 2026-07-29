@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/anrted/opendeploy/internal/core/module"
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/core/updater"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -44,7 +45,7 @@ func NewService(db *sql.DB, logger *slog.Logger) *Service {
 // Get returns the value for a setting key. Returns "" if not found (not an error).
 func (s *Service) Get(ctx context.Context, key string) (string, error) {
 	var value string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ? AND server_id=?`, key, servercontext.ID(ctx)).Scan(&value)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
@@ -65,9 +66,9 @@ func (s *Service) GetWithDefault(ctx context.Context, key, defaultVal string) st
 
 // Set upserts a setting.
 func (s *Service) Set(ctx context.Context, key, value string) error {
-	const q = `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-	           ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
-	_, err := s.db.ExecContext(ctx, q, key, value, time.Now().UTC().Format(time.RFC3339))
+	const q = `INSERT INTO settings (key, server_id, value, updated_at) VALUES (?, ?, ?, ?)
+	           ON CONFLICT(key,server_id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+	_, err := s.db.ExecContext(ctx, q, key, servercontext.ID(ctx), value, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("settings: set %q: %w", key, err)
 	}
@@ -82,11 +83,11 @@ func (s *Service) SetMany(ctx context.Context, kv map[string]string) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	const q = `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-	           ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+	const q = `INSERT INTO settings (key, server_id, value, updated_at) VALUES (?, ?, ?, ?)
+	           ON CONFLICT(key,server_id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
 	now := time.Now().UTC().Format(time.RFC3339)
 	for k, v := range kv {
-		if _, err := tx.ExecContext(ctx, q, k, v, now); err != nil {
+		if _, err := tx.ExecContext(ctx, q, k, servercontext.ID(ctx), v, now); err != nil {
 			return fmt.Errorf("settings: set %q: %w", k, err)
 		}
 	}
@@ -97,8 +98,8 @@ func (s *Service) SetMany(ctx context.Context, kv map[string]string) error {
 // e.g. Namespace("core") returns all keys starting with "core.".
 func (s *Service) ListByNamespace(ctx context.Context, namespace string) ([]Setting, error) {
 	prefix := namespace + "."
-	const q = `SELECT key, value, updated_at FROM settings WHERE key LIKE ? ORDER BY key`
-	rows, err := s.db.QueryContext(ctx, q, prefix+"%")
+	const q = `SELECT key, value, updated_at FROM settings WHERE server_id=? AND key LIKE ? ORDER BY key`
+	rows, err := s.db.QueryContext(ctx, q, servercontext.ID(ctx), prefix+"%")
 	if err != nil {
 		return nil, fmt.Errorf("settings: list namespace %q: %w", namespace, err)
 	}
@@ -119,7 +120,7 @@ func (s *Service) ListByNamespace(ctx context.Context, namespace string) ([]Sett
 
 // Delete removes a setting.
 func (s *Service) Delete(ctx context.Context, key string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM settings WHERE key = ? AND server_id=?`, key, servercontext.ID(ctx))
 	return err
 }
 

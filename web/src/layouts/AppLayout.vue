@@ -36,6 +36,10 @@
         </div>
       </div>
 
+      <div class="border-b border-border-subtle p-4">
+        <ServerSwitcher />
+      </div>
+
       <!-- Navigation -->
       <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
         <router-link v-for="item in navItems" :key="item.name"
@@ -78,7 +82,10 @@
         <LanguageSwitcher />
       </header>
       <div class="p-4 sm:p-6 lg:p-8">
-        <router-view />
+        <div v-if="unsupportedCapability" class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          This feature is not supported by the selected server.
+        </div>
+        <router-view :key="serverStore.currentServerId" />
       </div>
     </main>
   </div>
@@ -91,8 +98,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import ToastHost from '@/components/ToastHost.vue'
+import ServerSwitcher from '@/components/ServerSwitcher.vue'
+import { useServerStore } from '@/stores/server'
 
 const themeStore = useThemeStore()
+const serverStore = useServerStore()
 const mobileOpen = ref(false)
 
 // Icon components (inline SVGs as functional components)
@@ -151,6 +161,15 @@ const allNavItems = [
 const auth = useAuthStore()
 const navItems = computed(() => allNavItems.filter(item => !item.adminOnly || auth.user?.role === 'admin'))
 const router = useRouter()
+const routeCapability = {
+  dashboard: 'dashboard', sites: 'sites', services: 'services', modules: 'modules',
+  module_details: 'modules', module_firewall: 'firewall', cron: 'cron',
+  processes: 'processes', logs: 'logs', tasks: 'tasks', settings: 'settings',
+}
+const unsupportedCapability = computed(() => {
+  const capability = routeCapability[router.currentRoute.value.name]
+  return capability && !serverStore.supports(capability)
+})
 watch(() => router.currentRoute.value.fullPath, () => { mobileOpen.value = false })
 
 const userInitial = computed(() =>

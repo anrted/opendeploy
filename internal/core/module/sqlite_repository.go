@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/google/uuid"
 )
@@ -25,8 +26,8 @@ func NewSQLiteRepository(db *sql.DB) Repository {
 
 func (r *sqliteRepository) FindByID(ctx context.Context, id string) (*Record, error) {
 	const q = `SELECT id, name, state, version, config, installed_at, updated_at
-	           FROM modules WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, q, id)
+	           FROM modules WHERE id = ? AND server_id=?`
+	row := r.db.QueryRowContext(ctx, q, id, servercontext.ID(ctx))
 	rec, err := r.scanRecord(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -39,8 +40,8 @@ func (r *sqliteRepository) FindByID(ctx context.Context, id string) (*Record, er
 
 func (r *sqliteRepository) ListAll(ctx context.Context) ([]Record, error) {
 	const q = `SELECT id, name, state, version, config, installed_at, updated_at
-	           FROM modules ORDER BY name`
-	rows, err := r.db.QueryContext(ctx, q)
+	           FROM modules WHERE server_id=? ORDER BY name`
+	rows, err := r.db.QueryContext(ctx, q, servercontext.ID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("module repo: list: %w", err)
 	}
@@ -66,9 +67,9 @@ func (r *sqliteRepository) ListAll(ctx context.Context) ([]Record, error) {
 }
 
 func (r *sqliteRepository) Upsert(ctx context.Context, rec *Record) error {
-	const q = `INSERT INTO modules (id, name, state, version, config, installed_at, updated_at)
-	           VALUES (?, ?, ?, ?, ?, ?, ?)
-	           ON CONFLICT(id) DO UPDATE SET
+	const q = `INSERT INTO modules (id, server_id, name, state, version, config, installed_at, updated_at)
+	           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	           ON CONFLICT(id,server_id) DO UPDATE SET
 	               name=excluded.name, state=excluded.state, version=excluded.version,
 	               config=excluded.config, installed_at=excluded.installed_at,
 	               updated_at=excluded.updated_at`
@@ -78,15 +79,15 @@ func (r *sqliteRepository) Upsert(ctx context.Context, rec *Record) error {
 		installedAt = &s
 	}
 	_, err := r.db.ExecContext(ctx, q,
-		rec.ID, rec.Name, string(rec.State), rec.Version, rec.Config,
+		rec.ID, servercontext.ID(ctx), rec.Name, string(rec.State), rec.Version, rec.Config,
 		installedAt, rec.UpdatedAt.UTC().Format(time.RFC3339),
 	)
 	return err
 }
 
 func (r *sqliteRepository) UpdateState(ctx context.Context, id string, state State) error {
-	const q = `UPDATE modules SET state=?, updated_at=? WHERE id=?`
-	_, err := r.db.ExecContext(ctx, q, string(state), time.Now().UTC().Format(time.RFC3339), id)
+	const q = `UPDATE modules SET state=?, updated_at=? WHERE id=? AND server_id=?`
+	_, err := r.db.ExecContext(ctx, q, string(state), time.Now().UTC().Format(time.RFC3339), id, servercontext.ID(ctx))
 	return err
 }
 
@@ -122,10 +123,10 @@ func (r *sqliteJobRepository) Create(ctx context.Context, job *Job) error {
 	if job.ID == "" {
 		job.ID = uuid.New().String()
 	}
-	const q = `INSERT INTO jobs (id, name, type, payload, state, progress, output, created_at)
-	           VALUES (?, ?, ?, ?, ?, ?, '', ?)`
+	const q = `INSERT INTO jobs (id, server_id, name, type, payload, state, progress, output, created_at)
+	           VALUES (?, ?, ?, ?, ?, ?, ?, '', ?)`
 	_, err := r.db.ExecContext(ctx, q,
-		job.ID, job.Name, string(job.Type), job.Payload, string(job.State), job.Progress,
+		job.ID, servercontext.ID(ctx), job.Name, string(job.Type), job.Payload, string(job.State), job.Progress,
 		job.CreatedAt.UTC().Format(time.RFC3339),
 	)
 	return err
@@ -133,8 +134,8 @@ func (r *sqliteJobRepository) Create(ctx context.Context, job *Job) error {
 
 func (r *sqliteJobRepository) FindByID(ctx context.Context, id string) (*Job, error) {
 	const q = `SELECT id, name, type, payload, state, progress, output, error, created_at, started_at, finished_at
-	           FROM jobs WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, q, id)
+	           FROM jobs WHERE id = ? AND server_id=?`
+	row := r.db.QueryRowContext(ctx, q, id, servercontext.ID(ctx))
 	return r.scanJob(row)
 }
 
@@ -156,20 +157,22 @@ func (r *sqliteJobRepository) UpdateState(ctx context.Context, id string, state 
 		q = `UPDATE jobs SET state=? WHERE id=?`
 		args = []interface{}{string(state), id}
 	}
+	q += " AND server_id=?"
+	args = append(args, servercontext.ID(ctx))
 	_, err := r.db.ExecContext(ctx, q, args...)
 	return err
 }
 
 func (r *sqliteJobRepository) AppendOutput(ctx context.Context, id, line string) error {
-	const q = `UPDATE jobs SET output = output || ? WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, q, line+"\n", id)
+	const q = `UPDATE jobs SET output = output || ? WHERE id = ? AND server_id=?`
+	_, err := r.db.ExecContext(ctx, q, line+"\n", id, servercontext.ID(ctx))
 	return err
 }
 
 func (r *sqliteJobRepository) ListByState(ctx context.Context, state JobState) ([]Job, error) {
 	const q = `SELECT id, name, type, payload, state, progress, output, error, created_at, started_at, finished_at
-	           FROM jobs WHERE state = ? ORDER BY created_at DESC LIMIT 100`
-	rows, err := r.db.QueryContext(ctx, q, string(state))
+	           FROM jobs WHERE state = ? AND server_id=? ORDER BY created_at DESC LIMIT 100`
+	rows, err := r.db.QueryContext(ctx, q, string(state), servercontext.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -187,8 +190,9 @@ func (r *sqliteJobRepository) ListByState(ctx context.Context, state JobState) (
 }
 
 func (r *sqliteJobRepository) List(ctx context.Context, filter JobFilter) (*JobPage, error) {
-	where := []string{"1=1"}
+	where := []string{"server_id=?"}
 	args := make([]any, 0, 5)
+	args = append(args, servercontext.ID(ctx))
 	if filter.Query != "" {
 		where = append(where, "(LOWER(name) LIKE ? OR LOWER(id) LIKE ?)")
 		query := "%" + strings.ToLower(filter.Query) + "%"
@@ -226,7 +230,7 @@ func (r *sqliteJobRepository) List(ctx context.Context, filter JobFilter) (*JobP
 }
 
 func (r *sqliteJobRepository) Delete(ctx context.Context, id string) error {
-	res, err := r.db.ExecContext(ctx, `DELETE FROM jobs WHERE id = ? AND state IN ('success','error','canceled')`, id)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM jobs WHERE id = ? AND server_id=? AND state IN ('success','error','canceled')`, id, servercontext.ID(ctx))
 	if err != nil {
 		return err
 	}

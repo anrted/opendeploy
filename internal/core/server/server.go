@@ -26,6 +26,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/module"
 	"github.com/anrted/opendeploy/internal/core/remote"
 	coreMiddleware "github.com/anrted/opendeploy/internal/core/server/middleware"
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/core/service"
 	"github.com/anrted/opendeploy/internal/core/settings"
 	"github.com/anrted/opendeploy/internal/core/site"
@@ -183,6 +184,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 		// Protected endpoints — require valid JWT
 		r.Group(func(r chi.Router) {
 			r.Use(coreMiddleware.Auth(deps.JWTManager))
+			r.Use(servercontext.Middleware)
 
 			r.Post("/auth/logout", deps.AuthHandler.Logout)
 			r.Get("/auth/me", deps.AuthHandler.Me)
@@ -271,6 +273,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers", deps.RemoteHandler.List)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers", deps.RemoteHandler.Create)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}", deps.RemoteHandler.Get)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}/capabilities", deps.RemoteHandler.Capabilities)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers/{id}/enrollment", deps.RemoteHandler.ReissueEnrollment)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Delete("/servers/{id}", deps.RemoteHandler.Delete)
 				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers/{id}/actions/{action}", deps.RemoteHandler.Action)

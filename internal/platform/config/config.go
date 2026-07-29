@@ -22,10 +22,13 @@ type Config struct {
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Host         string        `yaml:"host"`
-	Port         int           `yaml:"port"`
-	ReadTimeout  time.Duration `yaml:"read_timeout"`
-	WriteTimeout time.Duration `yaml:"write_timeout"`
+	Host             string        `yaml:"host"`
+	Port             int           `yaml:"port"`
+	ControlPlanePort int           `yaml:"control_plane_port"`
+	TLSCertificate   string        `yaml:"tls_certificate"`
+	TLSPrivateKey    string        `yaml:"tls_private_key"`
+	ReadTimeout      time.Duration `yaml:"read_timeout"`
+	WriteTimeout     time.Duration `yaml:"write_timeout"`
 }
 
 // DatabaseConfig holds database connection settings.
@@ -45,6 +48,9 @@ type AgentConfig struct {
 	PrivateKeyFile         string        `yaml:"private_key_file"`
 	CertificateFingerprint string        `yaml:"certificate_fingerprint"`
 	HeartbeatInterval      time.Duration `yaml:"heartbeat_interval"`
+	ControlPlaneAddress    string        `yaml:"control_plane_address"`
+	ControlPlaneCAFile     string        `yaml:"control_plane_ca_file"`
+	ControlPlaneServerName string        `yaml:"control_plane_server_name"`
 }
 
 // AuthConfig holds authentication settings.
@@ -153,6 +159,12 @@ func Load(path string) (*Config, error) {
 func (c *Config) validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port must be between 1 and 65535, got %d", c.Server.Port)
+	}
+	if c.Server.ControlPlanePort < 0 || c.Server.ControlPlanePort > 65535 {
+		return fmt.Errorf("server.control_plane_port must be between 0 and 65535, got %d", c.Server.ControlPlanePort)
+	}
+	if c.Server.ControlPlanePort > 0 && (c.Server.TLSCertificate == "" || c.Server.TLSPrivateKey == "") {
+		return fmt.Errorf("server.tls_certificate and server.tls_private_key are required when the control plane is enabled")
 	}
 	if c.Database.DSN == "" {
 		return fmt.Errorf("database.dsn must not be empty")

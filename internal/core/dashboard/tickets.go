@@ -11,6 +11,7 @@ const websocketTicketTTL = 30 * time.Second
 
 type websocketTicket struct {
 	userID    string
+	serverID  string
 	expiresAt time.Time
 }
 
@@ -23,7 +24,7 @@ func newTicketStore() *ticketStore {
 	return &ticketStore{tickets: make(map[string]websocketTicket)}
 }
 
-func (s *ticketStore) Issue(userID string, now time.Time) (string, time.Time, error) {
+func (s *ticketStore) Issue(userID, serverID string, now time.Time) (string, time.Time, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", time.Time{}, err
@@ -36,15 +37,15 @@ func (s *ticketStore) Issue(userID string, now time.Time) (string, time.Time, er
 			delete(s.tickets, key)
 		}
 	}
-	s.tickets[token] = websocketTicket{userID: userID, expiresAt: expiresAt}
+	s.tickets[token] = websocketTicket{userID: userID, serverID: serverID, expiresAt: expiresAt}
 	s.mu.Unlock()
 	return token, expiresAt, nil
 }
 
-func (s *ticketStore) Consume(token string, now time.Time) bool {
+func (s *ticketStore) Consume(token string, now time.Time) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ticket, ok := s.tickets[token]
 	delete(s.tickets, token)
-	return ok && ticket.expiresAt.After(now)
+	return ticket.serverID, ok && ticket.expiresAt.After(now)
 }

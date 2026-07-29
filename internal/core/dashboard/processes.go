@@ -31,7 +31,6 @@ func (h *Handler) KillProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	force := r.URL.Query().Get("force") == "true"
-
 	if err := h.service.agent.ProcessKill(r.Context(), pid, force); err != nil {
 		if errors.Is(err, ErrProtectedProcess) || status.Code(err) == codes.FailedPrecondition {
 			writeError(w, apperrors.New(

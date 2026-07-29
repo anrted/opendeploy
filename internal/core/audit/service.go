@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/google/uuid"
 )
 
@@ -64,10 +65,10 @@ func (s *Service) Record(ctx context.Context, entry Entry) error {
 		}
 	}
 
-	const q = `INSERT INTO audit_log (id, user_id, action, resource, metadata, ip_address, status, created_at)
-	           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO audit_log (id, server_id, user_id, action, resource, metadata, ip_address, status, created_at)
+	           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := s.db.ExecContext(ctx, q,
-		entry.ID, entry.UserID, entry.Action, entry.Resource,
+		entry.ID, servercontext.ID(ctx), entry.UserID, entry.Action, entry.Resource,
 		meta, entry.IPAddress, string(entry.Status),
 		entry.CreatedAt.UTC().Format(time.RFC3339),
 	)
@@ -80,8 +81,8 @@ func (s *Service) Record(ctx context.Context, entry Entry) error {
 // List returns the most recent audit entries up to the given limit.
 func (s *Service) List(ctx context.Context, limit, offset int) ([]Entry, error) {
 	const q = `SELECT id, user_id, action, resource, metadata, ip_address, status, created_at
-	           FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	rows, err := s.db.QueryContext(ctx, q, limit, offset)
+	           FROM audit_log WHERE server_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	rows, err := s.db.QueryContext(ctx, q, servercontext.ID(ctx), limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("audit: list: %w", err)
 	}
@@ -111,9 +112,9 @@ func (s *Service) List(ctx context.Context, limit, offset int) ([]Entry, error) 
 
 func (s *Service) ListForUser(ctx context.Context, userID string, limit, offset int) ([]Entry, error) {
 	const q = `SELECT id, user_id, action, resource, metadata, ip_address, status, created_at
-	           FROM audit_log WHERE user_id = ? OR resource = ?
+	           FROM audit_log WHERE server_id=? AND (user_id = ? OR resource = ?)
 	           ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	rows, err := s.db.QueryContext(ctx, q, userID, "user:"+userID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, q, servercontext.ID(ctx), userID, "user:"+userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("audit: list for user: %w", err)
 	}

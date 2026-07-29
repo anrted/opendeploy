@@ -300,6 +300,25 @@ func (r *Repository) SetMaintenance(ctx context.Context, id string, enabled bool
 	return err
 }
 
+func (r *Repository) RecordEvent(ctx context.Context, serverID, eventType, details string, now time.Time) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO server_events(server_id,type,message,details,created_at) VALUES(?,?,?,?,?)`,
+		serverID, eventType, eventType, details, now)
+	return err
+}
+
+func (r *Repository) UpdateTaskProgress(ctx context.Context, serverID, taskID, state, message, result string, now time.Time) error {
+	if state != "success" && state != "error" && state != "running" {
+		state = "running"
+	}
+	finished := any(nil)
+	if state == "success" || state == "error" {
+		finished = now
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE server_tasks SET state=?,output=?,error=?,finished_at=? WHERE id=? AND server_id=?`,
+		state, result, message, finished, taskID, serverID)
+	return err
+}
+
 func (r *Repository) Events(ctx context.Context, id string, limit int) ([]Event, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id,server_id,type,message,details,created_at FROM server_events WHERE server_id=? ORDER BY created_at DESC LIMIT ?`, id, limit)
 	if err != nil {

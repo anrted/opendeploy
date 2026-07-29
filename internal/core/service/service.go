@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 	"github.com/go-chi/chi/v5"
@@ -67,9 +68,9 @@ func (r *sqliteRepository) Create(ctx context.Context, s *ManagedService) error 
 	now := time.Now().UTC()
 	s.CreatedAt = now
 	s.UpdatedAt = now
-	const q = `INSERT INTO managed_services (id, name, unit, description, autostart, state, created_at, updated_at)
-	           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := r.db.ExecContext(ctx, q, s.ID, s.Name, s.Unit, s.Description,
+	const q = `INSERT INTO managed_services (id, server_id, name, unit, description, autostart, state, created_at, updated_at)
+	           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, q, s.ID, servercontext.ID(ctx), s.Name, s.Unit, s.Description,
 		boolInt(s.Autostart), string(s.State),
 		s.CreatedAt.Format(time.RFC3339), s.UpdatedAt.Format(time.RFC3339))
 	return err
@@ -77,15 +78,15 @@ func (r *sqliteRepository) Create(ctx context.Context, s *ManagedService) error 
 
 func (r *sqliteRepository) FindByID(ctx context.Context, id string) (*ManagedService, error) {
 	const q = `SELECT id, name, unit, description, autostart, state, created_at, updated_at
-	           FROM managed_services WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, q, id)
+	           FROM managed_services WHERE id = ? AND server_id=?`
+	row := r.db.QueryRowContext(ctx, q, id, servercontext.ID(ctx))
 	return r.scan(row)
 }
 
 func (r *sqliteRepository) ListAll(ctx context.Context) ([]ManagedService, error) {
 	const q = `SELECT id, name, unit, description, autostart, state, created_at, updated_at
-	           FROM managed_services ORDER BY name`
-	rows, err := r.db.QueryContext(ctx, q)
+	           FROM managed_services WHERE server_id=? ORDER BY name`
+	rows, err := r.db.QueryContext(ctx, q, servercontext.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -109,13 +110,13 @@ func (r *sqliteRepository) ListAll(ctx context.Context) ([]ManagedService, error
 
 func (r *sqliteRepository) UpdateState(ctx context.Context, id string, state State) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE managed_services SET state=?, updated_at=? WHERE id=?`,
-		string(state), time.Now().UTC().Format(time.RFC3339), id)
+		`UPDATE managed_services SET state=?, updated_at=? WHERE id=? AND server_id=?`,
+		string(state), time.Now().UTC().Format(time.RFC3339), id, servercontext.ID(ctx))
 	return err
 }
 
 func (r *sqliteRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM managed_services WHERE id = ?`, id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM managed_services WHERE id = ? AND server_id=?`, id, servercontext.ID(ctx))
 	return err
 }
 

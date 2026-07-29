@@ -92,8 +92,15 @@ REGISTER_RESPONSE=$(curl -fsS -H 'Content-Type: application/json' -d "$REGISTER_
   "$CORE_URL/api/v1/agents/register") || die "registration failed"
 SERVER_ID=$(printf '%s' "$REGISTER_RESPONSE" | jq -er .server_id)
 FINGERPRINT=$(printf '%s' "$REGISTER_RESPONSE" | jq -er .fingerprint)
+CONTROL_PLANE_ADDRESS=$(printf '%s' "$REGISTER_RESPONSE" | jq -r '.control_plane_address // empty')
 printf '%s' "$REGISTER_RESPONSE" | jq -er .certificate > "$CONFIG_DIR/agent.crt"
+if [ -n "$CONTROL_PLANE_ADDRESS" ]; then
+  printf '%s' "$REGISTER_RESPONSE" | jq -er .control_plane_ca > "$CONFIG_DIR/control-plane-ca.crt"
+fi
 chmod 0600 "$CONFIG_DIR/agent.crt" "$CONFIG_DIR/agent.key"
+if [ -f "$CONFIG_DIR/control-plane-ca.crt" ]; then
+  chmod 0600 "$CONFIG_DIR/control-plane-ca.crt"
+fi
 ok "Register Server: $SERVER_ID"
 
 step "Configure TLS"
@@ -110,6 +117,9 @@ agent:
   private_key_file: "$CONFIG_DIR/agent.key"
   certificate_fingerprint: "$FINGERPRINT"
   heartbeat_interval: 30s
+$(if [ -n "$CONTROL_PLANE_ADDRESS" ]; then
+    printf '  control_plane_address: "%s"\n  control_plane_ca_file: "%s/control-plane-ca.crt"\n' "$CONTROL_PLANE_ADDRESS" "$CONFIG_DIR"
+  fi)
 logging:
   level: "info"
   format: "json"

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
 	"github.com/google/uuid"
 )
 
@@ -35,6 +36,25 @@ var (
 type Service struct {
 	repo *Repository
 	now  func() time.Time
+}
+
+// ControlPlaneHeartbeat persists liveness received over the bidirectional
+// stream. Authentication has already been performed by the stream server.
+func (s *Service) ControlPlaneHeartbeat(ctx context.Context, serverID string, heartbeat *agentv1.AgentHeartbeat) error {
+	req := HeartbeatRequest{
+		State: "online", CPUUsage: heartbeat.GetCpuUsage(),
+		MemoryUsage: heartbeat.GetMemoryUsage(), DiskUsage: heartbeat.GetDiskUsage(),
+		Uptime: heartbeat.GetUptime(), RunningTasks: int(heartbeat.GetRunningTasks()),
+	}
+	return s.repo.Heartbeat(ctx, serverID, req, 0, s.now())
+}
+
+func (s *Service) ControlPlaneEvent(ctx context.Context, serverID string, event *agentv1.AgentEvent) error {
+	return s.repo.RecordEvent(ctx, serverID, event.GetType(), string(event.GetPayload()), s.now())
+}
+
+func (s *Service) ControlPlaneTaskProgress(ctx context.Context, serverID string, progress *agentv1.TaskProgress) error {
+	return s.repo.UpdateTaskProgress(ctx, serverID, progress.GetTaskId(), progress.GetState(), progress.GetMessage(), string(progress.GetResult()), s.now())
 }
 
 func NewService(repo *Repository) *Service {

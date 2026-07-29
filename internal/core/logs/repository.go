@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 )
 
 type Repository struct {
@@ -16,8 +18,9 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 func (r *Repository) Search(ctx context.Context, filter LogFilter) (*PaginatedLogs, error) {
-	query := "SELECT id, timestamp, level, component, module, error_id, request_id, user_id, duration_ms, endpoint, method, ip, message, stack_trace, attributes FROM system_logs WHERE 1=1"
+	query := "SELECT id, timestamp, level, component, module, error_id, request_id, user_id, duration_ms, endpoint, method, ip, message, stack_trace, attributes FROM system_logs WHERE server_id=?"
 	var args []interface{}
+	args = append(args, servercontext.ID(ctx))
 
 	if filter.Level != "" {
 		query += " AND level = ?"
@@ -58,7 +61,7 @@ func (r *Repository) Search(ctx context.Context, filter LogFilter) (*PaginatedLo
 	}
 
 	countQuery := strings.Replace(query, "SELECT id, timestamp, level, component, module, error_id, request_id, user_id, duration_ms, endpoint, method, ip, message, stack_trace, attributes", "SELECT COUNT(*)", 1)
-	
+
 	var total int64
 	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, fmt.Errorf("count logs: %w", err)
@@ -102,9 +105,9 @@ func (r *Repository) Search(ctx context.Context, filter LogFilter) (*PaginatedLo
 }
 
 func (r *Repository) GetByID(ctx context.Context, id int64) (*SystemLog, error) {
-	query := "SELECT id, timestamp, level, component, module, error_id, request_id, user_id, duration_ms, endpoint, method, ip, message, stack_trace, attributes FROM system_logs WHERE id = ?"
+	query := "SELECT id, timestamp, level, component, module, error_id, request_id, user_id, duration_ms, endpoint, method, ip, message, stack_trace, attributes FROM system_logs WHERE id = ? AND server_id=?"
 	var l SystemLog
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.db.QueryRowContext(ctx, query, id, servercontext.ID(ctx)).Scan(
 		&l.ID, &l.Timestamp, &l.Level, &l.Component, &l.Module, &l.ErrorID, &l.RequestID,
 		&l.UserID, &l.DurationMs, &l.Endpoint, &l.Method, &l.IP, &l.Message, &l.StackTrace, &l.Attributes,
 	)

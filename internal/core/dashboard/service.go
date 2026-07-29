@@ -17,6 +17,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/internal/core/module"
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/events"
 	wsHub "github.com/anrted/opendeploy/internal/platform/websocket"
 	"github.com/anrted/opendeploy/pkg/contract"
@@ -67,13 +68,13 @@ type StatSnapshot struct {
 
 // Service assembles the dashboard overview and manages the stats poller.
 type Service struct {
-	db         *sql.DB
-	agent      contract.AgentClient
-	moduleRepo module.Repository
-	auditSvc   *audit.Service
-	bus        *events.MemoryBus
-	hub        *wsHub.Hub
-	logger     *slog.Logger
+	db          *sql.DB
+	agent       contract.AgentClient
+	moduleRepo  module.Repository
+	auditSvc    *audit.Service
+	bus         *events.MemoryBus
+	hub         *wsHub.Hub
+	logger      *slog.Logger
 	cachedStats atomic.Value
 }
 
@@ -104,7 +105,13 @@ func (s *Service) Overview(ctx context.Context) (*Overview, error) {
 
 	// Live system stats from Cache.
 	stats := s.cachedStats.Load()
-	if stats != nil {
+	var err error
+	if !servercontext.IsLocal(ctx) {
+		overview.ServerStats, err = s.agent.SystemStats(ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else if stats != nil {
 		overview.ServerStats = stats.(*contract.SystemStats)
 	}
 
@@ -192,7 +199,7 @@ func (s *Service) poll(ctx context.Context) {
 	}
 
 	// Broadcast to WebSocket room "dashboard".
-	s.hub.BroadcastToRoom("dashboard", wsHub.Message{
+	s.hub.BroadcastToRoom("dashboard:"+servercontext.ID(ctx), wsHub.Message{
 		Type:    "stats_update",
 		Payload: stats,
 	})
@@ -205,11 +212,12 @@ func (s *Service) poll(ctx context.Context) {
 func (s *Service) saveSnapshot(ctx context.Context, cpu, mem, disk, load float64) error {
 	const q = `INSERT INTO stats_snapshots
 	           (id, cpu_percent, mem_percent, disk_percent, load_1m, load_5m, load_15m,
-	            net_rx_bytes, net_tx_bytes, recorded_at)
-	           VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?)`
+	            net_rx_bytes, net_tx_bytes, server_id, recorded_at)
+	           VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?)`
 	_, err := s.db.ExecContext(ctx, q,
 		uuid.New().String(),
 		cpu, mem, disk, load,
+		servercontext.ID(ctx),
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
@@ -219,8 +227,8 @@ func (s *Service) saveSnapshot(ctx context.Context, cpu, mem, disk, load float64
 func (s *Service) listSnapshots(ctx context.Context, n int) ([]StatSnapshot, error) {
 	const q = `SELECT cpu_percent, mem_percent, disk_percent, load_1m, recorded_at
 	           FROM stats_snapshots
-	           ORDER BY recorded_at DESC LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, q, n)
+	           WHERE server_id=? ORDER BY recorded_at DESC LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, q, servercontext.ID(ctx), n)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard: list snapshots: %w", err)
 	}
@@ -246,14 +254,14 @@ func (s *Service) listSnapshots(ctx context.Context, n int) ([]StatSnapshot, err
 // pruneSnapshots deletes snapshots older than the given duration.
 func (s *Service) pruneSnapshots(ctx context.Context, maxAge time.Duration) {
 	cutoff := time.Now().UTC().Add(-maxAge).Format(time.RFC3339)
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM stats_snapshots WHERE recorded_at < ?`, cutoff)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM stats_snapshots WHERE server_id=? AND recorded_at < ?`, servercontext.ID(ctx), cutoff)
 }
 
 // recentJobs returns the n most recent jobs from the DB.
 func (s *Service) recentJobs(ctx context.Context, n int) []JobSummary {
 	const q = `SELECT id, type, state, created_at, finished_at
-	           FROM jobs ORDER BY created_at DESC LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, q, n)
+	           FROM jobs WHERE server_id=? ORDER BY created_at DESC LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, q, servercontext.ID(ctx), n)
 	if err != nil {
 		return nil
 	}

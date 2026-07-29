@@ -5,6 +5,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.25] - 2026-07-30
+
+### Added
+
+- Persistent Agent-initiated bidirectional gRPC control plane with TLS client
+  certificates, reconnect backoff, command correlation, heartbeat, events,
+  task progress, subscriptions, and streamed log chunks.
+- Unified server context and capability client for local and remote execution.
+- Server switcher with persisted selection and automatic API context.
+- Capability inventory endpoint and unsupported-feature indication.
+- Server-scoped Sites, domains, Services, Modules, Tasks, Settings, audit,
+  logs, and Dashboard history.
+- Remote capability adapters for system metrics, processes, systemd, files,
+  archives, packages, Firewall, Cron, and live service/file logs.
+- Automatic control-plane configuration during remote Agent enrollment.
+
+### Changed
+
+- Localhost is represented as an automatically registered server and uses the
+  same capability contract as remote Agents.
+- Dashboard WebSocket tickets are bound to the selected ServerID.
+- Long-running module jobs preserve Server Context after the HTTP request ends.
+
+### Security
+
+- Remote control-plane sessions require possession of the registered Agent
+  private key and verify the authenticated TLS peer certificate fingerprint.
+- Remote filesystem, package, service, process, Firewall, and Cron operations
+  continue to use typed Agent validation and Core RBAC.
+
 ## [0.1.23] - 2026-07-30
 
 ### Added
@@ -216,3 +246,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.1.12]: https://github.com/anrted/opendeploy/releases/tag/v0.1.12
 [0.1.13]: https://github.com/anrted/opendeploy/releases/tag/v0.1.13
 [0.1.14]: https://github.com/anrted/opendeploy/releases/tag/v0.1.14
+[0.1.25]: https://github.com/anrted/opendeploy/releases/tag/v0.1.25

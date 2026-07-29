@@ -3,16 +3,20 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"time"
 
 	"github.com/anrted/opendeploy/internal/agentclient"
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/internal/core/auth"
+	"github.com/anrted/opendeploy/internal/core/capability"
+	"github.com/anrted/opendeploy/internal/core/controlplane"
 	"github.com/anrted/opendeploy/internal/core/dashboard"
 	"github.com/anrted/opendeploy/internal/core/logs"
 	"github.com/anrted/opendeploy/internal/core/module"
@@ -30,8 +34,11 @@ import (
 	"github.com/anrted/opendeploy/internal/platform/websocket"
 	"github.com/anrted/opendeploy/pkg/contract"
 	"github.com/anrted/opendeploy/pkg/version"
+	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
 
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 // Module is the Fx module for the OpenDeploy core application.
@@ -47,9 +54,10 @@ var Module = fx.Options(
 		provideDatabase,
 		events.NewMemoryBus,
 		websocket.NewHub,
+		controlplane.NewManager,
 		provideAgentClient,
-		func(client *agentclient.Client) contract.AgentClient {
-			return client
+		func(client *agentclient.Client, manager *controlplane.Manager) contract.AgentClient {
+			return capability.NewClient(client, manager)
 		},
 		module.NewRegistry,
 
@@ -90,6 +98,9 @@ var Module = fx.Options(
 		remote.NewRepository,
 		remote.NewService,
 		remote.NewHandler,
+		func(manager *controlplane.Manager, repo *remote.Repository, service *remote.Service) *controlplane.Server {
+			return controlplane.NewServer(manager, repo, service)
+		},
 
 		// Server
 		provideServer,
@@ -99,12 +110,61 @@ var Module = fx.Options(
 		seedAdmin,
 		startBackgroundJobs,
 		startRemoteServerMonitor,
+		startControlPlane,
 		registerDomainSubscribers,
+		configureCapabilityRegistry,
 		bootstrapModules,
 		reconcileSites,
 		startServer,
 	),
 )
+
+func configureCapabilityRegistry(handler *remote.Handler, manager *controlplane.Manager, cfg *config.Config) {
+	handler.SetControlPlane(manager)
+	handler.ConfigureControlPlane(cfg.Server.ControlPlanePort, cfg.Server.TLSCertificate)
+}
+
+func startControlPlane(lc fx.Lifecycle, cfg *config.Config, server *controlplane.Server, log *slog.Logger) error {
+	if cfg.Server.ControlPlanePort == 0 {
+		log.Info("control plane disabled")
+		return nil
+	}
+	certificate, err := tls.LoadX509KeyPair(cfg.Server.TLSCertificate, cfg.Server.TLSPrivateKey)
+	if err != nil {
+		return fmt.Errorf("load control-plane TLS identity: %w", err)
+	}
+	creds := credentials.NewTLS(&tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{certificate},
+		ClientAuth:   tls.RequireAnyClientCert,
+	})
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.ControlPlanePort))
+	if err != nil {
+		return fmt.Errorf("listen for control-plane agents: %w", err)
+	}
+	grpcServer := grpc.NewServer(
+		grpc.Creds(creds),
+		grpc.MaxRecvMsgSize(8<<20),
+		grpc.MaxSendMsgSize(8<<20),
+	)
+	agentv1.RegisterControlPlaneServer(grpcServer, server)
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			go func() {
+				if serveErr := grpcServer.Serve(listener); serveErr != nil {
+					log.Error("control plane stopped", "error", serveErr)
+				}
+			}()
+			log.Info("control plane started", "addr", listener.Addr())
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			grpcServer.GracefulStop()
+			return listener.Close()
+		},
+	})
+	return nil
+}
 
 func registerModules(modules []contract.Module, registry *module.Registry) {
 	for _, m := range modules {

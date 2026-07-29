@@ -10,6 +10,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/agent/executor"
 	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // UFWManager implements Provider using UFW.
@@ -180,13 +181,13 @@ func (m *UFWManager) updateRule(ctx context.Context, req *agentv1.FirewallRuleRe
 	if previous == nil {
 		return fmt.Errorf("ufw: rule %s does not exist", id)
 	}
-	replacement := *req
+	replacement := proto.Clone(req).(*agentv1.FirewallRuleRequest)
 	replacement.Id = ""
-	if err := m.addRule(ctx, &replacement); err != nil {
+	if err := m.addRule(ctx, replacement); err != nil {
 		return fmt.Errorf("ufw: validate replacement for rule %s: %w", id, err)
 	}
 	if err := m.DeleteRule(ctx, id); err != nil {
-		rollbackErr := m.deleteMatchingReplacement(ctx, id, &replacement)
+		rollbackErr := m.deleteMatchingReplacement(ctx, id, replacement)
 		return fmt.Errorf("ufw: replace rule %s: %w", id, errors.Join(err, rollbackErr))
 	}
 	m.logger.InfoContext(ctx, "firewall: updated rule", "id", id)

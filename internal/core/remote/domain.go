@@ -4,12 +4,14 @@ import "time"
 
 type Server struct {
 	ID            string     `json:"id"`
+	Local         bool       `json:"local,omitempty"`
 	Name          string     `json:"name"`
 	Hostname      string     `json:"hostname"`
 	Description   string     `json:"description"`
 	MachineID     string     `json:"machine_id"`
 	Status        string     `json:"status"`
 	AgentVersion  string     `json:"agent_version"`
+	APIVersion    string     `json:"api_version,omitempty"`
 	OS            string     `json:"os"`
 	Distribution  string     `json:"distribution"`
 	OSVersion     string     `json:"os_version"`
@@ -68,12 +70,14 @@ type RegistrationRequest struct {
 }
 
 type RegistrationResponse struct {
-	ServerID          string   `json:"server_id"`
-	CertificatePEM    string   `json:"certificate"`
-	Fingerprint       string   `json:"fingerprint"`
-	HeartbeatInterval int      `json:"heartbeat_interval"`
-	UpdateChannel     string   `json:"update_channel"`
-	AllowedFeatures   []string `json:"allowed_features"`
+	ServerID            string   `json:"server_id"`
+	CertificatePEM      string   `json:"certificate"`
+	Fingerprint         string   `json:"fingerprint"`
+	HeartbeatInterval   int      `json:"heartbeat_interval"`
+	UpdateChannel       string   `json:"update_channel"`
+	AllowedFeatures     []string `json:"allowed_features"`
+	ControlPlaneAddress string   `json:"control_plane_address,omitempty"`
+	ControlPlaneCA      string   `json:"control_plane_ca,omitempty"`
 }
 
 type HeartbeatRequest struct {

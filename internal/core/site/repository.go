@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/google/uuid"
 )
@@ -44,8 +45,8 @@ func (r *sqliteRepository) Create(ctx context.Context, s *Site) error {
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO sites (id, name, module_id, root_path, status, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.Name, s.ModuleID, s.RootPath, string(s.State), s.OwnerID, s.CreatedAt.Format(time.RFC3339), s.UpdatedAt.Format(time.RFC3339),
+		`INSERT INTO sites (id, server_id, name, module_id, root_path, status, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, servercontext.ID(ctx), s.Name, s.ModuleID, s.RootPath, string(s.State), s.OwnerID, s.CreatedAt.Format(time.RFC3339), s.UpdatedAt.Format(time.RFC3339),
 	)
 	if err != nil {
 		return fmt.Errorf("site repo: create site: %w", err)
@@ -58,8 +59,8 @@ func (r *sqliteRepository) Create(ctx context.Context, s *Site) error {
 		s.Domains[i].SiteID = s.ID
 		s.Domains[i].CreatedAt = now
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO site_domains (id, site_id, domain, domain_type, created_at) VALUES (?, ?, ?, ?, ?)`,
-			s.Domains[i].ID, s.Domains[i].SiteID, s.Domains[i].Domain, string(s.Domains[i].Type), s.Domains[i].CreatedAt.Format(time.RFC3339),
+			`INSERT INTO site_domains (id, site_id, server_id, domain, domain_type, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			s.Domains[i].ID, s.Domains[i].SiteID, servercontext.ID(ctx), s.Domains[i].Domain, string(s.Domains[i].Type), s.Domains[i].CreatedAt.Format(time.RFC3339),
 		)
 		if err != nil {
 			if isSQLiteUniqueError(err) {
@@ -101,7 +102,7 @@ func (r *sqliteRepository) Create(ctx context.Context, s *Site) error {
 }
 
 func (r *sqliteRepository) FindByID(ctx context.Context, id string) (*Site, error) {
-	site, err := r.findSite(ctx, `SELECT id, name, module_id, root_path, status, owner_id, created_at, updated_at FROM sites WHERE id = ?`, id)
+	site, err := r.findSite(ctx, `SELECT id, name, module_id, root_path, status, owner_id, created_at, updated_at FROM sites WHERE id = ? AND server_id = ?`, id, servercontext.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,7 @@ func (r *sqliteRepository) FindByID(ctx context.Context, id string) (*Site, erro
 
 func (r *sqliteRepository) FindByDomain(ctx context.Context, domain string) (*Site, error) {
 	var siteID string
-	err := r.db.QueryRowContext(ctx, `SELECT site_id FROM site_domains WHERE domain = ?`, domain).Scan(&siteID)
+	err := r.db.QueryRowContext(ctx, `SELECT d.site_id FROM site_domains d JOIN sites s ON s.id=d.site_id WHERE d.domain = ? AND s.server_id = ?`, domain, servercontext.ID(ctx)).Scan(&siteID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperrors.NotFound("site")
@@ -124,7 +125,7 @@ func (r *sqliteRepository) FindByDomain(ctx context.Context, domain string) (*Si
 }
 
 func (r *sqliteRepository) ListAll(ctx context.Context) ([]Site, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, module_id, root_path, status, owner_id, created_at, updated_at FROM sites`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, module_id, root_path, status, owner_id, created_at, updated_at FROM sites WHERE server_id=?`, servercontext.ID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("site repo: list: %w", err)
 	}
@@ -159,8 +160,8 @@ func (r *sqliteRepository) Update(ctx context.Context, s *Site) error {
 	}
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx, `UPDATE sites SET name=?, module_id=?, root_path=?, status=?, updated_at=? WHERE id=?`,
-		s.Name, s.ModuleID, s.RootPath, string(s.State), s.UpdatedAt.Format(time.RFC3339), s.ID,
+	res, err := tx.ExecContext(ctx, `UPDATE sites SET name=?, module_id=?, root_path=?, status=?, updated_at=? WHERE id=? AND server_id=?`,
+		s.Name, s.ModuleID, s.RootPath, string(s.State), s.UpdatedAt.Format(time.RFC3339), s.ID, servercontext.ID(ctx),
 	)
 	if err != nil {
 		return err
@@ -206,7 +207,7 @@ func (r *sqliteRepository) Update(ctx context.Context, s *Site) error {
 }
 
 func (r *sqliteRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM sites WHERE id = ?`, id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM sites WHERE id = ? AND server_id = ?`, id, servercontext.ID(ctx))
 	return err
 }
 

@@ -14,13 +14,13 @@
       <thead><tr><th>Name</th><th>Status</th><th>OS</th><th>Agent</th><th>Last heartbeat</th><th></th></tr></thead>
       <tbody>
         <tr v-if="loading"><td colspan="6" class="py-10 text-center">Loading…</td></tr>
-        <tr v-else-if="!items.length"><td colspan="6" class="py-12 text-center text-text-muted">No remote servers connected yet.</td></tr>
+        <tr v-else-if="!items.length"><td colspan="6" class="py-12 text-center text-text-muted">No servers registered yet.</td></tr>
         <tr v-for="server in items" :key="server.id">
-          <td><router-link :to="`/servers/${server.id}`" class="font-semibold text-indigo-300">{{ server.name }}</router-link><div class="text-xs text-text-muted">{{ server.hostname || server.id }}</div></td>
+          <td><button class="text-left font-semibold text-indigo-300" @click="select(server)">{{ server.name }}</button><div class="text-xs text-text-muted">{{ server.hostname || server.id }}<span v-if="server.local"> · Local</span></div></td>
           <td><span :class="badge(server.status)">{{ server.status }}</span></td>
           <td>{{ [server.distribution || server.os, server.os_version, server.architecture].filter(Boolean).join(' · ') || '—' }}</td>
           <td>{{ server.agent_version || '—' }}</td><td>{{ formatDate(server.last_heartbeat) }}</td>
-          <td><router-link :to="`/servers/${server.id}`" class="btn-secondary text-xs">Open</router-link></td>
+          <td><button class="btn-secondary text-xs" @click="select(server)">Switch</button></td>
         </tr>
       </tbody>
     </table></div>
@@ -50,12 +50,16 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import api, { apiErrorMessage } from '@/api/client'
+import { useRouter } from 'vue-router'
+import { useServerStore } from '@/stores/server'
+const router=useRouter(),serverStore=useServerStore()
 const items=ref([]),total=ref(0),loading=ref(false),errorMessage=ref(''),query=ref(''),status=ref(''),sort=ref('created_at'),offset=ref(0),limit=25
 const showWizard=ref(false),wizardStep=ref(1),creating=ref(false),enrollment=ref({}),tagsText=ref('')
 const form=reactive({name:'',description:'',operating_system:'Ubuntu',update_channel:'stable'})
 let debounce
 function debouncedLoad(){clearTimeout(debounce);debounce=setTimeout(()=>{offset.value=0;load()},250)}
-async function load(){loading.value=true;try{const {data}=await api.get('/servers',{params:{query:query.value,status:status.value,sort:sort.value,limit,offset:offset.value}});items.value=data.items||[];total.value=data.total||0;errorMessage.value=''}catch(e){errorMessage.value=apiErrorMessage(e)}finally{loading.value=false}}
+async function load(){loading.value=true;try{const {data}=await api.get('/servers',{params:{query:query.value,status:status.value,sort:sort.value,limit,offset:offset.value},serverContext:false});items.value=data.items||[];total.value=data.total||0;errorMessage.value=''}catch(e){errorMessage.value=apiErrorMessage(e)}finally{loading.value=false}}
+function select(server){serverStore.selectServer(server.id);router.push('/')}
 function page(d){offset.value=Math.max(0,offset.value+d*limit);load()} function badge(v){return v==='online'?'badge-success':v==='warning'?'badge-warning':v==='offline'?'badge-danger':'badge-muted'} function formatDate(v){return v?new Date(v).toLocaleString():'Never'}
 function openWizard(){wizardStep.value=1;showWizard.value=true}
 async function createEnrollment(){creating.value=true;try{const {data}=await api.post('/servers',{...form,tags:tagsText.value.split(',').map(v=>v.trim()).filter(Boolean)});enrollment.value=data;wizardStep.value=2;await load()}catch(e){errorMessage.value=apiErrorMessage(e)}finally{creating.value=false}}

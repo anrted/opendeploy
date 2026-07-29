@@ -143,6 +143,7 @@ See [configs/opendeploy.yaml](configs/opendeploy.yaml) for all options.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
 - [ROADMAP.md](ROADMAP.md) — Future plans
 - [CHANGELOG.md](CHANGELOG.md) — Version history
+- [MULTI_SERVER_ARCHITECTURE.md](MULTI_SERVER_ARCHITECTURE.md) — Server context, capability routing, and Agent control plane
 - [AUDIT.md](AUDIT.md) — Readiness, security findings and priority backlog
 - [PRODUCTION_STAGE1.md](PRODUCTION_STAGE1.md) — First security-foundation remediation report
 

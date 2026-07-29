@@ -4,6 +4,115 @@ package agent.v1;
 
 option go_package = "github.com/anrted/opendeploy/proto/agent/v1;agentv1";
 
+// ControlPlane is the single long-lived, Agent-initiated connection used for
+// remote management. The first AgentMessage must contain hello.
+service ControlPlane {
+    rpc Connect(stream AgentMessage) returns (stream CoreMessage);
+}
+
+message AgentMessage {
+    oneof body {
+        AgentHello hello = 1;
+        AgentHeartbeat heartbeat = 2;
+        CommandResult command_result = 3;
+        TaskProgress task_progress = 4;
+        AgentEvent event = 5;
+        StreamChunk chunk = 6;
+        StreamError error = 7;
+        Pong pong = 8;
+    }
+}
+
+message CoreMessage {
+    oneof body {
+        StreamWelcome welcome = 1;
+        AgentCommand command = 2;
+        StreamSubscription subscribe = 3;
+        StreamCancel cancel = 4;
+        StreamError error = 5;
+        Ping ping = 6;
+    }
+}
+
+message AgentHello {
+    string server_id = 1;
+    string certificate_fingerprint = 2;
+    uint32 protocol_version = 3;
+    string api_version = 4;
+    string agent_version = 5;
+    repeated string capabilities = 6;
+}
+
+message StreamWelcome {
+    string connection_id = 1;
+    uint32 protocol_version = 2;
+    int32 heartbeat_interval_seconds = 3;
+    int64 server_time_unix_ms = 4;
+}
+
+message AgentHeartbeat {
+    double cpu_usage = 1;
+    double memory_usage = 2;
+    double disk_usage = 3;
+    uint64 network_rx = 4;
+    uint64 network_tx = 5;
+    double load_1 = 6;
+    double load_5 = 7;
+    double load_15 = 8;
+    int64 uptime = 9;
+    string health = 10;
+    uint32 running_tasks = 11;
+    int64 sent_at_unix_ms = 12;
+}
+
+message AgentCommand {
+    string id = 1;
+    string kind = 2;
+    bytes payload = 3;
+    int64 deadline_unix_ms = 4;
+    bool asynchronous = 5;
+}
+
+message CommandResult {
+    string id = 1;
+    bool success = 2;
+    bytes payload = 3;
+    string error = 4;
+}
+
+message TaskProgress {
+    string task_id = 1;
+    uint32 percent = 2;
+    string state = 3;
+    string message = 4;
+    bytes result = 5;
+}
+
+message AgentEvent {
+    string type = 1;
+    string severity = 2;
+    bytes payload = 3;
+    int64 occurred_at_unix_ms = 4;
+}
+
+message StreamSubscription {
+    string id = 1;
+    string kind = 2;
+    bytes payload = 3;
+}
+
+message StreamChunk {
+    string stream_id = 1;
+    uint64 sequence = 2;
+    bytes data = 3;
+    bool eof = 4;
+}
+
+message StreamCancel { string id = 1; }
+message StreamError { string id = 1; string code = 2; string message = 3; }
+message Ping { int64 sent_at_unix_ms = 1; }
+message Pong { int64 sent_at_unix_ms = 1; }
+
 // AgentService is the gRPC service exposed by the OpenDeploy Agent.
 // The Core calls these methods to perform privileged system operations.
 // The Agent validates every request against an allowlist before execution.

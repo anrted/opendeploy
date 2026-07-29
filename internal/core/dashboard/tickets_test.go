@@ -8,22 +8,23 @@ import (
 func TestWebSocketTicketIsSingleUseAndExpires(t *testing.T) {
 	store := newTicketStore()
 	now := time.Now()
-	ticket, _, err := store.Issue("user-1", now)
+	ticket, _, err := store.Issue("user-1", "server-1", now)
 	if err != nil {
 		t.Fatalf("Issue returned %v", err)
 	}
-	if !store.Consume(ticket, now.Add(time.Second)) {
+	serverID, valid := store.Consume(ticket, now.Add(time.Second))
+	if !valid || serverID != "server-1" {
 		t.Fatal("fresh ticket was rejected")
 	}
-	if store.Consume(ticket, now.Add(2*time.Second)) {
+	if _, valid := store.Consume(ticket, now.Add(2*time.Second)); valid {
 		t.Fatal("ticket was accepted twice")
 	}
 
-	expired, _, err := store.Issue("user-1", now)
+	expired, _, err := store.Issue("user-1", "server-1", now)
 	if err != nil {
 		t.Fatalf("Issue returned %v", err)
 	}
-	if store.Consume(expired, now.Add(websocketTicketTTL+time.Second)) {
+	if _, valid := store.Consume(expired, now.Add(websocketTicketTTL+time.Second)); valid {
 		t.Fatal("expired ticket was accepted")
 	}
 }

@@ -19,6 +19,108 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	ControlPlane_Connect_FullMethodName = "/agent.v1.ControlPlane/Connect"
+)
+
+// ControlPlaneClient is the client API for ControlPlane service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ControlPlane is the single long-lived, Agent-initiated connection used for
+// remote management. The first AgentMessage must contain hello.
+type ControlPlaneClient interface {
+	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, CoreMessage], error)
+}
+
+type controlPlaneClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewControlPlaneClient(cc grpc.ClientConnInterface) ControlPlaneClient {
+	return &controlPlaneClient{cc}
+}
+
+func (c *controlPlaneClient) Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, CoreMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ControlPlane_ServiceDesc.Streams[0], ControlPlane_Connect_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[AgentMessage, CoreMessage]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_ConnectClient = grpc.BidiStreamingClient[AgentMessage, CoreMessage]
+
+// ControlPlaneServer is the server API for ControlPlane service.
+// All implementations must embed UnimplementedControlPlaneServer
+// for forward compatibility.
+//
+// ControlPlane is the single long-lived, Agent-initiated connection used for
+// remote management. The first AgentMessage must contain hello.
+type ControlPlaneServer interface {
+	Connect(grpc.BidiStreamingServer[AgentMessage, CoreMessage]) error
+	mustEmbedUnimplementedControlPlaneServer()
+}
+
+// UnimplementedControlPlaneServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedControlPlaneServer struct{}
+
+func (UnimplementedControlPlaneServer) Connect(grpc.BidiStreamingServer[AgentMessage, CoreMessage]) error {
+	return status.Error(codes.Unimplemented, "method Connect not implemented")
+}
+func (UnimplementedControlPlaneServer) mustEmbedUnimplementedControlPlaneServer() {}
+func (UnimplementedControlPlaneServer) testEmbeddedByValue()                      {}
+
+// UnsafeControlPlaneServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ControlPlaneServer will
+// result in compilation errors.
+type UnsafeControlPlaneServer interface {
+	mustEmbedUnimplementedControlPlaneServer()
+}
+
+func RegisterControlPlaneServer(s grpc.ServiceRegistrar, srv ControlPlaneServer) {
+	// If the following call panics, it indicates UnimplementedControlPlaneServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ControlPlane_ServiceDesc, srv)
+}
+
+func _ControlPlane_Connect_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ControlPlaneServer).Connect(&grpc.GenericServerStream[AgentMessage, CoreMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_ConnectServer = grpc.BidiStreamingServer[AgentMessage, CoreMessage]
+
+// ControlPlane_ServiceDesc is the grpc.ServiceDesc for ControlPlane service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ControlPlane_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "agent.v1.ControlPlane",
+	HandlerType: (*ControlPlaneServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Connect",
+			Handler:       _ControlPlane_Connect_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "proto/agent/v1/agent.proto",
+}
+
+const (
 	AgentService_ServiceAction_FullMethodName     = "/agent.v1.AgentService/ServiceAction"
 	AgentService_ServiceStatus_FullMethodName     = "/agent.v1.AgentService/ServiceStatus"
 	AgentService_ServiceLogs_FullMethodName       = "/agent.v1.AgentService/ServiceLogs"
