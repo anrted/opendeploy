@@ -1,0 +1,188 @@
+package remote
+
+import (
+	"encoding/json"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/go-chi/chi/v5"
+)
+
+type Handler struct {
+	service *Service
+	repo    *Repository
+}
+
+func NewHandler(service *Service, repo *Repository) *Handler {
+	return &Handler{service: service, repo: repo}
+}
+
+func respond(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func invalid(w http.ResponseWriter, message string) {
+	apperrors.WriteHTTP(w, apperrors.InvalidInput(message))
+}
+func internal(w http.ResponseWriter, message string, err error) {
+	apperrors.WriteHTTP(w, apperrors.Internal(message, err))
+}
+
+func decode(r *http.Request, target any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(target)
+}
+
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	var req CreateRequest
+	if err := decode(r, &req); err != nil {
+		invalid(w, "invalid server request")
+		return
+	}
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	enrollment, err := h.service.Create(r.Context(), req, scheme+"://"+r.Host)
+	if err != nil {
+		invalid(w, err.Error())
+		return
+	}
+	respond(w, http.StatusCreated, enrollment)
+}
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	var req RegistrationRequest
+	if err := decode(r, &req); err != nil {
+		invalid(w, "invalid registration request")
+		return
+	}
+	result, err := h.service.Register(r.Context(), req)
+	if err != nil {
+		apperrors.WriteHTTP(w, apperrors.New(http.StatusUnauthorized, apperrors.CodeTokenInvalid, err.Error()))
+		return
+	}
+	respond(w, http.StatusCreated, result)
+}
+
+func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	serverID := strings.TrimSpace(r.Header.Get("X-OpenDeploy-Agent-ID"))
+	fingerprint := strings.TrimSpace(r.Header.Get("X-OpenDeploy-Cert-Fingerprint"))
+	if serverID == "" || fingerprint == "" {
+		apperrors.WriteHTTP(w, apperrors.Unauthorized("agent certificate identity is required"))
+		return
+	}
+	var req HeartbeatRequest
+	if err := decode(r, &req); err != nil {
+		invalid(w, "invalid heartbeat request")
+		return
+	}
+	result, err := h.service.Heartbeat(r.Context(), serverID, fingerprint, req, time.Since(start).Milliseconds())
+	if err != nil {
+		apperrors.WriteHTTP(w, apperrors.Unauthorized(err.Error()))
+		return
+	}
+	respond(w, http.StatusOK, result)
+}
+
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	limit := intQuery(r, "limit", 25, 100)
+	offset := intQuery(r, "offset", 0, 1000000)
+	page, err := h.repo.List(r.Context(), r.URL.Query().Get("query"), r.URL.Query().Get("status"), r.URL.Query().Get("tag"), r.URL.Query().Get("sort"), limit, offset)
+	if err != nil {
+		internal(w, "list remote servers", err)
+		return
+	}
+	respond(w, http.StatusOK, page)
+}
+
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	item, err := h.repo.Get(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		internal(w, "get remote server", err)
+		return
+	}
+	if item == nil {
+		apperrors.WriteHTTP(w, apperrors.NotFound("server not found"))
+		return
+	}
+	respond(w, http.StatusOK, item)
+}
+
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	if err := h.repo.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+		internal(w, "delete remote server", err)
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"message": "server deleted"})
+}
+
+func (h *Handler) Action(w http.ResponseWriter, r *http.Request) {
+	id, action := chi.URLParam(r, "id"), chi.URLParam(r, "action")
+	if action == "maintenance_on" || action == "maintenance_off" {
+		if err := h.service.SetMaintenance(r.Context(), id, action == "maintenance_on"); err != nil {
+			internal(w, "set maintenance mode", err)
+			return
+		}
+		respond(w, http.StatusOK, map[string]string{"message": "maintenance mode updated"})
+		return
+	}
+	task, err := h.service.CreateTask(r.Context(), id, action, "{}")
+	if err != nil {
+		invalid(w, err.Error())
+		return
+	}
+	respond(w, http.StatusAccepted, task)
+}
+
+func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
+	items, err := h.repo.Events(r.Context(), chi.URLParam(r, "id"), intQuery(r, "limit", 100, 500))
+	if err != nil {
+		internal(w, "list server events", err)
+		return
+	}
+	respond(w, http.StatusOK, items)
+}
+func (h *Handler) Heartbeats(w http.ResponseWriter, r *http.Request) {
+	items, err := h.repo.Heartbeats(r.Context(), chi.URLParam(r, "id"), intQuery(r, "limit", 100, 500))
+	if err != nil {
+		internal(w, "list server heartbeats", err)
+		return
+	}
+	respond(w, http.StatusOK, items)
+}
+func (h *Handler) Tasks(w http.ResponseWriter, r *http.Request) {
+	items, err := h.repo.Tasks(r.Context(), chi.URLParam(r, "id"), intQuery(r, "limit", 100, 500))
+	if err != nil {
+		internal(w, "list server tasks", err)
+		return
+	}
+	respond(w, http.StatusOK, items)
+}
+
+func intQuery(r *http.Request, key string, fallback, max int) int {
+	value, err := strconv.Atoi(r.URL.Query().Get(key))
+	if err != nil || value < 0 {
+		return fallback
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func remoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}

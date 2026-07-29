@@ -25,6 +25,16 @@ const routes = [
         component: () => import('@/views/DashboardView.vue'),
       },
       {
+        path: 'servers',
+        name: 'servers',
+        component: () => import('@/views/ServersView.vue'),
+      },
+      {
+        path: 'servers/:id',
+        name: 'server_details',
+        component: () => import('@/views/ServerDetailsView.vue'),
+      },
+      {
         path: 'modules',
         name: 'modules',
         component: () => import('@/views/ModulesView.vue'),

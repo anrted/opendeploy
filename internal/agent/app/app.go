@@ -16,6 +16,7 @@ import (
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
 	"github.com/anrted/opendeploy/internal/agent/packages"
+	agentRemote "github.com/anrted/opendeploy/internal/agent/remote"
 	agentServer "github.com/anrted/opendeploy/internal/agent/server"
 	"github.com/anrted/opendeploy/internal/agent/stats"
 	agentSystemd "github.com/anrted/opendeploy/internal/agent/systemd"
@@ -29,6 +30,8 @@ type Agent struct {
 	cfg        *config.Config
 	logger     *slog.Logger
 	grpcServer *grpc.Server
+	remote     *agentRemote.Client
+	cancel     context.CancelFunc
 
 	// Sub-systems
 	shell   *executor.Shell
@@ -58,7 +61,7 @@ func New(cfg *config.Config) (*Agent, error) {
 		log.Warn("agent: package manager detection failed — package operations will be unavailable", "error", err)
 	}
 
-	return &Agent{
+	agent := &Agent{
 		cfg:     cfg,
 		logger:  log,
 		shell:   shell,
@@ -67,11 +70,25 @@ func New(cfg *config.Config) (*Agent, error) {
 		fs:      fsMgr,
 		fw:      fwMgr,
 		cron:    cronMgr,
-	}, nil
+	}
+	if cfg.Agent.CoreURL != "" {
+		remoteClient, remoteErr := agentRemote.New(cfg.Agent, log)
+		if remoteErr != nil {
+			return nil, fmt.Errorf("agent: init remote client: %w", remoteErr)
+		}
+		agent.remote = remoteClient
+	}
+	return agent, nil
 }
 
 // Start launches the gRPC server on the configured Unix socket.
 func (a *Agent) Start() error {
+	if a.remote != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		a.cancel = cancel
+		go a.remote.Run(ctx)
+		a.logger.Info("agent: remote heartbeat client started", "core_url", a.cfg.Agent.CoreURL)
+	}
 	socketPath := a.cfg.Agent.Socket
 
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0o750); err != nil {
@@ -103,6 +120,9 @@ func (a *Agent) Start() error {
 
 // Shutdown gracefully stops the gRPC server.
 func (a *Agent) Shutdown(_ context.Context) {
+	if a.cancel != nil {
+		a.cancel()
+	}
 	if a.grpcServer != nil {
 		a.logger.Info("agent: shutting down gRPC server")
 		a.grpcServer.GracefulStop()

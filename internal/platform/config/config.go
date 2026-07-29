@@ -37,8 +37,14 @@ type DatabaseConfig struct {
 // AgentConfig holds settings for the gRPC connection to the Agent.
 type AgentConfig struct {
 	// Socket is the path to the Unix domain socket used by the Agent.
-	Socket  string        `yaml:"socket"`
-	Timeout time.Duration `yaml:"timeout"`
+	Socket                 string        `yaml:"socket"`
+	Timeout                time.Duration `yaml:"timeout"`
+	CoreURL                string        `yaml:"core_url"`
+	ServerID               string        `yaml:"server_id"`
+	CertificateFile        string        `yaml:"certificate_file"`
+	PrivateKeyFile         string        `yaml:"private_key_file"`
+	CertificateFingerprint string        `yaml:"certificate_fingerprint"`
+	HeartbeatInterval      time.Duration `yaml:"heartbeat_interval"`
 }
 
 // AuthConfig holds authentication settings.
@@ -91,8 +97,9 @@ func defaults() Config {
 			DSN:    "/var/lib/opendeploy/data.db",
 		},
 		Agent: AgentConfig{
-			Socket:  "/run/opendeploy-agent/agent.sock",
-			Timeout: 120 * time.Second,
+			Socket:            "/run/opendeploy-agent/agent.sock",
+			Timeout:           120 * time.Second,
+			HeartbeatInterval: 30 * time.Second,
 		},
 		Auth: AuthConfig{
 			AccessTokenTTL:  15 * time.Minute,

@@ -135,6 +135,24 @@ func TestEnableSiteCopiesAvailableConfiguration(t *testing.T) {
 	}
 }
 
+func TestPHPIndexTakesPriorityOverStaticIndex(t *testing.T) {
+	const available = "/etc/nginx/sites-available/opendeploy-example.com.conf"
+	agent := &nginxTestAgent{files: make(map[string][]byte)}
+	module := testNginxModule(agent)
+
+	err := module.ApplySite(context.Background(), contract.SiteUpsert, contract.SiteSpec{
+		Name: "example", PrimaryDomain: "example.com", RootPath: "/var/www/example",
+		AppType: "php", AppVersion: "8.3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(agent.files[available])
+	if !strings.Contains(config, "index index.php index.html index.htm;") {
+		t.Fatalf("PHP index does not have priority:\n%s", config)
+	}
+}
+
 func TestValidateNginxSettings(t *testing.T) {
 	valid := validNginxSettings()
 	if _, err := validateNginxSettings(valid); err != nil {

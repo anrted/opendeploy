@@ -54,6 +54,7 @@ const messages = {
     },
     sidebar: {
       dashboard: 'Dashboard',
+      servers: 'Servers',
       modules: 'Modules',
       sites: 'Sites',
       services: 'Services',

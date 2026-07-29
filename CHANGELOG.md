@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.23] - 2026-07-30
+
+### Added
+
+- Infrastructure / Servers control plane for managing remote OpenDeploy Agents.
+- One-time, expiring enrollment tokens and agent-generated certificate signing
+  requests with certificate-bound heartbeat authentication.
+- Remote server inventory, heartbeat metrics, health state, event history,
+  task queue, maintenance mode and lifecycle actions.
+- Responsive server list, enrollment wizard and server detail dashboard.
+- Hardened `install-agent.sh` for Ubuntu/Debian amd64 and arm64 hosts.
+
+### Fixed
+
+- PHP sites now prioritize `index.php` over a leftover `index.html`.
+- Release publishing now uses the Node.js 24-compatible release action.
+
 ## [0.1.22] - 2026-07-30
 
 ### Fixed

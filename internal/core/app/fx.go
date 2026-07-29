@@ -16,6 +16,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/dashboard"
 	"github.com/anrted/opendeploy/internal/core/logs"
 	"github.com/anrted/opendeploy/internal/core/module"
+	"github.com/anrted/opendeploy/internal/core/remote"
 	"github.com/anrted/opendeploy/internal/core/server"
 	"github.com/anrted/opendeploy/internal/core/service"
 	"github.com/anrted/opendeploy/internal/core/settings"
@@ -86,6 +87,9 @@ var Module = fx.Options(
 		logs.NewRepository,
 		logs.NewService,
 		logs.NewHandler,
+		remote.NewRepository,
+		remote.NewService,
+		remote.NewHandler,
 
 		// Server
 		provideServer,
@@ -94,6 +98,7 @@ var Module = fx.Options(
 		registerModules,
 		seedAdmin,
 		startBackgroundJobs,
+		startRemoteServerMonitor,
 		registerDomainSubscribers,
 		bootstrapModules,
 		reconcileSites,
@@ -199,7 +204,7 @@ func provideUpdaterService(agent *agentclient.Client) *updater.Service {
 	return updater.NewService(version.Version, version.Commit, agent)
 }
 
-func provideServer(cfg *config.Config, authHandler *auth.Handler, jwtMgr *auth.JWTManager, moduleHandler *module.Handler, dashboardHandler *dashboard.Handler, siteHandler *site.Handler, svcHandler *service.Handler, settingsHandler *settings.Handler, logsHandler *logs.Handler, registry *module.Registry, hub *websocket.Hub, log *slog.Logger) *server.Server {
+func provideServer(cfg *config.Config, authHandler *auth.Handler, jwtMgr *auth.JWTManager, moduleHandler *module.Handler, dashboardHandler *dashboard.Handler, siteHandler *site.Handler, svcHandler *service.Handler, settingsHandler *settings.Handler, logsHandler *logs.Handler, remoteHandler *remote.Handler, registry *module.Registry, hub *websocket.Hub, log *slog.Logger) *server.Server {
 	return server.New(server.Dependencies{
 		Config:           cfg,
 		AuthHandler:      authHandler,
@@ -211,8 +216,33 @@ func provideServer(cfg *config.Config, authHandler *auth.Handler, jwtMgr *auth.J
 		ServiceHandler:   svcHandler,
 		SettingsHandler:  settingsHandler,
 		LogsHandler:      logsHandler,
+		RemoteHandler:    remoteHandler,
 		ModuleRegistry:   registry,
 	}, log)
+}
+
+func startRemoteServerMonitor(lc fx.Lifecycle, service *remote.Service, log *slog.Logger) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			go func() {
+				ticker := time.NewTicker(30 * time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						if err := service.MarkStale(ctx); err != nil {
+							log.ErrorContext(ctx, "remote server status refresh failed", "error", err)
+						}
+					}
+				}
+			}()
+			return nil
+		},
+		OnStop: func(context.Context) error { cancel(); return nil },
+	})
 }
 
 // ── Invokers ─────────────────────────────────────────────────────────────

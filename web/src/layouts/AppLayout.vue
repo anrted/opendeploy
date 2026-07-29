@@ -45,7 +45,7 @@
           <button @click="navigate(); mobileOpen = false"
             :class="['nav-item w-full', isActive ? 'active' : '']">
             <component :is="item.icon" class="w-4 h-4 flex-shrink-0" />
-            {{ $t('sidebar.' + item.name) }}
+            {{ $te('sidebar.' + item.name) ? $t('sidebar.' + item.name) : item.label }}
           </button>
         </router-link>
       </nav>
@@ -117,6 +117,9 @@ const FirewallIcon = {
 const ProcessesIcon = {
   template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>`
 }
+const ServersIcon = {
+  template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="2" stroke-width="2"/><rect x="3" y="14" width="18" height="6" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M7 7h.01M7 17h.01M11 7h6M11 17h6"/></svg>`
+}
 const UsersIcon = {
   template: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H2v-2a4 4 0 014-4h3m7-6a4 4 0 11-8 0 4 4 0 018 0z"/></svg>`
 }
@@ -132,6 +135,7 @@ const LogsIcon = {
 
 const allNavItems = [
   { name: 'dashboard', label: 'Dashboard', to: '/', icon: DashboardIcon },
+  { name: 'servers',   label: 'Servers',   to: '/servers', icon: ServersIcon },
   { name: 'modules',   label: 'Modules',   to: '/modules', icon: ModulesIcon },
   { name: 'sites',     label: 'Sites',     to: '/sites', icon: SitesIcon },
   { name: 'services',  label: 'Services',  to: '/services', icon: ServicesIcon },

@@ -54,6 +54,39 @@ jobs:
             -H 'Content-Type: application/json' \
             -d "{\"username\":\"admin\",\"password\":\"$password\"}" | jq -r .access_token)
           test -n "$token"
+          enrollment=$(curl --fail-with-body -sS -X POST \
+            http://127.0.0.1:5888/api/v1/servers \
+            -b "$cookie_jar" \
+            -H "X-CSRF-Token: $csrf_token" \
+            -H "Authorization: Bearer $token" \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"Smoke remote agent","description":"CI registration check","tags":["smoke"]}')
+          registration_token=$(printf '%s' "$enrollment" | jq -er .registration_token)
+          server_id=$(printf '%s' "$enrollment" | jq -er .server.id)
+          openssl ecparam -genkey -name prime256v1 -noout -out /tmp/opendeploy-smoke-agent.key
+          openssl req -new -key /tmp/opendeploy-smoke-agent.key \
+            -subj '/CN=smoke-remote-agent' -out /tmp/opendeploy-smoke-agent.csr
+          registration_payload=$(jq -n \
+            --arg token "$registration_token" \
+            --rawfile csr /tmp/opendeploy-smoke-agent.csr \
+            '{token:$token,csr:$csr,hostname:"smoke-remote-agent",machine_id:"ci-smoke",agent_version:"0.1.23",os:"linux",distribution:"ubuntu",os_version:"24.04",kernel:"ci",architecture:"amd64",cpu_model:"CI",cpu_cores:2,ram_total:1073741824,disk_total:10737418240,private_ip:"127.0.0.1"}')
+          registration=$(curl --fail-with-body -sS -X POST \
+            http://127.0.0.1:5888/api/v1/agents/register \
+            -H 'Content-Type: application/json' \
+            -d "$registration_payload")
+          fingerprint=$(printf '%s' "$registration" | jq -er .fingerprint)
+          test "$(printf '%s' "$registration" | jq -er .server_id)" = "$server_id"
+          curl --fail-with-body -sS -X POST \
+            http://127.0.0.1:5888/api/v1/agents/heartbeat \
+            -H "X-OpenDeploy-Agent-ID: $server_id" \
+            -H "X-OpenDeploy-Cert-Fingerprint: $fingerprint" \
+            -H 'Content-Type: application/json' \
+            -d '{"state":"online","cpu_usage":12.5,"memory_usage":34.5,"disk_usage":45.5,"uptime":120,"agent_version":"0.1.23"}' |
+            jq -e '.next_heartbeat_seconds > 0'
+          curl --fail-with-body -sS \
+            "http://127.0.0.1:5888/api/v1/servers?search=Smoke%20remote%20agent" \
+            -H "Authorization: Bearer $token" |
+            jq -e --arg id "$server_id" '.items[] | select(.id == $id and .status == "online")'
           curl -fsS http://127.0.0.1:5888/api/v1/modules \
             -H "Authorization: Bearer $token" |
             jq -e '.[] | select(.id == "nodejs" and (.state == "installed" or .state == "enabled"))'

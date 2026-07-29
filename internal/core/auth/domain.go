@@ -41,6 +41,9 @@ const (
 	PermServiceView   Permission = "service:view"
 	PermServiceManage Permission = "service:manage"
 
+	PermServerView   Permission = "server:view"
+	PermServerManage Permission = "server:manage"
+
 	PermSettingsView     Permission = "settings:view"
 	PermSettingsUpdate   Permission = "settings:update"
 	PermSettingsSecurity Permission = "settings:security"
@@ -58,6 +61,7 @@ var rolePermissions = map[Role][]Permission{
 		PermModuleEnable, PermModuleDisable, PermModuleConfigure,
 		PermSiteView, PermSiteCreate, PermSiteUpdate, PermSiteDelete,
 		PermServiceView, PermServiceManage,
+		PermServerView, PermServerManage,
 		PermSettingsView, PermSettingsUpdate, PermSettingsSecurity,
 		PermAuditView, PermUserManage,
 	},
@@ -67,6 +71,7 @@ var rolePermissions = map[Role][]Permission{
 		PermModuleView, PermModuleEnable, PermModuleDisable, PermModuleConfigure,
 		PermSiteView, PermSiteCreate, PermSiteUpdate, PermSiteDelete,
 		PermServiceView, PermServiceManage,
+		PermServerView, PermServerManage,
 		PermSettingsView,
 		PermAuditView,
 	},
@@ -75,6 +80,7 @@ var rolePermissions = map[Role][]Permission{
 		PermModuleView,
 		PermSiteView,
 		PermServiceView,
+		PermServerView,
 		PermSettingsView,
 		PermAuditView,
 	},

@@ -24,6 +24,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/dashboard"
 	"github.com/anrted/opendeploy/internal/core/logs"
 	"github.com/anrted/opendeploy/internal/core/module"
+	"github.com/anrted/opendeploy/internal/core/remote"
 	coreMiddleware "github.com/anrted/opendeploy/internal/core/server/middleware"
 	"github.com/anrted/opendeploy/internal/core/service"
 	"github.com/anrted/opendeploy/internal/core/settings"
@@ -52,6 +53,7 @@ type Dependencies struct {
 	ServiceHandler   *service.Handler
 	SettingsHandler  *settings.Handler
 	LogsHandler      *logs.Handler
+	RemoteHandler    *remote.Handler
 	ModuleRegistry   *module.Registry
 }
 
@@ -173,6 +175,10 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 		r.Get("/auth/csrf", deps.AuthHandler.CSRFToken)
 		r.Post("/auth/login", deps.AuthHandler.Login)
 		r.Post("/auth/refresh", deps.AuthHandler.Refresh)
+		if deps.RemoteHandler != nil {
+			r.Post("/agents/register", deps.RemoteHandler.Register)
+			r.Post("/agents/heartbeat", deps.RemoteHandler.Heartbeat)
+		}
 
 		// Protected endpoints — require valid JWT
 		r.Group(func(r chi.Router) {
@@ -261,6 +267,17 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 				r.With(coreMiddleware.RequirePermission(auth.PermSiteUpdate)).Post("/sites/{id}/files/batch", deps.SiteHandler.BatchOperations)
 			}
 
+			if deps.RemoteHandler != nil {
+				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers", deps.RemoteHandler.List)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers", deps.RemoteHandler.Create)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}", deps.RemoteHandler.Get)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Delete("/servers/{id}", deps.RemoteHandler.Delete)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerManage)).Post("/servers/{id}/actions/{action}", deps.RemoteHandler.Action)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}/events", deps.RemoteHandler.Events)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}/heartbeats", deps.RemoteHandler.Heartbeats)
+				r.With(coreMiddleware.RequirePermission(auth.PermServerView)).Get("/servers/{id}/tasks", deps.RemoteHandler.Tasks)
+			}
+
 			// Service routes
 			if deps.ServiceHandler != nil {
 				r.With(coreMiddleware.RequirePermission(auth.PermServiceView)).Get("/services", deps.ServiceHandler.List)
@@ -317,7 +334,7 @@ func limitRequestBody(limit int64) func(http.Handler) http.Handler {
 // while protected API calls authenticate with an explicit Bearer header.
 func csrfExemptRequest(r *http.Request) bool {
 	switch r.URL.Path {
-	case "/api/v1/auth/login", "/api/v1/auth/refresh":
+	case "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/agents/register", "/api/v1/agents/heartbeat":
 		return true
 	}
 
