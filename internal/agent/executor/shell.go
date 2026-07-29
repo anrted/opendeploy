@@ -46,6 +46,7 @@ var allowlist = []AllowedCommand{
 	{Binary: "openssl", AllowedArgs: []string{"x509", "-in", "-noout", "-issuer", "-subject", "-dates", "-ext", "subjectAltName"}},
 	{Binary: "ss", AllowedArgs: []string{"-tuln"}},
 	{Binary: "curl", AllowedArgs: []string{"-s", "--max-time"}},
+	{Binary: "test", AllowedArgs: []string{"-S"}},
 	{Binary: "php", AllowedArgs: []string{"-v", "-m"}},
 	{Binary: "node", AllowedArgs: []string{"--version"}},
 	{Binary: "npm", AllowedArgs: []string{"--version"}},
@@ -87,6 +88,9 @@ func (v *Validator) Validate(binary string, args []string) error {
 	}
 	if binary == "curl" {
 		return validateCurlArgs(args)
+	}
+	if binary == "test" {
+		return validateSocketTestArgs(args)
 	}
 	for index, arg := range args {
 		if arg == "" || len(arg) > maxCommandArgument || strings.ContainsAny(arg, "\x00\r\n") {
@@ -198,6 +202,17 @@ func validateCurlArgs(args []string) error {
 	}
 
 	return fmt.Errorf("validator: only local nginx health endpoints are permitted")
+}
+
+func validateSocketTestArgs(args []string) error {
+	if len(args) != 2 || args[0] != "-S" {
+		return fmt.Errorf("validator: only PHP-FPM socket checks are permitted")
+	}
+	socketPattern := regexp.MustCompile(`^/run/php/php[0-9]+\.[0-9]+-fpm-[A-Za-z0-9][A-Za-z0-9.-]{0,252}\.sock$`)
+	if !socketPattern.MatchString(args[1]) || strings.Contains(args[1], "..") {
+		return fmt.Errorf("validator: only PHP-FPM socket checks are permitted")
+	}
+	return nil
 }
 
 func isPackageAction(value string) bool {

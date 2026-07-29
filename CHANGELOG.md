@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.22] - 2026-07-30
+
+### Fixed
+
+- Registered the system logs API at `/api/v1/logs`.
+- Allowed the Agent to perform strictly bounded PHP-FPM socket readiness checks.
+- Reconciled active site PHP pools and Nginx configurations during startup so
+  sites created by older versions are repaired automatically.
+- Correctly transition sites from PHP to static or proxy mode, remove obsolete
+  PHP-FPM pools, and clear stale PHP version metadata.
+- Updated GitHub Actions to Node.js 24-compatible action releases.
+
 ## [0.1.19] - 2026-07-29
 
 ### Added

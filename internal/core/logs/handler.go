@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {

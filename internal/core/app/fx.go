@@ -96,6 +96,7 @@ var Module = fx.Options(
 		startBackgroundJobs,
 		registerDomainSubscribers,
 		bootstrapModules,
+		reconcileSites,
 		startServer,
 	),
 )
@@ -198,7 +199,7 @@ func provideUpdaterService(agent *agentclient.Client) *updater.Service {
 	return updater.NewService(version.Version, version.Commit, agent)
 }
 
-func provideServer(cfg *config.Config, authHandler *auth.Handler, jwtMgr *auth.JWTManager, moduleHandler *module.Handler, dashboardHandler *dashboard.Handler, siteHandler *site.Handler, svcHandler *service.Handler, settingsHandler *settings.Handler, registry *module.Registry, hub *websocket.Hub, log *slog.Logger) *server.Server {
+func provideServer(cfg *config.Config, authHandler *auth.Handler, jwtMgr *auth.JWTManager, moduleHandler *module.Handler, dashboardHandler *dashboard.Handler, siteHandler *site.Handler, svcHandler *service.Handler, settingsHandler *settings.Handler, logsHandler *logs.Handler, registry *module.Registry, hub *websocket.Hub, log *slog.Logger) *server.Server {
 	return server.New(server.Dependencies{
 		Config:           cfg,
 		AuthHandler:      authHandler,
@@ -209,6 +210,7 @@ func provideServer(cfg *config.Config, authHandler *auth.Handler, jwtMgr *auth.J
 		SiteHandler:      siteHandler,
 		ServiceHandler:   svcHandler,
 		SettingsHandler:  settingsHandler,
+		LogsHandler:      logsHandler,
 		ModuleRegistry:   registry,
 	}, log)
 }
@@ -272,6 +274,17 @@ func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Re
 				Tasks:  moduleService,
 			}
 			return loader.Bootstrap(ctx, deps)
+		},
+	})
+}
+
+func reconcileSites(lc fx.Lifecycle, siteService *site.Service, log *slog.Logger) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			if err := siteService.ReconcileActive(ctx); err != nil {
+				log.ErrorContext(ctx, "site reconciliation completed with errors", "error", err)
+			}
+			return nil
 		},
 	})
 }

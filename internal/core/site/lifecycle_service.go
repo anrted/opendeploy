@@ -15,7 +15,7 @@ func (s *Service) Delete(ctx context.Context, id string, userID, ip string) erro
 	if err != nil {
 		return err
 	}
-	if site.App.AppType != "" {
+	if managesAppServer(site.App.AppType) {
 		if err := s.applyAppConfig(ctx, site.App.AppType, contract.SiteDelete, site); err != nil {
 			s.logger.ErrorContext(ctx, "failed to remove app server config during site deletion", "error", err, "site_id", id)
 		}
@@ -26,7 +26,7 @@ func (s *Service) Delete(ctx context.Context, id string, userID, ip string) erro
 	if err := s.repo.Delete(ctx, id); err != nil {
 		// Rollback configuration if DB deletion fails
 		_ = s.applySiteConfig(ctx, site.ModuleID, contract.SiteUpsert, site)
-		if site.App.AppType != "" {
+		if managesAppServer(site.App.AppType) {
 			_ = s.applyAppConfig(ctx, site.App.AppType, contract.SiteUpsert, site)
 		}
 		return err
@@ -73,20 +73,20 @@ func (s *Service) setState(
 		// Revert DB state
 		site.State = originalState
 		_ = s.repo.Update(ctx, site)
-		
+
 		// Attempt to restore previous config state
 		revertAction := contract.SiteDisable
 		if originalState == StateActive {
 			revertAction = contract.SiteEnable
 		}
 		_ = s.applySiteConfig(ctx, site.ModuleID, revertAction, site)
-		if site.App.AppType != "" {
+		if managesAppServer(site.App.AppType) {
 			_ = s.applyAppConfig(ctx, site.App.AppType, revertAction, site)
 		}
 		return err
 	}
 
-	if site.App.AppType != "" {
+	if managesAppServer(site.App.AppType) {
 		if err := s.applyAppConfig(ctx, site.App.AppType, action, site); err != nil {
 			message := "failed to enable app server config"
 			if action == contract.SiteDisable {
@@ -95,7 +95,7 @@ func (s *Service) setState(
 			return rollback(err, message)
 		}
 	}
-	
+
 	if err := s.applySiteConfig(ctx, site.ModuleID, action, site); err != nil {
 		message := "failed to enable web server config"
 		if action == contract.SiteDisable {
@@ -103,7 +103,7 @@ func (s *Service) setState(
 		}
 		return rollback(err, message)
 	}
-	
+
 	if action == contract.SiteEnable {
 		if err := s.verifySiteHealth(ctx, site); err != nil {
 			return rollback(err, "health check failed after enable")
