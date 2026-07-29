@@ -40,9 +40,25 @@ After installation, access the panel in your browser:
 http://<YOUR_SERVER_IP>:5888
 ```
 
-Provide `OD_ADMIN_PASSWORD` through the protected service environment before
-first start. The current release does not provide a browser-based initial setup
-wizard. Keep `OD_JWT_SECRET` stable, random and at least 32 bytes.
+The installer creates the initial `admin` account with a cryptographically
+secure generated password (32 characters) and prints it once in the console.
+Save it in a password manager.
+
+If the password is lost, regenerate it locally. The command also unblocks the
+account and revokes its existing sessions:
+
+```bash
+sudo opendeploy admin reset-password
+```
+
+To reset another account or use a non-default database path:
+
+```bash
+sudo opendeploy admin reset-password --username admin --database /var/lib/opendeploy/data.db
+```
+
+Generated passwords exceed the enforced minimum of 12 characters. Keep
+`OD_JWT_SECRET` stable, random and at least 32 bytes.
 
 ## Updates
 

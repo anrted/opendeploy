@@ -71,8 +71,8 @@ func (s *Service) SeedAdminIfEmpty(ctx context.Context, username, password strin
 	if count > 0 {
 		return nil // admin already exists
 	}
-	if len(password) < 12 {
-		return fmt.Errorf("auth: seed admin: initial password must contain at least 12 characters")
+	if len(password) < MinimumPasswordLength {
+		return fmt.Errorf("auth: seed admin: initial password must contain at least %d characters", MinimumPasswordLength)
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
@@ -249,8 +249,8 @@ func (s *Service) CreateUser(ctx context.Context, actorID string, input CreateUs
 	if err := validateUserInput(input.Username, input.Email, input.Role); err != nil {
 		return nil, err
 	}
-	if len(input.Password) < 12 {
-		return nil, apperrors.InvalidInput("password must contain at least 12 characters")
+	if len(input.Password) < MinimumPasswordLength {
+		return nil, apperrors.InvalidInput(fmt.Sprintf("password must contain at least %d characters", MinimumPasswordLength))
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcryptCost)
 	if err != nil {
@@ -287,8 +287,8 @@ func (s *Service) UpdateUser(ctx context.Context, actorID, id string, input Upda
 }
 
 func (s *Service) SetPassword(ctx context.Context, actorID, id, password string) error {
-	if len(password) < 12 {
-		return apperrors.InvalidInput("password must contain at least 12 characters")
+	if len(password) < MinimumPasswordLength {
+		return apperrors.InvalidInput(fmt.Sprintf("password must contain at least %d characters", MinimumPasswordLength))
 	}
 	user, err := s.users.FindByID(ctx, id)
 	if err != nil {

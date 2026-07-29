@@ -5,6 +5,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.26] - 2026-07-30
+
+### Added
+
+- Secure automatic generation and one-time console display of the initial
+  `admin` password during panel installation.
+- Root-only `opendeploy admin reset-password` recovery command, which generates
+  a new password, unblocks the account, and revokes existing sessions.
+
+### Security
+
+- Generated administrator passwords are 20 characters in the CLI and 32
+  hexadecimal characters in the installer, exceeding the enforced 12-character
+  minimum.
+
 ## [0.1.25] - 2026-07-30
 
 ### Added

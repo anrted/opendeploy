@@ -16,6 +16,8 @@ import (
 	"time"
 
 	systembackup "github.com/anrted/opendeploy/internal/backup"
+	"github.com/anrted/opendeploy/internal/core/auth"
+	"github.com/anrted/opendeploy/internal/platform/database/sqlite"
 	secureupdate "github.com/anrted/opendeploy/internal/update"
 	"github.com/anrted/opendeploy/pkg/version"
 )
@@ -45,11 +47,47 @@ func main() {
 		runUpdate(args[1:])
 	case "backup":
 		runBackup(args[1:])
+	case "admin":
+		runAdmin(args[1:])
 	default:
 		log.Printf("unknown command: %q\n", args[0])
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+func runAdmin(args []string) {
+	if !isRoot() {
+		log.Fatal("OpenDeploy administrator recovery must run as root")
+	}
+	flags := flag.NewFlagSet("admin reset-password", flag.ExitOnError)
+	username := flags.String("username", "admin", "user whose password will be regenerated")
+	databasePath := flags.String("database", "/var/lib/opendeploy/data.db", "OpenDeploy SQLite database path")
+	if len(args) == 0 || args[0] != "reset-password" {
+		fmt.Println("Usage: opendeploy admin reset-password [--username admin] [--database /var/lib/opendeploy/data.db]")
+		return
+	}
+	if err := flags.Parse(args[1:]); err != nil {
+		log.Fatal(err)
+	}
+	db, err := sqlite.Open(*databasePath)
+	if err != nil {
+		log.Fatalf("Open database: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	password, err := auth.ResetGeneratedPassword(
+		ctx,
+		auth.NewSQLiteUserRepository(db.DB),
+		auth.NewSQLiteSessionRepository(db.DB),
+		*username,
+	)
+	if err != nil {
+		log.Fatalf("Reset password: %v", err)
+	}
+	fmt.Printf("OpenDeploy password regenerated successfully.\nUsername: %s\nPassword: %s\n", *username, password)
+	fmt.Println("All existing sessions for this user have been revoked.")
 }
 
 func runUpdate(args []string) {
@@ -215,6 +253,7 @@ Commands:
   services    Manage services
   update      Apply, inspect or roll back signed releases
   backup      Create, verify or restore full system backups
+  admin       Recover administrator access
 
 Run 'opendeploy <command> --help' for more information on a command.`)
 }

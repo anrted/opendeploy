@@ -67,8 +67,9 @@ OpenDeploy can be evaluated on a disposable Ubuntu 22.04+ host:
 curl -fsSL https://raw.githubusercontent.com/anrted/opendeploy/main/install.sh | sudo bash
 ```
 
-Set the initial administrator credentials as described in
-[INSTALL.md](INSTALL.md), then open `http://YOUR_SERVER_IP:5888`.
+The installer prints the generated `admin` password. Save it, then open
+`http://YOUR_SERVER_IP:5888`. Recovery instructions are in
+[INSTALL.md](INSTALL.md).
 
 > ⚠️ OpenDeploy is early alpha software. Use it on a test server and place it
 > behind HTTPS before exposing it outside a trusted network.

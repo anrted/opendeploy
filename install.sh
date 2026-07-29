@@ -20,6 +20,7 @@ CONFIG_DIR="/etc/opendeploy"
 STATE_DIR="/var/lib/opendeploy"
 LOG_DIR="/var/log/opendeploy"
 SYSTEMD_DIR="/etc/systemd/system"
+GENERATED_ADMIN_PASSWORD=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -210,11 +211,18 @@ chmod 0640 "$CONFIG_DIR/opendeploy.yaml"
 
 if [ ! -f "$CONFIG_DIR/env" ]; then
     JWT_SECRET=$(od -An -N48 -tx1 /dev/urandom | tr -d ' \n')
+    GENERATED_ADMIN_PASSWORD=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
     umask 0077
-    printf 'OD_JWT_SECRET=%s\n' "$JWT_SECRET" > "$CONFIG_DIR/env"
+    printf 'OD_JWT_SECRET=%s\nOD_ADMIN_PASSWORD=%s\n' "$JWT_SECRET" "$GENERATED_ADMIN_PASSWORD" > "$CONFIG_DIR/env"
     chown root:opendeploy "$CONFIG_DIR/env"
     chmod 0640 "$CONFIG_DIR/env"
     print_success "Сгенерирован JWT ключ"
+elif [ ! -f "$STATE_DIR/data.db" ] && ! grep -q '^OD_ADMIN_PASSWORD=' "$CONFIG_DIR/env"; then
+    GENERATED_ADMIN_PASSWORD=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+    printf 'OD_ADMIN_PASSWORD=%s\n' "$GENERATED_ADMIN_PASSWORD" >> "$CONFIG_DIR/env"
+    chown root:opendeploy "$CONFIG_DIR/env"
+    chmod 0640 "$CONFIG_DIR/env"
+    print_success "Generated initial administrator password"
 else
     print_success "Файл окружения уже существует"
 fi
@@ -374,8 +382,14 @@ echo "Команды управления:"
 echo "  systemctl status opendeploy-core"
 echo "  systemctl restart opendeploy-core"
 echo "  systemctl restart opendeploy-agent"
+echo "  sudo opendeploy admin reset-password"
+if [ -n "$GENERATED_ADMIN_PASSWORD" ]; then
+    echo ""
+    echo "Administrator username: admin"
+    printf "Administrator password: %s\n" "$GENERATED_ADMIN_PASSWORD"
+    echo "Save this password now. It will not be displayed again."
+fi
 echo "==================================================================="
-echo "⚠️  Важно: Перейдите в панель управления для первоначальной настройки"
-echo "   системы и создания учетной записи администратора."
+echo "⚠️  Важно: сохраните пароль администратора и смените его после первого входа."
 echo "==================================================================="
 echo ""

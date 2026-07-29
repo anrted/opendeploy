@@ -14,6 +14,7 @@ CONFIG_DIR="/etc/opendeploy"
 STATE_DIR="/var/lib/opendeploy"
 LOG_DIR="/var/log/opendeploy"
 SYSTEMD_DIR="/etc/systemd/system"
+GENERATED_ADMIN_PASSWORD=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -92,11 +93,18 @@ chmod 0640 "$CONFIG_DIR/opendeploy.yaml"
 
 if [ ! -f "$CONFIG_DIR/env" ]; then
     JWT_SECRET=$(od -An -N48 -tx1 /dev/urandom | tr -d ' \n')
+    GENERATED_ADMIN_PASSWORD=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
     umask 0077
-    printf 'OD_JWT_SECRET=%s\n' "$JWT_SECRET" > "$CONFIG_DIR/env"
+    printf 'OD_JWT_SECRET=%s\nOD_ADMIN_PASSWORD=%s\n' "$JWT_SECRET" "$GENERATED_ADMIN_PASSWORD" > "$CONFIG_DIR/env"
     chown root:opendeploy "$CONFIG_DIR/env"
     chmod 0640 "$CONFIG_DIR/env"
     print_success "Сгенерирован JWT ключ"
+elif [ ! -f "$STATE_DIR/data.db" ] && ! grep -q '^OD_ADMIN_PASSWORD=' "$CONFIG_DIR/env"; then
+    GENERATED_ADMIN_PASSWORD=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+    printf 'OD_ADMIN_PASSWORD=%s\n' "$GENERATED_ADMIN_PASSWORD" >> "$CONFIG_DIR/env"
+    chown root:opendeploy "$CONFIG_DIR/env"
+    chmod 0640 "$CONFIG_DIR/env"
+    print_success "Generated initial administrator password"
 else
     print_success "Файл окружения уже существует"
 fi
@@ -201,4 +209,10 @@ systemctl is-active --quiet opendeploy-core.service || print_error "Не уда�
 print_success "Сервисы запущены"
 
 echo ""
+if [ -n "$GENERATED_ADMIN_PASSWORD" ]; then
+    echo "Administrator username: admin"
+    printf "Administrator password: %s\n" "$GENERATED_ADMIN_PASSWORD"
+    echo "Save this password now. It will not be displayed again."
+fi
+echo "Password recovery: sudo opendeploy admin reset-password"
 printf "${GREEN}Разработческая версия OpenDeploy успешно установлена!${NC}\n"
