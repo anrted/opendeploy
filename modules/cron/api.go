@@ -123,7 +123,8 @@ func (m *Module) httpDuplicate(w, r interface{}) {
 }
 func (m *Module) httpHistory(w, r interface{}) {
 	req := request(r)
-	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	parsedLimit, _ := strconv.ParseInt(req.URL.Query().Get("limit"), 10, 32)
+	limit := int(parsedLimit)
 	runs, err := m.agent.CronHistory(req.Context(), jobID(req), limit)
 	writeJSON(writer(w), http.StatusOK, runs, err)
 }
