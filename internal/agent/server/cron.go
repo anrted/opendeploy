@@ -176,7 +176,8 @@ func cronRunToProto(run agentCron.Run) *agentv1.CronRunRecord {
 	return &agentv1.CronRunRecord{
 		Id: run.ID, JobId: run.JobID, StartedAt: run.StartedAt.UnixMilli(),
 		FinishedAt: run.FinishedAt.UnixMilli(), DurationMs: run.Duration.Milliseconds(),
-		ExitCode: int32(exitCode), Stdout: run.Stdout, Stderr: run.Stderr,
+		ExitCode: int32(exitCode), // #nosec G115 -- value is clamped to the int32 range above.
+		Stdout:   run.Stdout, Stderr: run.Stderr,
 		Triggered: run.Triggered, Actor: run.Actor,
 	}
 }
