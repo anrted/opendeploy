@@ -80,7 +80,7 @@ func (c *StreamClient) connect(ctx context.Context) error {
 		MinVersion: tls.VersionTLS12, RootCAs: roots,
 		ServerName: c.cfg.ControlPlaneServerName, Certificates: []tls.Certificate{certificate},
 	})
-	conn, err := grpc.DialContext(ctx, c.cfg.ControlPlaneAddress,
+	conn, err := grpc.NewClient(c.cfg.ControlPlaneAddress,
 		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {

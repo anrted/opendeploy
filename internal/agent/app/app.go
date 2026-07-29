@@ -175,7 +175,10 @@ func (a *Agent) Start() error {
 	return a.grpcServer.Serve(lis)
 }
 
-func (a *Agent) executeStreamCommand(ctx context.Context, kind string, payload []byte) ([]byte, error) {
+// executeStreamCommand is the protocol command router. Keeping the exhaustive
+// dispatch in one place makes the wire contract auditable and prevents handlers
+// from acquiring local/remote branching.
+func (a *Agent) executeStreamCommand(ctx context.Context, kind string, payload []byte) ([]byte, error) { //nolint:gocyclo
 	var request struct {
 		Name    string   `json:"name"`
 		Action  string   `json:"action"`

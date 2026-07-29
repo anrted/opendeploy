@@ -35,7 +35,9 @@ func NewServer(manager *Manager, verifier IdentityVerifier, heartbeat HeartbeatH
 	return &Server{manager: manager, verifier: verifier, heartbeat: heartbeat}
 }
 
-func (s *Server) Connect(stream agentv1.ControlPlane_ConnectServer) error {
+// Connect owns the full duplex stream lifecycle. Its branches correspond to the
+// finite set of protocol message types and intentionally remain co-located.
+func (s *Server) Connect(stream agentv1.ControlPlane_ConnectServer) error { //nolint:gocyclo
 	first, err := stream.Recv()
 	if err != nil {
 		return err
