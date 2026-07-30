@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.1.28] - 2026-07-30
+
+### Documentation
+
+- Completed an end-to-end technical audit of the multi-server architecture,
+  covering every panel area, REST routing, capability advertisement and
+  implementation, ControlPlane handshake, Agent version propagation, frontend
+  context, and backend dependency wiring.
+- Documented the root cause of local-host data and operations appearing under a
+  remote selection, with a prioritized P0-P3 remediation roadmap.
+
 ## [0.1.26] - 2026-07-30
 
 ### Added
