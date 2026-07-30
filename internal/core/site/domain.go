@@ -26,11 +26,14 @@ type Site struct {
 	RootPath  string    `json:"root_path"`
 	State     State     `json:"state"`
 	OwnerID   *string   `json:"owner_id,omitempty"`
-	Domains   []Domain  `json:"domains"`
-	App       App       `json:"app"`
-	SSL       *SSL      `json:"ssl,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Domains      []Domain  `json:"domains"`
+	App          App       `json:"app"`
+	SSL          *SSL      `json:"ssl,omitempty"`
+	ProxyEnabled bool      `json:"proxy_enabled"`
+	ProxyHost    string    `json:"proxy_host"`
+	ProxyPort    int       `json:"proxy_port"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type DomainType string
@@ -77,10 +80,13 @@ type CreateRequest struct {
 	AppType     string  `json:"app_type"` // e.g. "php"
 	AppVersion  *string `json:"app_version,omitempty"`
 	ProxyTarget *string `json:"proxy_target,omitempty"`
-	SSLEnabled  bool    `json:"ssl_enabled"`
-	SSLProvider *string `json:"ssl_provider,omitempty"` // "certbot" or "custom"
-	SSLCert     *string `json:"ssl_cert,omitempty"`
-	SSLKey      *string `json:"ssl_key,omitempty"`
+	SSLEnabled   bool    `json:"ssl_enabled"`
+	SSLProvider  *string `json:"ssl_provider,omitempty"` // "certbot" or "custom"
+	SSLCert      *string `json:"ssl_cert,omitempty"`
+	SSLKey       *string `json:"ssl_key,omitempty"`
+	ProxyEnabled bool    `json:"proxy_enabled"`
+	ProxyHost    *string `json:"proxy_host,omitempty"`
+	ProxyPort    *int    `json:"proxy_port,omitempty"`
 }
 
 // UpdateRequest holds the validated input for updating a site.
@@ -93,7 +99,10 @@ type UpdateRequest struct {
 	ProxyTarget *string `json:"proxy_target,omitempty"`
 	SSLEnabled  *bool   `json:"ssl_enabled,omitempty"`
 	SSLProvider *string `json:"ssl_provider,omitempty"`
-	SSLCert     *string `json:"ssl_cert,omitempty"`
-	SSLKey      *string `json:"ssl_key,omitempty"`
-	ForceHTTPS  *bool   `json:"force_https,omitempty"`
+	SSLCert      *string `json:"ssl_cert,omitempty"`
+	SSLKey       *string `json:"ssl_key,omitempty"`
+	ForceHTTPS   *bool   `json:"force_https,omitempty"`
+	ProxyEnabled *bool   `json:"proxy_enabled,omitempty"`
+	ProxyHost    *string `json:"proxy_host,omitempty"`
+	ProxyPort    *int    `json:"proxy_port,omitempty"`
 }

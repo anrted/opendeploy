@@ -523,6 +523,9 @@ type SiteSpec struct {
 	SSLCert       string
 	SSLKey        string
 	ForceHTTPS    bool
+	ProxyEnabled  bool
+	ProxyHost     string
+	ProxyPort     int
 }
 
 // ServiceStatus represents the runtime state of a systemd service.

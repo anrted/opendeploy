@@ -106,6 +106,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 	if err := validateSSL(req.SSLEnabled, req.SSLCert, req.SSLKey); err != nil {
 		return nil, err
 	}
+	if err := validateProxy(req.ProxyEnabled, req.ProxyHost, req.ProxyPort); err != nil {
+		return nil, err
+	}
 	if err := s.backupCritical(ctx, "create", req.Name); err != nil {
 		return nil, err
 	}
@@ -124,6 +127,17 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 			AppVersion:  req.AppVersion,
 			ProxyTarget: req.ProxyTarget,
 		},
+		ProxyEnabled: req.ProxyEnabled,
+	}
+	if req.ProxyEnabled {
+		if req.ProxyHost != nil {
+			site.ProxyHost = *req.ProxyHost
+		} else {
+			site.ProxyHost = "127.0.0.1"
+		}
+		if req.ProxyPort != nil {
+			site.ProxyPort = *req.ProxyPort
+		}
 	}
 
 	if req.SSLEnabled {
@@ -297,6 +311,19 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest, user
 	}
 	if req.ProxyTarget != nil {
 		site.App.ProxyTarget = req.ProxyTarget
+	}
+
+	if req.ProxyEnabled != nil {
+		site.ProxyEnabled = *req.ProxyEnabled
+	}
+	if req.ProxyHost != nil {
+		site.ProxyHost = *req.ProxyHost
+	}
+	if req.ProxyPort != nil {
+		site.ProxyPort = *req.ProxyPort
+	}
+	if err := validateProxy(site.ProxyEnabled, &site.ProxyHost, &site.ProxyPort); err != nil {
+		return nil, err
 	}
 
 	if req.SSLEnabled != nil {

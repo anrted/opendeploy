@@ -74,6 +74,8 @@ func siteSpec(current *Site) contract.SiteSpec {
 		ID: current.ID, Name: current.Name, PrimaryDomain: primaryDomain,
 		Aliases: aliases, RootPath: current.RootPath, AppType: current.App.AppType,
 		AppVersion: appVersion, ProxyTarget: proxyTarget,
+		ProxyEnabled: current.ProxyEnabled, ProxyHost: current.ProxyHost,
+		ProxyPort: current.ProxyPort,
 	}
 	if current.SSL != nil {
 		spec.SSLEnabled = true

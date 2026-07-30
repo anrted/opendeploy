@@ -79,6 +79,9 @@
             <input id="site-root" v-model="form.root_path" class="input opacity-75 cursor-not-allowed" placeholder="/var/www/example" required disabled />
           </div>
           <div>
+            <input id="site-root" v-model="form.root_path" class="input opacity-75 cursor-not-allowed" placeholder="/var/www/example" required disabled />
+          </div>
+          <div>
             <label class="label">{{ t('sitesPage.webServer') }}</label>
             <select v-model="form.module_id" class="input" required :disabled="isEditing">
               <option value="nginx">Nginx</option>
@@ -86,6 +89,23 @@
             </select>
           </div>
           <div>
+            <label class="label">Mode</label>
+            <select v-model="form.web_mode" class="input">
+              <option value="static">Static files</option>
+              <option value="proxy">Reverse Proxy</option>
+            </select>
+          </div>
+          <template v-if="form.web_mode === 'proxy'">
+            <div>
+              <label class="label">Proxy host</label>
+              <input v-model="form.proxy_host" class="input" placeholder="127.0.0.1" required />
+            </div>
+            <div>
+              <label class="label">Proxy port</label>
+              <input v-model.number="form.proxy_port" type="number" class="input" placeholder="8080" required min="1" max="65535" />
+            </div>
+          </template>
+          <div v-else>
             <label class="label">{{ t('sitesPage.phpVersion') }}</label>
             <select v-model="form.php_version" class="input">
               <option value="">{{ t('sitesPage.static') }}</option>
@@ -145,6 +165,7 @@ const selectedSite = ref(null)
 
 const form = reactive({
   domain: '', root_path: '', module_id: 'nginx', php_version: '', ssl_enabled: false, ssl_cert: '', ssl_key: '',
+  web_mode: 'static', proxy_host: '127.0.0.1', proxy_port: 8080
 })
 
 // Helpers to extract data from new relational API format
@@ -155,6 +176,7 @@ function primaryDomain(site) {
 }
 
 function appLabel(site) {
+  if (site.proxy_enabled) return 'Reverse Proxy'
   if (!site.app) return '—'
   if (site.app.app_type === 'php') return `PHP ${site.app.app_version || ''}`
   if (site.app.app_type === 'proxy') return 'Proxy'
@@ -212,6 +234,9 @@ function openCreateModal() {
   form.ssl_enabled = false
   form.ssl_cert = ''
   form.ssl_key = ''
+  form.web_mode = 'static'
+  form.proxy_host = '127.0.0.1'
+  form.proxy_port = 8080
   submitError.value = ''
   showModal.value = true
 }
@@ -227,6 +252,9 @@ function openEditModal(site) {
   form.ssl_enabled = !!site.ssl
   form.ssl_cert = site.ssl?.cert_path || ''
   form.ssl_key = site.ssl?.key_path || ''
+  form.web_mode = site.proxy_enabled ? 'proxy' : 'static'
+  form.proxy_host = site.proxy_host || '127.0.0.1'
+  form.proxy_port = site.proxy_port || 8080
   submitError.value = ''
   showModal.value = true
 }
@@ -249,11 +277,14 @@ async function submitSite() {
       name: domain,
       root_path: form.root_path,
       module_id: form.module_id,
-      app_type: form.php_version ? 'php' : 'static',
-      app_version: form.php_version || null,
+      app_type: form.web_mode === 'proxy' ? 'static' : (form.php_version ? 'php' : 'static'),
+      app_version: form.web_mode === 'proxy' ? null : (form.php_version || null),
       ssl_enabled: form.ssl_enabled,
       ssl_cert: form.ssl_enabled ? sslCert : null,
       ssl_key: form.ssl_enabled ? sslKey : null,
+      proxy_enabled: form.web_mode === 'proxy',
+      proxy_host: form.web_mode === 'proxy' ? form.proxy_host : null,
+      proxy_port: form.web_mode === 'proxy' ? form.proxy_port : null,
     }
     if (isEditing.value) {
       await api.put(`/sites/${selectedSite.value.id}`, payload)
@@ -263,12 +294,12 @@ async function submitSite() {
     showModal.value = false
     form.domain = form.root_path = form.php_version = form.ssl_cert = form.ssl_key = ''
     form.ssl_enabled = false
+    form.web_mode = 'static'
+    form.proxy_host = '127.0.0.1'
+    form.proxy_port = 8080
     await loadSites()
   } catch (e) {
     submitError.value = apiErrorMessage(e, isEditing.value ? t('sitesPage.updateFailed') : t('sitesPage.createFailed'))
-  } finally {
-    submitting.value = false
-  }
 }
 
 async function enableSite(id) {

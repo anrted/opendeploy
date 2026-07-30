@@ -45,8 +45,8 @@ func (r *sqliteRepository) Create(ctx context.Context, s *Site) error {
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO sites (id, server_id, name, module_id, root_path, status, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, servercontext.ID(ctx), s.Name, s.ModuleID, s.RootPath, string(s.State), s.OwnerID, s.CreatedAt.Format(time.RFC3339), s.UpdatedAt.Format(time.RFC3339),
+		`INSERT INTO sites (id, server_id, name, module_id, root_path, status, owner_id, proxy_enabled, proxy_host, proxy_port, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, servercontext.ID(ctx), s.Name, s.ModuleID, s.RootPath, string(s.State), s.OwnerID, boolInt(s.ProxyEnabled), s.ProxyHost, s.ProxyPort, s.CreatedAt.Format(time.RFC3339), s.UpdatedAt.Format(time.RFC3339),
 	)
 	if err != nil {
 		return fmt.Errorf("site repo: create site: %w", err)
@@ -102,7 +102,7 @@ func (r *sqliteRepository) Create(ctx context.Context, s *Site) error {
 }
 
 func (r *sqliteRepository) FindByID(ctx context.Context, id string) (*Site, error) {
-	site, err := r.findSite(ctx, `SELECT id, name, module_id, root_path, status, owner_id, created_at, updated_at FROM sites WHERE id = ? AND server_id = ?`, id, servercontext.ID(ctx))
+	site, err := r.findSite(ctx, `SELECT id, name, module_id, root_path, status, owner_id, proxy_enabled, proxy_host, proxy_port, created_at, updated_at FROM sites WHERE id = ? AND server_id = ?`, id, servercontext.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (r *sqliteRepository) FindByDomain(ctx context.Context, domain string) (*Si
 }
 
 func (r *sqliteRepository) ListAll(ctx context.Context) ([]Site, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, module_id, root_path, status, owner_id, created_at, updated_at FROM sites WHERE server_id=?`, servercontext.ID(ctx))
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, module_id, root_path, status, owner_id, proxy_enabled, proxy_host, proxy_port, created_at, updated_at FROM sites WHERE server_id=?`, servercontext.ID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("site repo: list: %w", err)
 	}
@@ -135,9 +135,11 @@ func (r *sqliteRepository) ListAll(ctx context.Context) ([]Site, error) {
 	for rows.Next() {
 		var s Site
 		var created, updated string
-		if err := rows.Scan(&s.ID, &s.Name, &s.ModuleID, &s.RootPath, &s.State, &s.OwnerID, &created, &updated); err != nil {
+		var proxyEnabled int
+		if err := rows.Scan(&s.ID, &s.Name, &s.ModuleID, &s.RootPath, &s.State, &s.OwnerID, &proxyEnabled, &s.ProxyHost, &s.ProxyPort, &created, &updated); err != nil {
 			return nil, err
 		}
+		s.ProxyEnabled = proxyEnabled == 1
 		s.CreatedAt, _ = time.Parse(time.RFC3339, created)
 		s.UpdatedAt, _ = time.Parse(time.RFC3339, updated)
 		sites = append(sites, s)
@@ -160,8 +162,8 @@ func (r *sqliteRepository) Update(ctx context.Context, s *Site) error {
 	}
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx, `UPDATE sites SET name=?, module_id=?, root_path=?, status=?, updated_at=? WHERE id=? AND server_id=?`,
-		s.Name, s.ModuleID, s.RootPath, string(s.State), s.UpdatedAt.Format(time.RFC3339), s.ID, servercontext.ID(ctx),
+	res, err := tx.ExecContext(ctx, `UPDATE sites SET name=?, module_id=?, root_path=?, status=?, proxy_enabled=?, proxy_host=?, proxy_port=?, updated_at=? WHERE id=? AND server_id=?`,
+		s.Name, s.ModuleID, s.RootPath, string(s.State), boolInt(s.ProxyEnabled), s.ProxyHost, s.ProxyPort, s.UpdatedAt.Format(time.RFC3339), s.ID, servercontext.ID(ctx),
 	)
 	if err != nil {
 		return err
@@ -214,7 +216,8 @@ func (r *sqliteRepository) Delete(ctx context.Context, id string) error {
 func (r *sqliteRepository) findSite(ctx context.Context, query string, args ...any) (*Site, error) {
 	var s Site
 	var created, updated string
-	err := r.db.QueryRowContext(ctx, query, args...).Scan(&s.ID, &s.Name, &s.ModuleID, &s.RootPath, &s.State, &s.OwnerID, &created, &updated)
+	var proxyEnabled int
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&s.ID, &s.Name, &s.ModuleID, &s.RootPath, &s.State, &s.OwnerID, &proxyEnabled, &s.ProxyHost, &s.ProxyPort, &created, &updated)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperrors.NotFound("site")
@@ -223,6 +226,7 @@ func (r *sqliteRepository) findSite(ctx context.Context, query string, args ...a
 	}
 	s.CreatedAt, _ = time.Parse(time.RFC3339, created)
 	s.UpdatedAt, _ = time.Parse(time.RFC3339, updated)
+	s.ProxyEnabled = proxyEnabled == 1
 	return &s, nil
 }
 

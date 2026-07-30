@@ -131,3 +131,20 @@ func allDigits(value string) bool {
 	}
 	return true
 }
+
+func validateProxy(enabled bool, host *string, port *int) error {
+	if !enabled {
+		return nil
+	}
+	if port == nil || *port < 1 || *port > 65535 {
+		return apperrors.InvalidInput("proxy_port must be between 1 and 65535")
+	}
+	if host != nil {
+		h := strings.TrimSpace(*host)
+		if h == "" {
+			return apperrors.InvalidInput("proxy_host cannot be empty when provided")
+		}
+		*host = h
+	}
+	return nil
+}
