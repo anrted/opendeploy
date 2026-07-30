@@ -11,8 +11,9 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
-// Logger logs every HTTP request with method, path, status, and latency.
-// It wraps the ResponseWriter to capture the status code written by the handler.
+// Logger records non-200 HTTP responses with method, path, status, and latency.
+// Routine 200 OK traffic is intentionally omitted; mutations, upgrades,
+// redirects and errors remain observable.
 func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,6 +22,9 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(lw, r)
 
+			if lw.statusCode == http.StatusOK {
+				return
+			}
 			log.Info("http",
 				"request_id", chiMiddleware.GetReqID(r.Context()),
 				"method", r.Method,
