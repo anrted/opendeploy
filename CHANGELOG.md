@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+
+- Made remote-server routing fail closed and prevented unsupported views from
+  mounting, eliminating local Core operations when an unmigrated page is selected.
+- Routed Services, Firewall, and Cron Agent calls through the selected
+  ControlPlane session and enforced advertised capabilities before dispatch.
+- Preserved Agent version metadata from stream handshake and legacy heartbeats.
+- Kept generated administrator recovery passwords out of stdout/stderr logs by
+  writing them only to the controlling terminal.
+- Stabilized Ubuntu smoke provisioning by waiting for asynchronous module runtime
+  detection.
+
 ## [0.1.28] - 2026-07-30
 
 ### Documentation

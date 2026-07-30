@@ -185,6 +185,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(coreMiddleware.Auth(deps.JWTManager))
 			r.Use(servercontext.Middleware)
+			r.Use(servercontext.RequireMigratedCapability)
 
 			r.Post("/auth/logout", deps.AuthHandler.Logout)
 			r.Get("/auth/me", deps.AuthHandler.Me)

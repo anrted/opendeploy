@@ -36,7 +36,7 @@ func RequireMigratedCapability(next http.Handler) http.Handler {
 		}
 		apperrors.WriteHTTP(w, apperrors.New(
 			http.StatusNotImplemented,
-			apperrors.CodeInternal,
+			apperrors.CodeCapabilityUnavailable,
 			"this capability is not available through the remote control plane yet",
 		))
 	})
@@ -50,7 +50,10 @@ func remotePathAvailable(r *http.Request) bool {
 	if r.Method == http.MethodGet && path == "/dashboard" {
 		return true
 	}
-	return strings.HasPrefix(path, "/system/processes")
+	return strings.HasPrefix(path, "/system/processes") ||
+		strings.HasPrefix(path, "/services") ||
+		strings.HasPrefix(path, "/modules/firewall") ||
+		strings.HasPrefix(path, "/modules/cron")
 }
 
 func ID(ctx context.Context) string {

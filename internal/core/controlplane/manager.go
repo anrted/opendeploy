@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anrted/opendeploy/pkg/controlcapabilities"
 	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
 	"github.com/google/uuid"
 )
@@ -15,6 +16,7 @@ import (
 var (
 	ErrAgentOffline     = errors.New("agent is offline")
 	ErrConnectionClosed = errors.New("agent connection closed")
+	ErrCapabilityAbsent = errors.New("agent capability is unavailable")
 )
 
 const ProtocolVersion uint32 = 1
@@ -27,6 +29,8 @@ type pendingResult struct {
 type session struct {
 	id           string
 	serverID     string
+	apiVersion   string
+	agentVersion string
 	capabilities map[string]struct{}
 	send         chan *agentv1.CoreMessage
 	done         chan struct{}
@@ -55,8 +59,10 @@ func (m *Manager) register(hello *agentv1.AgentHello) (*session, error) {
 		capabilities[capability] = struct{}{}
 	}
 	s := &session{
-		id: uuid.NewString(), serverID: hello.GetServerId(), capabilities: capabilities,
-		send: make(chan *agentv1.CoreMessage, 64), done: make(chan struct{}),
+		id: uuid.NewString(), serverID: hello.GetServerId(),
+		apiVersion: hello.GetApiVersion(), agentVersion: hello.GetAgentVersion(),
+		capabilities: capabilities,
+		send:         make(chan *agentv1.CoreMessage, 64), done: make(chan struct{}),
 		pending: make(map[string]chan pendingResult),
 		streams: make(map[string]chan *agentv1.StreamChunk),
 	}
@@ -104,6 +110,9 @@ func (m *Manager) Subscribe(ctx context.Context, serverID, kind string, payload 
 	m.mu.RUnlock()
 	if s == nil {
 		return nil, ErrAgentOffline
+	}
+	if err := m.requireCommandCapability(s, kind); err != nil {
+		return nil, err
 	}
 	id := uuid.NewString()
 	chunks := make(chan *agentv1.StreamChunk, 64)
@@ -178,6 +187,17 @@ func (m *Manager) HasCapability(serverID, capability string) bool {
 	return ok
 }
 
+func (m *Manager) requireCommandCapability(s *session, kind string) error {
+	required, known := controlcapabilities.RequiredForCommand(kind)
+	if !known {
+		return fmt.Errorf("%w: command %q is not registered", ErrCapabilityAbsent, kind)
+	}
+	if _, ok := s.capabilities[required]; !ok {
+		return fmt.Errorf("%w: %s", ErrCapabilityAbsent, required)
+	}
+	return nil
+}
+
 func (m *Manager) Capabilities(serverID string) []string {
 	m.mu.RLock()
 	s := m.sessions[serverID]
@@ -199,6 +219,9 @@ func (m *Manager) Dispatch(ctx context.Context, serverID, kind string, payload [
 	m.mu.RUnlock()
 	if s == nil {
 		return nil, ErrAgentOffline
+	}
+	if err := m.requireCommandCapability(s, kind); err != nil {
+		return nil, err
 	}
 	id := uuid.NewString()
 	waiter := make(chan pendingResult, 1)

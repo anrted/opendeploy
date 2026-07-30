@@ -86,9 +86,18 @@ jobs:
             "http://127.0.0.1:5888/api/v1/servers?query=Smoke%20remote%20agent" \
             -H "Authorization: Bearer $token" |
             jq -e --arg id "$server_id" '.items[] | select(.id == $id and .status == "online")'
-          curl -fsS http://127.0.0.1:5888/api/v1/modules \
-            -H "Authorization: Bearer $token" |
-            jq -e '.[] | select(.id == "nodejs" and (.state == "installed" or .state == "enabled"))'
+          module_ready=
+          for _ in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:5888/api/v1/modules \
+              -H "Authorization: Bearer $token" |
+              jq -e '.[] | select(.id == "nodejs" and (.state == "installed" or .state == "enabled"))' >/dev/null
+            then
+              module_ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$module_ready" = 1
           for preset in sshd nginx_scanners nginx_auth nginx_bad_bots php_probes; do
             curl --fail-with-body -sS -X POST \
               "http://127.0.0.1:5888/api/v1/modules/fail2ban/actions/enable_preset_${preset}" \

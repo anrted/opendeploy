@@ -38,13 +38,20 @@ type Service struct {
 	now  func() time.Time
 }
 
+// ControlPlaneConnected persists authenticated handshake metadata before Core
+// reports the Agent as ready.
+func (s *Service) ControlPlaneConnected(ctx context.Context, serverID string, hello *agentv1.AgentHello) error {
+	return s.repo.UpdateConnectionMetadata(ctx, serverID, hello.GetAgentVersion(), hello.GetApiVersion(), s.now())
+}
+
 // ControlPlaneHeartbeat persists liveness received over the bidirectional
 // stream. Authentication has already been performed by the stream server.
-func (s *Service) ControlPlaneHeartbeat(ctx context.Context, serverID string, heartbeat *agentv1.AgentHeartbeat) error {
+func (s *Service) ControlPlaneHeartbeat(ctx context.Context, serverID, agentVersion string, heartbeat *agentv1.AgentHeartbeat) error {
 	req := HeartbeatRequest{
 		State: "online", CPUUsage: heartbeat.GetCpuUsage(),
 		MemoryUsage: heartbeat.GetMemoryUsage(), DiskUsage: heartbeat.GetDiskUsage(),
 		Uptime: heartbeat.GetUptime(), RunningTasks: int(heartbeat.GetRunningTasks()),
+		AgentVersion: agentVersion,
 	}
 	return s.repo.Heartbeat(ctx, serverID, req, 0, s.now())
 }

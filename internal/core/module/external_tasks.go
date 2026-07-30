@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/google/uuid"
 )
 
@@ -20,7 +21,11 @@ func (s *Service) StartTask(ctx context.Context, name, taskType string, payload 
 	if err := s.jobs.Create(ctx, job); err != nil {
 		return "", err
 	}
-	background, cancel := context.WithTimeout(context.Background(), moduleJobTimeout)
+	serverID := servercontext.ID(ctx)
+	background, cancel := context.WithTimeout(
+		servercontext.WithID(context.Background(), serverID),
+		moduleJobTimeout,
+	)
 	s.cancelMu.Lock()
 	s.cancels[job.ID] = cancel
 	s.cancelMu.Unlock()
@@ -33,7 +38,10 @@ func (s *Service) StartTask(ctx context.Context, name, taskType string, payload 
 		}()
 		_ = s.jobs.UpdateState(background, job.ID, JobRunning, "", "")
 		output, err := work(background)
-		persist, persistCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		persist, persistCancel := context.WithTimeout(
+			servercontext.WithID(context.Background(), serverID),
+			5*time.Second,
+		)
 		defer persistCancel()
 		if err != nil {
 			state := JobError

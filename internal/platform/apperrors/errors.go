@@ -20,13 +20,14 @@ type ErrorCode string
 
 const (
 	// Common codes
-	CodeInternal      ErrorCode = "INTERNAL_ERROR"
-	CodeNotFound      ErrorCode = "NOT_FOUND"
-	CodeAlreadyExists ErrorCode = "ALREADY_EXISTS"
-	CodeInvalidInput  ErrorCode = "INVALID_INPUT"
-	CodeUnauthorized  ErrorCode = "UNAUTHORIZED"
-	CodeForbidden     ErrorCode = "FORBIDDEN"
-	CodeConflict      ErrorCode = "CONFLICT"
+	CodeInternal              ErrorCode = "INTERNAL_ERROR"
+	CodeNotFound              ErrorCode = "NOT_FOUND"
+	CodeAlreadyExists         ErrorCode = "ALREADY_EXISTS"
+	CodeInvalidInput          ErrorCode = "INVALID_INPUT"
+	CodeUnauthorized          ErrorCode = "UNAUTHORIZED"
+	CodeForbidden             ErrorCode = "FORBIDDEN"
+	CodeConflict              ErrorCode = "CONFLICT"
+	CodeCapabilityUnavailable ErrorCode = "CAPABILITY_UNAVAILABLE"
 
 	// Auth-specific codes
 	CodeInvalidCredentials ErrorCode = "INVALID_CREDENTIALS"
@@ -148,6 +149,8 @@ func recommendation(status int) string {
 		return "Refresh the current state, resolve the conflict, and retry."
 	case http.StatusServiceUnavailable:
 		return "Check the OpenDeploy Agent and retry when it is healthy."
+	case http.StatusNotImplemented:
+		return "Select the local server or a feature supported by the remote Agent."
 	default:
 		return "Retry once; if the problem persists, use the error ID to inspect server logs."
 	}

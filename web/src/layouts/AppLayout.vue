@@ -85,7 +85,7 @@
         <div v-if="unsupportedCapability" class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
           This feature is not supported by the selected server.
         </div>
-        <router-view :key="serverStore.currentServerId" />
+        <router-view v-if="!unsupportedCapability" :key="serverStore.currentServerId" />
       </div>
     </main>
   </div>

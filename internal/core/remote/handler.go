@@ -14,6 +14,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/core/controlplane"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
+	"github.com/anrted/opendeploy/pkg/controlcapabilities"
 	"github.com/anrted/opendeploy/pkg/version"
 	"github.com/go-chi/chi/v5"
 )
@@ -33,7 +34,7 @@ func (h *Handler) ConfigureControlPlane(port int, certificate string) {
 
 func (h *Handler) Capabilities(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	names := []string{"dashboard", "processes", "services", "files", "firewall", "cron", "packages", "system"}
+	names := controlcapabilities.Names()
 	if id != LocalServerID {
 		if h.control == nil {
 			names = nil

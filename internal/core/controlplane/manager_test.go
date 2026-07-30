@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ func TestDispatchCorrelatesResponse(t *testing.T) {
 	manager := NewManager()
 	session, err := manager.register(&agentv1.AgentHello{
 		ServerId: "server-1", ProtocolVersion: ProtocolVersion,
-		Capabilities: []string{"system.stats"},
+		Capabilities: []string{"dashboard"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -33,6 +34,43 @@ func TestDispatchCorrelatesResponse(t *testing.T) {
 	}
 	if string(result) != "ok" {
 		t.Fatalf("unexpected result %q", result)
+	}
+}
+
+func TestDispatchRejectsMissingCapabilityBeforeSending(t *testing.T) {
+	manager := NewManager()
+	session, err := manager.register(&agentv1.AgentHello{
+		ServerId: "server-1", ProtocolVersion: ProtocolVersion,
+		Capabilities: []string{"dashboard"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.unregister(session)
+
+	_, err = manager.Dispatch(context.Background(), "server-1", "service.status", nil)
+	if !errors.Is(err, ErrCapabilityAbsent) {
+		t.Fatalf("error = %v, want ErrCapabilityAbsent", err)
+	}
+	if len(session.send) != 0 {
+		t.Fatal("unsupported command was sent to Agent")
+	}
+}
+
+func TestDispatchRejectsUnregisteredCommand(t *testing.T) {
+	manager := NewManager()
+	session, err := manager.register(&agentv1.AgentHello{
+		ServerId: "server-1", ProtocolVersion: ProtocolVersion,
+		Capabilities: []string{"dashboard"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.unregister(session)
+
+	_, err = manager.Dispatch(context.Background(), "server-1", "command.execute", nil)
+	if !errors.Is(err, ErrCapabilityAbsent) {
+		t.Fatalf("error = %v, want ErrCapabilityAbsent", err)
 	}
 }
 

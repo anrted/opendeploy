@@ -12,6 +12,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/agent/stats"
 	"github.com/anrted/opendeploy/internal/platform/config"
+	"github.com/anrted/opendeploy/pkg/controlcapabilities"
 	"github.com/anrted/opendeploy/pkg/version"
 	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
 	"google.golang.org/grpc"
@@ -110,11 +111,7 @@ func (c *StreamClient) connect(ctx context.Context) error {
 	outbound <- &agentv1.AgentMessage{Body: &agentv1.AgentMessage_Hello{Hello: &agentv1.AgentHello{
 		ServerId: c.cfg.ServerID, CertificateFingerprint: c.cfg.CertificateFingerprint,
 		ProtocolVersion: streamProtocolVersion, ApiVersion: "v1", AgentVersion: version.Version,
-		Capabilities: []string{
-			"dashboard", "sites", "modules", "processes", "services", "files",
-			"firewall", "cron", "certificates", "logs", "packages", "tasks",
-			"settings", "events", "system",
-		},
+		Capabilities: controlcapabilities.Names(),
 	}}}
 	welcome, err := stream.Recv()
 	if err != nil {

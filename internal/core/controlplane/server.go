@@ -19,7 +19,8 @@ type IdentityVerifier interface {
 }
 
 type HeartbeatHandler interface {
-	ControlPlaneHeartbeat(context.Context, string, *agentv1.AgentHeartbeat) error
+	ControlPlaneConnected(context.Context, string, *agentv1.AgentHello) error
+	ControlPlaneHeartbeat(context.Context, string, string, *agentv1.AgentHeartbeat) error
 	ControlPlaneEvent(context.Context, string, *agentv1.AgentEvent) error
 	ControlPlaneTaskProgress(context.Context, string, *agentv1.TaskProgress) error
 }
@@ -64,6 +65,11 @@ func (s *Server) Connect(stream agentv1.ControlPlane_ConnectServer) error { //no
 		return err
 	}
 	defer s.manager.unregister(session)
+	if s.heartbeat != nil {
+		if err := s.heartbeat.ControlPlaneConnected(stream.Context(), session.serverID, hello); err != nil {
+			return err
+		}
+	}
 	if err := stream.Send(&agentv1.CoreMessage{Body: &agentv1.CoreMessage_Welcome{Welcome: &agentv1.StreamWelcome{
 		ConnectionId: session.id, ProtocolVersion: ProtocolVersion,
 		HeartbeatIntervalSeconds: 15, ServerTimeUnixMs: time.Now().UnixMilli(),
@@ -101,7 +107,7 @@ func (s *Server) Connect(stream agentv1.ControlPlane_ConnectServer) error { //no
 			session.resolve(body.CommandResult)
 		case *agentv1.AgentMessage_Heartbeat:
 			if s.heartbeat != nil {
-				if err := s.heartbeat.ControlPlaneHeartbeat(stream.Context(), session.serverID, body.Heartbeat); err != nil {
+				if err := s.heartbeat.ControlPlaneHeartbeat(stream.Context(), session.serverID, session.agentVersion, body.Heartbeat); err != nil {
 					return err
 				}
 			}

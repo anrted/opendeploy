@@ -70,6 +70,11 @@ func runAdmin(args []string) {
 	if err := flags.Parse(args[1:]); err != nil {
 		log.Fatal(err)
 	}
+	terminal, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		log.Fatalf("A controlling terminal is required to display the generated password securely: %v", err)
+	}
+	defer func() { _ = terminal.Close() }()
 	db, err := sqlite.Open(*databasePath)
 	if err != nil {
 		log.Fatalf("Open database: %v", err)
@@ -86,8 +91,18 @@ func runAdmin(args []string) {
 	if err != nil {
 		log.Fatalf("Reset password: %v", err)
 	}
-	fmt.Printf("OpenDeploy password regenerated successfully.\nUsername: %s\nPassword: %s\n", *username, password)
+	if err := writePasswordToTerminal(terminal, *username, password); err != nil {
+		log.Fatalf("Password was reset, but the new credential could not be shown securely: %v", err)
+	}
 	fmt.Println("All existing sessions for this user have been revoked.")
+}
+
+func writePasswordToTerminal(terminal *os.File, username, password string) error {
+	_, err := terminal.WriteString(
+		"OpenDeploy password regenerated successfully.\nUsername: " + username +
+			"\nPassword: " + password + "\n",
+	)
+	return err
 }
 
 func runUpdate(args []string) {

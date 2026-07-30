@@ -13,6 +13,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/agent/stats"
 	"github.com/anrted/opendeploy/internal/platform/config"
+	"github.com/anrted/opendeploy/pkg/version"
 )
 
 type task struct {
@@ -96,6 +97,7 @@ func (c *Client) heartbeat(ctx context.Context) (time.Duration, error) {
 		"state": "online", "cpu_usage": snapshot.CPU.UsagePercent,
 		"memory_usage": snapshot.Memory.UsedPercent, "disk_usage": diskUsage,
 		"uptime": snapshot.Uptime, "running_tasks": 0, "task_results": c.pending,
+		"agent_version": version.Version,
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.cfg.CoreURL, "/")+"/api/v1/agents/heartbeat", bytes.NewReader(body))

@@ -249,14 +249,14 @@ func provideModuleService(registry *module.Registry, repo module.Repository, job
 	return service
 }
 
-func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent *agentclient.Client, registry *module.Registry, bus *events.MemoryBus, updates *updater.Service, settingsSvc *settings.Service, log *slog.Logger) *site.Service {
+func provideSiteService(repo site.Repository, auditSvc *audit.Service, agent contract.AgentClient, registry *module.Registry, bus *events.MemoryBus, updates *updater.Service, settingsSvc *settings.Service, log *slog.Logger) *site.Service {
 	service := site.NewService(repo, auditSvc, agent, registry, bus, log)
 	service.SetBackupGuard(updates)
 	service.SetSettings(settingsSvc)
 	return service
 }
 
-func provideSvcService(repo service.Repository, agent *agentclient.Client, log *slog.Logger) *service.SvcService {
+func provideSvcService(repo service.Repository, agent contract.AgentClient, log *slog.Logger) *service.SvcService {
 	return service.NewSvcService(repo, agent, log)
 }
 
@@ -349,7 +349,7 @@ func registerDomainSubscribers(lc fx.Lifecycle, bus *events.MemoryBus, auditSvc 
 	})
 }
 
-func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Repository, moduleService *module.Service, agent *agentclient.Client, db *database.Database, bus *events.MemoryBus, log *slog.Logger) {
+func bootstrapModules(lc fx.Lifecycle, registry *module.Registry, repo module.Repository, moduleService *module.Service, agent contract.AgentClient, db *database.Database, bus *events.MemoryBus, log *slog.Logger) {
 	backgroundCtx, cancelBackground := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {

@@ -214,6 +214,16 @@ func (r *Repository) VerifyCertificate(ctx context.Context, serverID, fingerprin
 	return count == 1, err
 }
 
+func (r *Repository) UpdateConnectionMetadata(ctx context.Context, serverID, agentVersion, _ string, now time.Time) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE servers
+		SET status='online',
+		    agent_version=CASE WHEN ? <> '' THEN ? ELSE agent_version END,
+		    health_status='healthy',last_heartbeat=?,updated_at=?
+		WHERE id=?`,
+		agentVersion, agentVersion, now, now, serverID)
+	return err
+}
+
 func (r *Repository) Heartbeat(ctx context.Context, serverID string, hb HeartbeatRequest, latency int64, now time.Time) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -225,8 +235,10 @@ func (r *Repository) Heartbeat(ctx context.Context, serverID string, hb Heartbea
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE servers SET status='online',health_status=?,uptime=?,agent_version=?,latency_ms=?,last_heartbeat=?,updated_at=? WHERE id=?`,
-		healthFromHeartbeat(hb), hb.Uptime, hb.AgentVersion, latency, now, now, serverID)
+	_, err = tx.ExecContext(ctx, `UPDATE servers SET status='online',health_status=?,uptime=?,
+		agent_version=CASE WHEN ? <> '' THEN ? ELSE agent_version END,
+		latency_ms=?,last_heartbeat=?,updated_at=? WHERE id=?`,
+		healthFromHeartbeat(hb), hb.Uptime, hb.AgentVersion, hb.AgentVersion, latency, now, now, serverID)
 	if err != nil {
 		return err
 	}
