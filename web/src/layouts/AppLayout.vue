@@ -93,7 +93,12 @@
           </button>
         </div>
         <div v-else-if="unsupportedCapability" class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-          This feature is not supported by the selected server. Required capability: <code>{{ selectedRouteCapability }}</code>.
+          <template v-if="selectedRouteCapability === 'core_users'">
+            User accounts belong to the OpenDeploy Core and are available only when Localhost is selected.
+          </template>
+          <template v-else>
+            This feature is not supported by the selected server. Required capability: <code>{{ selectedRouteCapability }}</code>.
+          </template>
         </div>
         <router-view v-if="!serverStore.capabilitiesLoading && !capabilityConnectionError && !unsupportedCapability" :key="serverStore.currentServerId" />
       </div>
@@ -175,6 +180,7 @@ const routeCapability = {
   dashboard: 'dashboard', sites: 'sites', services: 'services', modules: 'modules',
   module_details: 'modules', module_firewall: 'firewall', cron: 'cron',
   processes: 'processes', logs: 'logs', tasks: 'tasks', settings: 'settings',
+  users: 'core_users',
 }
 const selectedRouteCapability = computed(() => routeCapability[router.currentRoute.value.name] || '')
 const capabilityConnectionError = computed(() =>

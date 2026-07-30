@@ -89,6 +89,7 @@ func TestRemoteCapabilityBoundary(t *testing.T) {
 		"/api/v1/updates",
 		"/api/v1/tasks",
 		"/api/v1/logs",
+		"/api/v1/users",
 	}
 	for _, path := range rejected {
 		t.Run("reject "+path, func(t *testing.T) {

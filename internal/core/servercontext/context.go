@@ -44,7 +44,7 @@ func RequireMigratedCapability(next http.Handler) http.Handler {
 
 func remotePathAvailable(r *http.Request) bool {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
-	if strings.HasPrefix(path, "/servers") || strings.HasPrefix(path, "/users") || strings.HasPrefix(path, "/auth") {
+	if strings.HasPrefix(path, "/servers") || strings.HasPrefix(path, "/auth") {
 		return true
 	}
 	if r.Method == http.MethodGet && path == "/dashboard" {
