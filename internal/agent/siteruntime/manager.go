@@ -95,8 +95,11 @@ func (m *Manager) HTTPProbe(ctx context.Context, domain string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer response.Body.Close()
-	return response.StatusCode, nil
+	statusCode := response.StatusCode
+	if err := response.Body.Close(); err != nil {
+		return 0, err
+	}
+	return statusCode, nil
 }
 
 func (m *Manager) ObtainCertificate(ctx context.Context, domain, webroot, email string) error {
