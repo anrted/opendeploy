@@ -179,6 +179,7 @@ func buildRouter(deps Dependencies, logger *slog.Logger) http.Handler {
 		if deps.RemoteHandler != nil {
 			r.Post("/agents/register", deps.RemoteHandler.Register)
 			r.Post("/agents/heartbeat", deps.RemoteHandler.Heartbeat)
+			r.Get("/agents/control-plane", deps.RemoteHandler.AgentConnectionProfile)
 		}
 
 		// Protected endpoints — require valid JWT

@@ -22,13 +22,17 @@ type Config struct {
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Host             string        `yaml:"host"`
-	Port             int           `yaml:"port"`
-	ControlPlanePort int           `yaml:"control_plane_port"`
-	TLSCertificate   string        `yaml:"tls_certificate"`
-	TLSPrivateKey    string        `yaml:"tls_private_key"`
-	ReadTimeout      time.Duration `yaml:"read_timeout"`
-	WriteTimeout     time.Duration `yaml:"write_timeout"`
+	Host                   string        `yaml:"host"`
+	Port                   int           `yaml:"port"`
+	ControlPlaneEnabled    bool          `yaml:"control_plane_enabled"`
+	ControlPlanePort       int           `yaml:"control_plane_port"`
+	ControlPlaneServerName string        `yaml:"control_plane_server_name"`
+	ControlPlaneCA         string        `yaml:"control_plane_ca"`
+	ControlPlaneCAKey      string        `yaml:"control_plane_ca_key"`
+	TLSCertificate         string        `yaml:"tls_certificate"`
+	TLSPrivateKey          string        `yaml:"tls_private_key"`
+	ReadTimeout            time.Duration `yaml:"read_timeout"`
+	WriteTimeout           time.Duration `yaml:"write_timeout"`
 }
 
 // DatabaseConfig holds database connection settings.
@@ -93,10 +97,17 @@ type ModulesConfig struct {
 func defaults() Config {
 	return Config{
 		Server: ServerConfig{
-			Host:         "0.0.0.0",
-			Port:         5888,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 60 * time.Second,
+			Host:                   "0.0.0.0",
+			Port:                   5888,
+			ControlPlaneEnabled:    true,
+			ControlPlanePort:       5889,
+			ControlPlaneServerName: "opendeploy-control-plane",
+			ControlPlaneCA:         "/var/lib/opendeploy/pki/ca.crt",
+			ControlPlaneCAKey:      "/var/lib/opendeploy/pki/ca.key",
+			TLSCertificate:         "/var/lib/opendeploy/pki/control-plane.crt",
+			TLSPrivateKey:          "/var/lib/opendeploy/pki/control-plane.key",
+			ReadTimeout:            30 * time.Second,
+			WriteTimeout:           60 * time.Second,
 		},
 		Database: DatabaseConfig{
 			Driver: "sqlite",
@@ -142,6 +153,7 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("config: parse yaml: %w", err)
 	}
+	normalizeControlPlane(&cfg.Server)
 
 	// Allow overriding the JWT secret via environment (safer than config file).
 	if secret := os.Getenv("OD_JWT_SECRET"); secret != "" {
@@ -155,6 +167,31 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+func normalizeControlPlane(server *ServerConfig) {
+	if !server.ControlPlaneEnabled {
+		return
+	}
+	defaultServer := defaults().Server
+	if server.ControlPlanePort == 0 {
+		server.ControlPlanePort = defaultServer.ControlPlanePort
+	}
+	if server.ControlPlaneServerName == "" {
+		server.ControlPlaneServerName = defaultServer.ControlPlaneServerName
+	}
+	if server.ControlPlaneCA == "" {
+		server.ControlPlaneCA = defaultServer.ControlPlaneCA
+	}
+	if server.ControlPlaneCAKey == "" {
+		server.ControlPlaneCAKey = defaultServer.ControlPlaneCAKey
+	}
+	if server.TLSCertificate == "" {
+		server.TLSCertificate = defaultServer.TLSCertificate
+	}
+	if server.TLSPrivateKey == "" {
+		server.TLSPrivateKey = defaultServer.TLSPrivateKey
+	}
+}
+
 // validate performs basic sanity checks on the loaded configuration.
 func (c *Config) validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
@@ -163,8 +200,14 @@ func (c *Config) validate() error {
 	if c.Server.ControlPlanePort < 0 || c.Server.ControlPlanePort > 65535 {
 		return fmt.Errorf("server.control_plane_port must be between 0 and 65535, got %d", c.Server.ControlPlanePort)
 	}
-	if c.Server.ControlPlanePort > 0 && (c.Server.TLSCertificate == "" || c.Server.TLSPrivateKey == "") {
-		return fmt.Errorf("server.tls_certificate and server.tls_private_key are required when the control plane is enabled")
+	if c.Server.ControlPlaneEnabled {
+		if c.Server.ControlPlanePort < 1 {
+			return fmt.Errorf("server.control_plane_port must be set when the control plane is enabled")
+		}
+		if c.Server.ControlPlaneServerName == "" || c.Server.ControlPlaneCA == "" ||
+			c.Server.ControlPlaneCAKey == "" || c.Server.TLSCertificate == "" || c.Server.TLSPrivateKey == "" {
+			return fmt.Errorf("server control-plane PKI paths and server name are required when the control plane is enabled")
+		}
 	}
 	if c.Database.DSN == "" {
 		return fmt.Errorf("database.dsn must not be empty")

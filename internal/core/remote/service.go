@@ -34,8 +34,17 @@ var (
 )
 
 type Service struct {
-	repo *Repository
-	now  func() time.Time
+	repo   *Repository
+	now    func() time.Time
+	issuer interface {
+		IssueClient(string, string, any, time.Time) (string, string, time.Time, error)
+	}
+}
+
+func (s *Service) SetCertificateIssuer(issuer interface {
+	IssueClient(string, string, any, time.Time) (string, string, time.Time, error)
+}) {
+	s.issuer = issuer
 }
 
 // ControlPlaneConnected persists authenticated handshake metadata before Core
@@ -160,7 +169,7 @@ func (s *Service) Register(ctx context.Context, req RegistrationRequest) (*Regis
 	if err != nil {
 		return nil, fmt.Errorf("registration token is invalid, expired, or already used")
 	}
-	cert, fingerprint, expires, err := issueClientCertificate(serverID, req.Hostname, req.CSRPEM, now)
+	cert, fingerprint, expires, err := s.issueClientCertificate(serverID, req.Hostname, req.CSRPEM, now)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +187,7 @@ func (s *Service) Register(ctx context.Context, req RegistrationRequest) (*Regis
 	}, nil
 }
 
-func issueClientCertificate(serverID, hostname, csrPEM string, now time.Time) (string, string, time.Time, error) {
+func (s *Service) issueClientCertificate(serverID, hostname, csrPEM string, now time.Time) (string, string, time.Time, error) {
 	block, _ := pem.Decode([]byte(csrPEM))
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
 		return "", "", time.Time{}, fmt.Errorf("invalid certificate signing request")
@@ -186,6 +195,9 @@ func issueClientCertificate(serverID, hostname, csrPEM string, now time.Time) (s
 	csr, err := x509.ParseCertificateRequest(block.Bytes)
 	if err != nil || csr.CheckSignature() != nil {
 		return "", "", time.Time{}, fmt.Errorf("invalid certificate signing request")
+	}
+	if s.issuer != nil {
+		return s.issuer.IssueClient(serverID, hostname, csr.PublicKey, now)
 	}
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -214,6 +226,12 @@ func issueClientCertificate(serverID, hostname, csrPEM string, now time.Time) (s
 	sum := sha256.Sum256(der)
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
 		hex.EncodeToString(sum[:]), expires, nil
+}
+
+// issueClientCertificate preserves the legacy test/API helper while production
+// Service instances use the persistent control-plane issuer configured by Core.
+func issueClientCertificate(serverID, hostname, csrPEM string, now time.Time) (string, string, time.Time, error) {
+	return (&Service{}).issueClientCertificate(serverID, hostname, csrPEM, now)
 }
 
 func (s *Service) Heartbeat(ctx context.Context, serverID, fingerprint string, req HeartbeatRequest, latency int64) (*HeartbeatResponse, error) {

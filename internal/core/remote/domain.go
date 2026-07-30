@@ -3,35 +3,37 @@ package remote
 import "time"
 
 type Server struct {
-	ID            string     `json:"id"`
-	Local         bool       `json:"local,omitempty"`
-	Name          string     `json:"name"`
-	Hostname      string     `json:"hostname"`
-	Description   string     `json:"description"`
-	MachineID     string     `json:"machine_id"`
-	Status        string     `json:"status"`
-	AgentVersion  string     `json:"agent_version"`
-	APIVersion    string     `json:"api_version,omitempty"`
-	OS            string     `json:"os"`
-	Distribution  string     `json:"distribution"`
-	OSVersion     string     `json:"os_version"`
-	Kernel        string     `json:"kernel"`
-	Architecture  string     `json:"architecture"`
-	CPUModel      string     `json:"cpu_model"`
-	CPUCores      int        `json:"cpu_cores"`
-	RAMTotal      int64      `json:"ram_total"`
-	DiskTotal     int64      `json:"disk_total"`
-	PublicIP      string     `json:"public_ip"`
-	PrivateIP     string     `json:"private_ip"`
-	Uptime        int64      `json:"uptime"`
-	LatencyMS     int64      `json:"latency_ms"`
-	Tags          []string   `json:"tags"`
-	UpdateChannel string     `json:"update_channel"`
-	HealthStatus  string     `json:"health_status"`
-	Maintenance   bool       `json:"maintenance"`
-	LastHeartbeat *time.Time `json:"last_heartbeat,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID                    string     `json:"id"`
+	Local                 bool       `json:"local,omitempty"`
+	Name                  string     `json:"name"`
+	Hostname              string     `json:"hostname"`
+	Description           string     `json:"description"`
+	MachineID             string     `json:"machine_id"`
+	Status                string     `json:"status"`
+	AgentVersion          string     `json:"agent_version"`
+	APIVersion            string     `json:"api_version,omitempty"`
+	OS                    string     `json:"os"`
+	Distribution          string     `json:"distribution"`
+	OSVersion             string     `json:"os_version"`
+	Kernel                string     `json:"kernel"`
+	Architecture          string     `json:"architecture"`
+	CPUModel              string     `json:"cpu_model"`
+	CPUCores              int        `json:"cpu_cores"`
+	RAMTotal              int64      `json:"ram_total"`
+	DiskTotal             int64      `json:"disk_total"`
+	PublicIP              string     `json:"public_ip"`
+	PrivateIP             string     `json:"private_ip"`
+	Uptime                int64      `json:"uptime"`
+	LatencyMS             int64      `json:"latency_ms"`
+	Tags                  []string   `json:"tags"`
+	UpdateChannel         string     `json:"update_channel"`
+	HealthStatus          string     `json:"health_status"`
+	Maintenance           bool       `json:"maintenance"`
+	ControlPlaneConnected bool       `json:"control_plane_connected"`
+	ConnectionMode        string     `json:"connection_mode"`
+	LastHeartbeat         *time.Time `json:"last_heartbeat,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 type CreateRequest struct {
@@ -70,14 +72,22 @@ type RegistrationRequest struct {
 }
 
 type RegistrationResponse struct {
-	ServerID            string   `json:"server_id"`
-	CertificatePEM      string   `json:"certificate"`
-	Fingerprint         string   `json:"fingerprint"`
-	HeartbeatInterval   int      `json:"heartbeat_interval"`
-	UpdateChannel       string   `json:"update_channel"`
-	AllowedFeatures     []string `json:"allowed_features"`
-	ControlPlaneAddress string   `json:"control_plane_address,omitempty"`
-	ControlPlaneCA      string   `json:"control_plane_ca,omitempty"`
+	ServerID               string   `json:"server_id"`
+	CertificatePEM         string   `json:"certificate"`
+	Fingerprint            string   `json:"fingerprint"`
+	HeartbeatInterval      int      `json:"heartbeat_interval"`
+	UpdateChannel          string   `json:"update_channel"`
+	AllowedFeatures        []string `json:"allowed_features"`
+	ControlPlaneAddress    string   `json:"control_plane_address,omitempty"`
+	ControlPlaneCA         string   `json:"control_plane_ca,omitempty"`
+	ControlPlaneServerName string   `json:"control_plane_server_name,omitempty"`
+}
+
+type ConnectionProfile struct {
+	Enabled                bool   `json:"enabled"`
+	ControlPlaneAddress    string `json:"control_plane_address,omitempty"`
+	ControlPlaneCA         string `json:"control_plane_ca,omitempty"`
+	ControlPlaneServerName string `json:"control_plane_server_name,omitempty"`
 }
 
 type HeartbeatRequest struct {

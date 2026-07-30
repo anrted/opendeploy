@@ -20,6 +20,7 @@ import (
 	"github.com/anrted/opendeploy/internal/core/dashboard"
 	"github.com/anrted/opendeploy/internal/core/logs"
 	"github.com/anrted/opendeploy/internal/core/module"
+	"github.com/anrted/opendeploy/internal/core/pki"
 	"github.com/anrted/opendeploy/internal/core/remote"
 	"github.com/anrted/opendeploy/internal/core/server"
 	"github.com/anrted/opendeploy/internal/core/service"
@@ -98,6 +99,7 @@ var Module = fx.Options(
 		remote.NewRepository,
 		remote.NewService,
 		remote.NewHandler,
+		pki.NewManager,
 		func(manager *controlplane.Manager, repo *remote.Repository, service *remote.Service) *controlplane.Server {
 			return controlplane.NewServer(manager, repo, service)
 		},
@@ -119,24 +121,35 @@ var Module = fx.Options(
 	),
 )
 
-func configureCapabilityRegistry(handler *remote.Handler, manager *controlplane.Manager, cfg *config.Config) {
+func configureCapabilityRegistry(handler *remote.Handler, service *remote.Service, manager *controlplane.Manager, pkiManager *pki.Manager, cfg *config.Config) {
 	handler.SetControlPlane(manager)
-	handler.ConfigureControlPlane(cfg.Server.ControlPlanePort, cfg.Server.TLSCertificate)
+	service.SetCertificateIssuer(pkiManager)
+	if cfg.Server.ControlPlaneEnabled {
+		handler.ConfigureControlPlane(cfg.Server.ControlPlanePort, cfg.Server.ControlPlaneCA, cfg.Server.ControlPlaneServerName)
+	}
 }
 
-func startControlPlane(lc fx.Lifecycle, cfg *config.Config, server *controlplane.Server, log *slog.Logger) error {
-	if cfg.Server.ControlPlanePort == 0 {
+func startControlPlane(lc fx.Lifecycle, cfg *config.Config, pkiManager *pki.Manager, server *controlplane.Server, log *slog.Logger) error {
+	if !cfg.Server.ControlPlaneEnabled {
 		log.Info("control plane disabled")
 		return nil
+	}
+	if err := pkiManager.Ensure(time.Now().UTC()); err != nil {
+		return fmt.Errorf("initialize control-plane PKI: %w", err)
 	}
 	certificate, err := tls.LoadX509KeyPair(cfg.Server.TLSCertificate, cfg.Server.TLSPrivateKey)
 	if err != nil {
 		return fmt.Errorf("load control-plane TLS identity: %w", err)
 	}
+	clientCAs, err := pkiManager.ClientCertPool()
+	if err != nil {
+		return fmt.Errorf("load control-plane client CA: %w", err)
+	}
 	creds := credentials.NewTLS(&tls.Config{
 		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{certificate},
 		ClientAuth:   tls.RequireAnyClientCert,
+		ClientCAs:    clientCAs,
 	})
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.ControlPlanePort))
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anrted/opendeploy/pkg/controlcapabilities"
 	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
 )
 
@@ -92,14 +93,23 @@ func TestRegisterRetainsHandshakeMetadata(t *testing.T) {
 	manager := NewManager()
 	session, err := manager.register(&agentv1.AgentHello{
 		ServerId: "server-1", ProtocolVersion: ProtocolVersion,
-		ApiVersion: "v2", AgentVersion: "0.2.0",
+		ApiVersion: controlcapabilities.APIVersion, AgentVersion: "0.2.0",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer manager.unregister(session)
-	if session.apiVersion != "v2" || session.agentVersion != "0.2.0" {
+	if session.apiVersion != controlcapabilities.APIVersion || session.agentVersion != "0.2.0" {
 		t.Fatalf("metadata = %q/%q", session.apiVersion, session.agentVersion)
+	}
+}
+
+func TestRegisterRejectsIncompatibleAPIVersion(t *testing.T) {
+	manager := NewManager()
+	if _, err := manager.register(&agentv1.AgentHello{
+		ServerId: "server-1", ProtocolVersion: ProtocolVersion, ApiVersion: "v999",
+	}); err == nil {
+		t.Fatal("incompatible API version was accepted")
 	}
 }
 

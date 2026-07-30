@@ -63,7 +63,8 @@ export const useServerStore = defineStore('server', () => {
       if (requestId !== capabilitiesRequest || serverId !== currentServerId.value) return
       capabilities.value = (data.items || []).filter((item) => item.available).map((item) => item.name)
       if (serverId !== LOCAL_SERVER_ID && capabilities.value.length === 0) {
-        capabilitiesError.value = 'The selected Agent is offline or has not completed its capability handshake.'
+        capabilitiesError.value = [data.reason, data.recommendation].filter(Boolean).join(' ') ||
+          'The selected Agent is offline or has not completed its capability handshake.'
       }
     } catch (error) {
       if (requestId !== capabilitiesRequest || serverId !== currentServerId.value) return

@@ -74,6 +74,37 @@ install -m 0755 "$TMP_DIR/opendeploy-agent" /usr/local/bin/opendeploy-agent
 ok "Install Agent: $TAG"
 
 if [ "$UPDATE_ONLY" -eq 1 ]; then
+    AGENT_CONFIG="$CONFIG_DIR/agent.yaml"
+    [ -f "$AGENT_CONFIG" ] || AGENT_CONFIG="$CONFIG_DIR/opendeploy.yaml"
+    if ! grep -Eq '^[[:space:]]+control_plane_address:' "$AGENT_CONFIG"; then
+        EXISTING_CORE_URL=$(awk -F'"' '/^[[:space:]]+core_url:/ {print $2; exit}' "$AGENT_CONFIG")
+        EXISTING_SERVER_ID=$(awk -F'"' '/^[[:space:]]+server_id:/ {print $2; exit}' "$AGENT_CONFIG")
+        EXISTING_FINGERPRINT=$(awk -F'"' '/^[[:space:]]+certificate_fingerprint:/ {print $2; exit}' "$AGENT_CONFIG")
+        if [ -n "$EXISTING_CORE_URL" ] && [ -n "$EXISTING_SERVER_ID" ] && [ -n "$EXISTING_FINGERPRINT" ]; then
+            PROFILE=$(curl -fsS \
+              -H "X-OpenDeploy-Agent-ID: $EXISTING_SERVER_ID" \
+              -H "X-OpenDeploy-Cert-Fingerprint: $EXISTING_FINGERPRINT" \
+              "$EXISTING_CORE_URL/api/v1/agents/control-plane") || die "failed to retrieve control-plane profile"
+            PROFILE_ENABLED=$(printf '%s' "$PROFILE" | jq -r '.enabled // false')
+            if [ "$PROFILE_ENABLED" = "true" ]; then
+                CONTROL_PLANE_ADDRESS=$(printf '%s' "$PROFILE" | jq -er .control_plane_address)
+                CONTROL_PLANE_SERVER_NAME=$(printf '%s' "$PROFILE" | jq -er .control_plane_server_name)
+                printf '%s' "$PROFILE" | jq -er .control_plane_ca > "$CONFIG_DIR/control-plane-ca.crt"
+                chmod 0600 "$CONFIG_DIR/control-plane-ca.crt"
+                TEMP_CONFIG="$TMP_DIR/agent.yaml"
+                awk -v address="$CONTROL_PLANE_ADDRESS" -v ca="$CONFIG_DIR/control-plane-ca.crt" -v name="$CONTROL_PLANE_SERVER_NAME" '
+                  { print }
+                  /^agent:[[:space:]]*$/ {
+                    print "  control_plane_address: \"" address "\""
+                    print "  control_plane_ca_file: \"" ca "\""
+                    print "  control_plane_server_name: \"" name "\""
+                  }
+                ' "$AGENT_CONFIG" > "$TEMP_CONFIG"
+                install -m 0600 "$TEMP_CONFIG" "$AGENT_CONFIG"
+                ok "Migrate Agent: persistent control plane configured"
+            fi
+        fi
+    fi
     systemctl restart opendeploy-agent.service
     sleep 2
     systemctl is-active --quiet opendeploy-agent.service || die "updated agent did not start"
@@ -109,6 +140,7 @@ REGISTER_RESPONSE=$(curl -fsS -H 'Content-Type: application/json' -d "$REGISTER_
 SERVER_ID=$(printf '%s' "$REGISTER_RESPONSE" | jq -er .server_id)
 FINGERPRINT=$(printf '%s' "$REGISTER_RESPONSE" | jq -er .fingerprint)
 CONTROL_PLANE_ADDRESS=$(printf '%s' "$REGISTER_RESPONSE" | jq -r '.control_plane_address // empty')
+CONTROL_PLANE_SERVER_NAME=$(printf '%s' "$REGISTER_RESPONSE" | jq -r '.control_plane_server_name // empty')
 printf '%s' "$REGISTER_RESPONSE" | jq -er .certificate > "$CONFIG_DIR/agent.crt"
 if [ -n "$CONTROL_PLANE_ADDRESS" ]; then
   printf '%s' "$REGISTER_RESPONSE" | jq -er .control_plane_ca > "$CONFIG_DIR/control-plane-ca.crt"
@@ -134,7 +166,7 @@ agent:
   certificate_fingerprint: "$FINGERPRINT"
   heartbeat_interval: 30s
 $(if [ -n "$CONTROL_PLANE_ADDRESS" ]; then
-    printf '  control_plane_address: "%s"\n  control_plane_ca_file: "%s/control-plane-ca.crt"\n' "$CONTROL_PLANE_ADDRESS" "$CONFIG_DIR"
+    printf '  control_plane_address: "%s"\n  control_plane_ca_file: "%s/control-plane-ca.crt"\n  control_plane_server_name: "%s"\n' "$CONTROL_PLANE_ADDRESS" "$CONFIG_DIR" "$CONTROL_PLANE_SERVER_NAME"
   fi)
 logging:
   level: "info"

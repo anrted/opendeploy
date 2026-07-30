@@ -24,22 +24,26 @@ type Handler struct {
 	repo             *Repository
 	control          *controlplane.Manager
 	controlPlanePort int
-	controlPlaneCert string
+	controlPlaneCA   string
+	controlPlaneName string
 }
 
 func (h *Handler) SetControlPlane(manager *controlplane.Manager) { h.control = manager }
-func (h *Handler) ConfigureControlPlane(port int, certificate string) {
-	h.controlPlanePort, h.controlPlaneCert = port, certificate
+func (h *Handler) ConfigureControlPlane(port int, caPath, serverName string) {
+	h.controlPlanePort, h.controlPlaneCA, h.controlPlaneName = port, caPath, serverName
 }
 
 func (h *Handler) Capabilities(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	names := controlcapabilities.Names()
+	diagnostics := controlplane.Diagnostics{Connected: true, Capabilities: names}
 	if id != LocalServerID {
 		if h.control == nil {
 			names = nil
+			diagnostics = controlplane.Diagnostics{Capabilities: []string{}}
 		} else {
-			names = h.control.Capabilities(id)
+			diagnostics = h.control.Diagnostics(id)
+			names = diagnostics.Capabilities
 		}
 	}
 	items := make([]map[string]any, 0, len(names))
@@ -49,7 +53,22 @@ func (h *Handler) Capabilities(w http.ResponseWriter, r *http.Request) {
 			"experimental": false, "deprecated": false, "required_version": "0.1.25",
 		})
 	}
-	respond(w, http.StatusOK, map[string]any{"server_id": id, "items": items})
+	response := map[string]any{
+		"server_id": id, "items": items,
+		"control_plane_connected": diagnostics.Connected,
+		"connection_id":           diagnostics.ConnectionID,
+		"agent_version":           diagnostics.AgentVersion,
+		"api_version":             diagnostics.APIVersion,
+	}
+	if diagnostics.Connected {
+		response["connected_at"] = diagnostics.ConnectedAt
+		response["last_seen"] = diagnostics.LastSeen
+	}
+	if id != LocalServerID && !diagnostics.Connected {
+		response["reason"] = "legacy heartbeat is online, but no active control-plane session exists"
+		response["recommendation"] = "update or reinstall the Agent so it receives the control-plane endpoint and CA"
+	}
+	respond(w, http.StatusOK, response)
 }
 
 const LocalServerID = "local"
@@ -133,7 +152,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			host = parsed
 		}
 		result.ControlPlaneAddress = net.JoinHostPort(host, fmt.Sprint(h.controlPlanePort))
-		if certificate, readErr := os.ReadFile(h.controlPlaneCert); readErr == nil {
+		result.ControlPlaneServerName = h.controlPlaneName
+		if certificate, readErr := os.ReadFile(h.controlPlaneCA); readErr == nil {
 			result.ControlPlaneCA = string(certificate)
 		}
 	}
@@ -161,6 +181,38 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, result)
 }
 
+// AgentConnectionProfile lets already-enrolled legacy Agents migrate to the
+// persistent control plane without issuing a new enrollment token.
+func (h *Handler) AgentConnectionProfile(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(r.Header.Get("X-OpenDeploy-Agent-ID"))
+	fingerprint := strings.TrimSpace(r.Header.Get("X-OpenDeploy-Cert-Fingerprint"))
+	if serverID == "" || fingerprint == "" {
+		apperrors.WriteHTTP(w, apperrors.Unauthorized("agent certificate identity is required"))
+		return
+	}
+	valid, err := h.repo.VerifyCertificate(r.Context(), serverID, fingerprint)
+	if err != nil || !valid {
+		apperrors.WriteHTTP(w, apperrors.Unauthorized("agent identity rejected"))
+		return
+	}
+	profile := ConnectionProfile{Enabled: h.controlPlanePort > 0}
+	if profile.Enabled {
+		host := r.Host
+		if parsed, _, splitErr := net.SplitHostPort(r.Host); splitErr == nil {
+			host = parsed
+		}
+		profile.ControlPlaneAddress = net.JoinHostPort(host, fmt.Sprint(h.controlPlanePort))
+		profile.ControlPlaneServerName = h.controlPlaneName
+		caPEM, readErr := os.ReadFile(h.controlPlaneCA)
+		if readErr != nil {
+			internal(w, "read control-plane CA", readErr)
+			return
+		}
+		profile.ControlPlaneCA = string(caPEM)
+	}
+	respond(w, http.StatusOK, profile)
+}
+
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	limit := intQuery(r, "limit", 25, 100)
 	offset := intQuery(r, "offset", 0, 1000000)
@@ -176,12 +228,35 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			page.Items = page.Items[:limit]
 		}
 	}
+	h.decorateConnections(page.Items)
 	respond(w, http.StatusOK, page)
+}
+
+func (h *Handler) decorateConnections(servers []Server) {
+	for index := range servers {
+		if servers[index].Local {
+			servers[index].ControlPlaneConnected = true
+			servers[index].ConnectionMode = "local"
+			continue
+		}
+		if h.control != nil && h.control.Diagnostics(servers[index].ID).Connected {
+			servers[index].ControlPlaneConnected = true
+			servers[index].ConnectionMode = "control_plane"
+		} else if servers[index].Status == "online" {
+			servers[index].ConnectionMode = "legacy_heartbeat"
+		} else {
+			servers[index].ConnectionMode = "offline"
+		}
+	}
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	if chi.URLParam(r, "id") == LocalServerID {
-		respond(w, http.StatusOK, localServer())
+		item := localServer()
+		h.decorateConnections([]Server{item})
+		item.ControlPlaneConnected = true
+		item.ConnectionMode = "local"
+		respond(w, http.StatusOK, item)
 		return
 	}
 	item, err := h.repo.Get(r.Context(), chi.URLParam(r, "id"))
@@ -193,7 +268,9 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		apperrors.WriteHTTP(w, apperrors.NotFound("server not found"))
 		return
 	}
-	respond(w, http.StatusOK, item)
+	items := []Server{*item}
+	h.decorateConnections(items)
+	respond(w, http.StatusOK, items[0])
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +281,9 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.repo.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
 		internal(w, "delete remote server", err)
 		return
+	}
+	if h.control != nil {
+		h.control.Disconnect(chi.URLParam(r, "id"))
 	}
 	respond(w, http.StatusOK, map[string]string{"message": "server deleted"})
 }

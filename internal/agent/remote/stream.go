@@ -125,6 +125,13 @@ func (c *StreamClient) connect(ctx context.Context) error {
 	if welcome.GetWelcome() == nil || welcome.GetWelcome().GetProtocolVersion() != streamProtocolVersion {
 		return fmt.Errorf("control-plane protocol negotiation failed")
 	}
+	clockSkew := time.Since(time.UnixMilli(welcome.GetWelcome().GetServerTimeUnixMs()))
+	if clockSkew < 0 {
+		clockSkew = -clockSkew
+	}
+	if clockSkew > 5*time.Minute {
+		return fmt.Errorf("control-plane clock skew is %s; synchronize system time", clockSkew.Round(time.Second))
+	}
 	interval := time.Duration(welcome.GetWelcome().GetHeartbeatIntervalSeconds()) * time.Second
 	go c.heartbeatLoop(connectionCtx, interval, outbound)
 	subscriptions := make(map[string]context.CancelFunc)

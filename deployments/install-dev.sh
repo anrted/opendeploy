@@ -82,10 +82,12 @@ if [ ! -f "$CONFIG_DIR/opendeploy.yaml" ]; then
     cat << 'EOF' > "$CONFIG_DIR/opendeploy.yaml"
 # OpenDeploy Configuration
 server:
-  addr: :5888
-  debug: false
+  host: "0.0.0.0"
+  port: 5888
+  control_plane_enabled: true
+  control_plane_port: 5889
 agent:
-  socket_path: /run/opendeploy-agent/agent.sock
+  socket: "/run/opendeploy-agent/agent.sock"
 EOF
 fi
 chown root:opendeploy "$CONFIG_DIR/opendeploy.yaml"

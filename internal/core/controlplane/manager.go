@@ -32,6 +32,8 @@ type session struct {
 	apiVersion   string
 	agentVersion string
 	capabilities map[string]struct{}
+	connectedAt  time.Time
+	lastSeen     time.Time
 	send         chan *agentv1.CoreMessage
 	done         chan struct{}
 	pending      map[string]chan pendingResult
@@ -54,15 +56,23 @@ func (m *Manager) register(hello *agentv1.AgentHello) (*session, error) {
 	if hello.GetProtocolVersion() != ProtocolVersion {
 		return nil, fmt.Errorf("unsupported control-plane protocol %d", hello.GetProtocolVersion())
 	}
+	if hello.GetApiVersion() != "" && hello.GetApiVersion() != controlcapabilities.APIVersion {
+		return nil, fmt.Errorf("unsupported Agent API version %q", hello.GetApiVersion())
+	}
+	apiVersion := hello.GetApiVersion()
+	if apiVersion == "" {
+		apiVersion = controlcapabilities.APIVersion
+	}
 	capabilities := make(map[string]struct{}, len(hello.GetCapabilities()))
 	for _, capability := range hello.GetCapabilities() {
 		capabilities[capability] = struct{}{}
 	}
 	s := &session{
 		id: uuid.NewString(), serverID: hello.GetServerId(),
-		apiVersion: hello.GetApiVersion(), agentVersion: hello.GetAgentVersion(),
+		apiVersion: apiVersion, agentVersion: hello.GetAgentVersion(),
 		capabilities: capabilities,
-		send:         make(chan *agentv1.CoreMessage, 64), done: make(chan struct{}),
+		connectedAt:  time.Now().UTC(), lastSeen: time.Now().UTC(),
+		send: make(chan *agentv1.CoreMessage, 64), done: make(chan struct{}),
 		pending: make(map[string]chan pendingResult),
 		streams: make(map[string]chan *agentv1.StreamChunk),
 	}
@@ -75,6 +85,44 @@ func (m *Manager) register(hello *agentv1.AgentHello) (*session, error) {
 	return s, nil
 }
 
+type Diagnostics struct {
+	Connected    bool      `json:"connected"`
+	ConnectionID string    `json:"connection_id,omitempty"`
+	AgentVersion string    `json:"agent_version,omitempty"`
+	APIVersion   string    `json:"api_version,omitempty"`
+	ConnectedAt  time.Time `json:"connected_at,omitempty"`
+	LastSeen     time.Time `json:"last_seen,omitempty"`
+	Capabilities []string  `json:"capabilities"`
+}
+
+func (m *Manager) Diagnostics(serverID string) Diagnostics {
+	m.mu.RLock()
+	s := m.sessions[serverID]
+	m.mu.RUnlock()
+	if s == nil {
+		return Diagnostics{Capabilities: []string{}}
+	}
+	s.mu.Lock()
+	result := Diagnostics{
+		Connected: true, ConnectionID: s.id,
+		AgentVersion: s.agentVersion, APIVersion: s.apiVersion,
+		ConnectedAt: s.connectedAt, LastSeen: s.lastSeen,
+		Capabilities: make([]string, 0, len(s.capabilities)),
+	}
+	for capability := range s.capabilities {
+		result.Capabilities = append(result.Capabilities, capability)
+	}
+	s.mu.Unlock()
+	sort.Strings(result.Capabilities)
+	return result
+}
+
+func (s *session) touch() {
+	s.mu.Lock()
+	s.lastSeen = time.Now().UTC()
+	s.mu.Unlock()
+}
+
 func (m *Manager) unregister(s *session) {
 	m.mu.Lock()
 	if m.sessions[s.serverID] == s {
@@ -82,6 +130,16 @@ func (m *Manager) unregister(s *session) {
 	}
 	m.mu.Unlock()
 	s.close(ErrConnectionClosed)
+}
+
+func (m *Manager) Disconnect(serverID string) {
+	m.mu.Lock()
+	session := m.sessions[serverID]
+	delete(m.sessions, serverID)
+	m.mu.Unlock()
+	if session != nil {
+		session.close(ErrConnectionClosed)
+	}
 }
 
 func (s *session) close(err error) {

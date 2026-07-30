@@ -46,6 +46,18 @@ have since been completed on `main`:
   reload; generic `command.execute` remains unavailable remotely;
 - typed remote site-root ownership, PHP socket inspection, HTTP health probing
   and Certbot issuance primitives.
+- automatically enabled gRPC Control Plane on port 5889 with a persistent,
+  Go-native ECDSA CA and server identity (no manual `openssl` bootstrap);
+- CA-signed Agent enrollment identities, certificate pinning against the
+  enrollment database, and a compatibility path for previously issued
+  self-signed Agent certificates;
+- legacy Agent update migration via the authenticated
+  `/api/v1/agents/control-plane` profile endpoint;
+- explicit separation of legacy HTTP heartbeat health from live Control Plane
+  readiness, including connection ID, Agent/API versions, timestamps and
+  actionable diagnostics in the server details UI;
+- bounded hello and heartbeat timeouts, duplicate-session replacement,
+  disconnect-on-delete and Agent clock-skew validation.
 
 Still intentionally blocked until dedicated contracts are designed: Sites and
 general Modules orchestration, Settings, Packages UI, Terminal, Network, and

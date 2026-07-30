@@ -10,8 +10,15 @@ import (
 	"time"
 
 	agentv1 "github.com/anrted/opendeploy/proto/agent/v1"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
+)
+
+const (
+	helloTimeout     = 10 * time.Second
+	heartbeatTimeout = 45 * time.Second
 )
 
 type IdentityVerifier interface {
@@ -39,9 +46,22 @@ func NewServer(manager *Manager, verifier IdentityVerifier, heartbeat HeartbeatH
 // Connect owns the full duplex stream lifecycle. Its branches correspond to the
 // finite set of protocol message types and intentionally remain co-located.
 func (s *Server) Connect(stream agentv1.ControlPlane_ConnectServer) error { //nolint:gocyclo
-	first, err := stream.Recv()
-	if err != nil {
-		return err
+	firstResult := make(chan receiveResult, 1)
+	go func() {
+		message, receiveErr := stream.Recv()
+		firstResult <- receiveResult{message: message, err: receiveErr}
+	}()
+	var first *agentv1.AgentMessage
+	select {
+	case result := <-firstResult:
+		if result.err != nil {
+			return result.err
+		}
+		first = result.message
+	case <-time.After(helloTimeout):
+		return status.Error(codes.DeadlineExceeded, "agent hello timeout")
+	case <-stream.Context().Done():
+		return stream.Context().Err()
 	}
 	hello := first.GetHello()
 	if hello == nil || hello.GetServerId() == "" || hello.GetCertificateFingerprint() == "" {
@@ -94,14 +114,48 @@ func (s *Server) Connect(stream agentv1.ControlPlane_ConnectServer) error { //no
 			}
 		}
 	}()
+	receive := make(chan receiveResult, 1)
+	go func() {
+		for {
+			message, receiveErr := stream.Recv()
+			select {
+			case receive <- receiveResult{message: message, err: receiveErr}:
+			case <-stream.Context().Done():
+				return
+			}
+			if receiveErr != nil {
+				return
+			}
+		}
+	}()
+	watchdog := time.NewTimer(heartbeatTimeout)
+	defer watchdog.Stop()
 	for {
-		message, recvErr := stream.Recv()
-		if recvErr == io.EOF {
-			return nil
+		var message *agentv1.AgentMessage
+		select {
+		case result := <-receive:
+			if result.err == io.EOF {
+				return nil
+			}
+			if result.err != nil {
+				return result.err
+			}
+			message = result.message
+			if !watchdog.Stop() {
+				select {
+				case <-watchdog.C:
+				default:
+				}
+			}
+			watchdog.Reset(heartbeatTimeout)
+		case err := <-sendErr:
+			return err
+		case <-watchdog.C:
+			return status.Error(codes.DeadlineExceeded, "agent heartbeat timeout")
+		case <-stream.Context().Done():
+			return stream.Context().Err()
 		}
-		if recvErr != nil {
-			return recvErr
-		}
+		session.touch()
 		switch body := message.Body.(type) {
 		case *agentv1.AgentMessage_CommandResult:
 			session.resolve(body.CommandResult)
@@ -130,10 +184,10 @@ func (s *Server) Connect(stream agentv1.ControlPlane_ConnectServer) error { //no
 		case *agentv1.AgentMessage_Hello:
 			return fmt.Errorf("agent hello may only be sent once")
 		}
-		select {
-		case err := <-sendErr:
-			return err
-		default:
-		}
 	}
+}
+
+type receiveResult struct {
+	message *agentv1.AgentMessage
+	err     error
 }
