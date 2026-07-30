@@ -28,6 +28,7 @@ const (
 	CodeForbidden             ErrorCode = "FORBIDDEN"
 	CodeConflict              ErrorCode = "CONFLICT"
 	CodeCapabilityUnavailable ErrorCode = "CAPABILITY_UNAVAILABLE"
+	CodeRateLimited           ErrorCode = "RATE_LIMITED"
 
 	// Auth-specific codes
 	CodeInvalidCredentials ErrorCode = "INVALID_CREDENTIALS"

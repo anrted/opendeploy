@@ -114,7 +114,7 @@ func defaults() Config {
 		Security: SecurityConfig{
 			RateLimit: RateLimitConfig{
 				Enabled:           true,
-				RequestsPerMinute: 60,
+				RequestsPerMinute: 300,
 			},
 			CSRF: CSRFConfig{Enabled: true},
 		},

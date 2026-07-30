@@ -35,7 +35,7 @@ auth:
 security:
   rate_limit:
     enabled: true
-    requests_per_minute: 60
+    requests_per_minute: 300
   csrf:
     enabled: true
 
