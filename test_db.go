@@ -49,7 +49,7 @@ func main() {
 	for rows.Next() {
 		var id, name, moduleID, rootPath, status, created, updated string
 		var ownerID *string
-		var proxyEnabled int
+		var proxyEnabled bool
 		var proxyHost string
 		var proxyPort int
 		err := rows.Scan(&id, &name, &moduleID, &rootPath, &status, &ownerID, &proxyEnabled, &proxyHost, &proxyPort, &created, &updated)
