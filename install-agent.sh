@@ -10,6 +10,7 @@ REGISTRATION_TOKEN=""
 UPDATE_ONLY=0
 
 step() { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
+warn() { printf '\033[1;33m!\033[0m %s\n' "$1" >&2; }
 ok() { printf '\033[1;32m✓\033[0m %s\n' "$1"; }
 die() { printf '\033[1;31m✗\033[0m %s\n' "$1" >&2; exit 1; }
 
@@ -81,15 +82,22 @@ if [ "$UPDATE_ONLY" -eq 1 ]; then
         EXISTING_SERVER_ID=$(awk -F'"' '/^[[:space:]]+server_id:/ {print $2; exit}' "$AGENT_CONFIG")
         EXISTING_FINGERPRINT=$(awk -F'"' '/^[[:space:]]+certificate_fingerprint:/ {print $2; exit}' "$AGENT_CONFIG")
         if [ -n "$EXISTING_CORE_URL" ] && [ -n "$EXISTING_SERVER_ID" ] && [ -n "$EXISTING_FINGERPRINT" ]; then
-            PROFILE=$(curl -fsS \
+            PROFILE_FILE="$TMP_DIR/control-plane-profile.json"
+            if PROFILE_STATUS=$(curl -sS \
               -H "X-OpenDeploy-Agent-ID: $EXISTING_SERVER_ID" \
               -H "X-OpenDeploy-Cert-Fingerprint: $EXISTING_FINGERPRINT" \
-              "$EXISTING_CORE_URL/api/v1/agents/control-plane") || die "failed to retrieve control-plane profile"
-            PROFILE_ENABLED=$(printf '%s' "$PROFILE" | jq -r '.enabled // false')
-            if [ "$PROFILE_ENABLED" = "true" ]; then
-                CONTROL_PLANE_ADDRESS=$(printf '%s' "$PROFILE" | jq -er .control_plane_address)
-                CONTROL_PLANE_SERVER_NAME=$(printf '%s' "$PROFILE" | jq -er .control_plane_server_name)
-                printf '%s' "$PROFILE" | jq -er .control_plane_ca > "$CONFIG_DIR/control-plane-ca.crt"
+              -o "$PROFILE_FILE" -w '%{http_code}' \
+              "$EXISTING_CORE_URL/api/v1/agents/control-plane"); then
+                :
+            else
+                PROFILE_STATUS=000
+            fi
+            if [ "$PROFILE_STATUS" = "200" ]; then
+              PROFILE_ENABLED=$(jq -r '.enabled // false' "$PROFILE_FILE")
+              if [ "$PROFILE_ENABLED" = "true" ]; then
+                CONTROL_PLANE_ADDRESS=$(jq -er .control_plane_address "$PROFILE_FILE")
+                CONTROL_PLANE_SERVER_NAME=$(jq -er .control_plane_server_name "$PROFILE_FILE")
+                jq -er .control_plane_ca "$PROFILE_FILE" > "$CONFIG_DIR/control-plane-ca.crt"
                 chmod 0600 "$CONFIG_DIR/control-plane-ca.crt"
                 TEMP_CONFIG="$TMP_DIR/agent.yaml"
                 awk -v address="$CONTROL_PLANE_ADDRESS" -v ca="$CONFIG_DIR/control-plane-ca.crt" -v name="$CONTROL_PLANE_SERVER_NAME" '
@@ -102,6 +110,9 @@ if [ "$UPDATE_ONLY" -eq 1 ]; then
                 ' "$AGENT_CONFIG" > "$TEMP_CONFIG"
                 install -m 0600 "$TEMP_CONFIG" "$AGENT_CONFIG"
                 ok "Migrate Agent: persistent control plane configured"
+              fi
+            else
+                warn "Core does not provide a control-plane profile yet (HTTP $PROFILE_STATUS); keeping legacy heartbeat configuration"
             fi
         fi
     fi
