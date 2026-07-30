@@ -217,7 +217,9 @@ func (m *Manager) loadCA() (*x509.Certificate, *ecdsa.PrivateKey, error) {
 
 func writePEM(path, blockType string, data []byte, mode os.FileMode) error {
 	temporary := path + ".tmp"
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	// The destination is taken exclusively from the root-owned Core
+	// configuration and is never derived from an HTTP request or Agent input.
+	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode) //nolint:gosec // operator-controlled PKI path
 	if err != nil {
 		return err
 	}
