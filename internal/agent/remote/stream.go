@@ -65,6 +65,9 @@ func (c *StreamClient) Run(ctx context.Context) {
 }
 
 func (c *StreamClient) connect(ctx context.Context) error {
+	connectionCtx, cancelConnection := context.WithCancel(ctx)
+	defer cancelConnection()
+
 	caPEM, err := os.ReadFile(c.cfg.ControlPlaneCAFile)
 	if err != nil {
 		return fmt.Errorf("load control-plane CA: %w", err)
@@ -88,7 +91,7 @@ func (c *StreamClient) connect(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = conn.Close() }()
-	stream, err := agentv1.NewControlPlaneClient(conn).Connect(ctx)
+	stream, err := agentv1.NewControlPlaneClient(conn).Connect(connectionCtx)
 	if err != nil {
 		return err
 	}
@@ -102,17 +105,19 @@ func (c *StreamClient) connect(ctx context.Context) error {
 					sendErr <- err
 					return
 				}
-			case <-ctx.Done():
-				sendErr <- ctx.Err()
+			case <-connectionCtx.Done():
+				sendErr <- connectionCtx.Err()
 				return
 			}
 		}
 	}()
-	outbound <- &agentv1.AgentMessage{Body: &agentv1.AgentMessage_Hello{Hello: &agentv1.AgentHello{
+	if !sendMessage(connectionCtx, outbound, &agentv1.AgentMessage{Body: &agentv1.AgentMessage_Hello{Hello: &agentv1.AgentHello{
 		ServerId: c.cfg.ServerID, CertificateFingerprint: c.cfg.CertificateFingerprint,
-		ProtocolVersion: streamProtocolVersion, ApiVersion: "v1", AgentVersion: version.Version,
+		ProtocolVersion: streamProtocolVersion, ApiVersion: controlcapabilities.APIVersion, AgentVersion: version.Version,
 		Capabilities: controlcapabilities.Names(),
-	}}}
+	}}}) {
+		return connectionCtx.Err()
+	}
 	welcome, err := stream.Recv()
 	if err != nil {
 		return err
@@ -121,20 +126,44 @@ func (c *StreamClient) connect(ctx context.Context) error {
 		return fmt.Errorf("control-plane protocol negotiation failed")
 	}
 	interval := time.Duration(welcome.GetWelcome().GetHeartbeatIntervalSeconds()) * time.Second
-	go c.heartbeatLoop(ctx, interval, outbound)
+	go c.heartbeatLoop(connectionCtx, interval, outbound)
 	subscriptions := make(map[string]context.CancelFunc)
+	incoming := make(chan *agentv1.CoreMessage)
+	receiveErr := make(chan error, 1)
+	go func() {
+		for {
+			message, recvErr := stream.Recv()
+			if recvErr != nil {
+				receiveErr <- recvErr
+				return
+			}
+			select {
+			case incoming <- message:
+			case <-connectionCtx.Done():
+				return
+			}
+		}
+	}()
 	for {
-		message, recvErr := stream.Recv()
-		if recvErr != nil {
-			return recvErr
+		var message *agentv1.CoreMessage
+		select {
+		case message = <-incoming:
+		case err := <-receiveErr:
+			return err
+		case err := <-sendErr:
+			return err
+		case <-connectionCtx.Done():
+			return connectionCtx.Err()
 		}
 		switch body := message.Body.(type) {
 		case *agentv1.CoreMessage_Command:
-			go c.execute(ctx, body.Command, outbound)
+			go c.execute(connectionCtx, body.Command, outbound)
 		case *agentv1.CoreMessage_Ping:
-			outbound <- &agentv1.AgentMessage{Body: &agentv1.AgentMessage_Pong{Pong: &agentv1.Pong{SentAtUnixMs: body.Ping.GetSentAtUnixMs()}}}
+			if !sendMessage(connectionCtx, outbound, &agentv1.AgentMessage{Body: &agentv1.AgentMessage_Pong{Pong: &agentv1.Pong{SentAtUnixMs: body.Ping.GetSentAtUnixMs()}}}) {
+				return connectionCtx.Err()
+			}
 		case *agentv1.CoreMessage_Subscribe:
-			subscriptionCtx, cancel := context.WithCancel(ctx)
+			subscriptionCtx, cancel := context.WithCancel(connectionCtx)
 			subscriptions[body.Subscribe.GetId()] = cancel
 			go c.runSubscription(subscriptionCtx, body.Subscribe, outbound)
 		case *agentv1.CoreMessage_Cancel:
@@ -143,11 +172,15 @@ func (c *StreamClient) connect(ctx context.Context) error {
 				delete(subscriptions, body.Cancel.GetId())
 			}
 		}
-		select {
-		case err := <-sendErr:
-			return err
-		default:
-		}
+	}
+}
+
+func sendMessage(ctx context.Context, outbound chan<- *agentv1.AgentMessage, message *agentv1.AgentMessage) bool {
+	select {
+	case outbound <- message:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
@@ -184,9 +217,11 @@ func (c *StreamClient) execute(parent context.Context, command *agentv1.AgentCom
 	}
 	defer cancel()
 	if command.GetAsynchronous() {
-		outbound <- &agentv1.AgentMessage{Body: &agentv1.AgentMessage_TaskProgress{TaskProgress: &agentv1.TaskProgress{
+		if !sendMessage(parent, outbound, &agentv1.AgentMessage{Body: &agentv1.AgentMessage_TaskProgress{TaskProgress: &agentv1.TaskProgress{
 			TaskId: command.GetId(), Percent: 0, State: "running", Message: "operation started",
-		}}}
+		}}}) {
+			return
+		}
 	}
 	payload, err := c.handle(ctx, command.GetKind(), command.GetPayload())
 	result := &agentv1.CommandResult{Id: command.GetId(), Success: err == nil, Payload: payload}
@@ -199,9 +234,11 @@ func (c *StreamClient) execute(parent context.Context, command *agentv1.AgentCom
 		if err != nil {
 			state, message = "error", err.Error()
 		}
-		outbound <- &agentv1.AgentMessage{Body: &agentv1.AgentMessage_TaskProgress{TaskProgress: &agentv1.TaskProgress{
+		if !sendMessage(parent, outbound, &agentv1.AgentMessage{Body: &agentv1.AgentMessage_TaskProgress{TaskProgress: &agentv1.TaskProgress{
 			TaskId: command.GetId(), Percent: 100, State: state, Message: message, Result: payload,
-		}}}
+		}}}) {
+			return
+		}
 	}
 	select {
 	case outbound <- &agentv1.AgentMessage{Body: &agentv1.AgentMessage_CommandResult{CommandResult: result}}:

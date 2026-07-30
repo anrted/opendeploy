@@ -45,7 +45,7 @@ func (h *Handler) Capabilities(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, len(names))
 	for _, name := range names {
 		items = append(items, map[string]any{
-			"name": name, "version": "v1", "available": true,
+			"name": name, "version": controlcapabilities.APIVersion, "available": true,
 			"experimental": false, "deprecated": false, "required_version": "0.1.25",
 		})
 	}
@@ -213,7 +213,7 @@ func localServer() Server {
 	now := time.Now().UTC()
 	return Server{
 		ID: LocalServerID, Local: true, Name: "Localhost", Hostname: hostname, Status: "online",
-		AgentVersion: version.Version, APIVersion: "v1", OS: runtime.GOOS, Architecture: runtime.GOARCH,
+		AgentVersion: version.Version, APIVersion: controlcapabilities.APIVersion, OS: runtime.GOOS, Architecture: runtime.GOARCH,
 		HealthStatus: "healthy", UpdateChannel: "stable", LastHeartbeat: &now,
 		CreatedAt: now, UpdatedAt: now,
 	}

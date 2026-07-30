@@ -26,6 +26,27 @@ Overall multi-server readiness is approximately **42%**. Control-plane transport
 is approximately **80%** ready; page-level remote execution is approximately
 **30%** ready.
 
+## Remediation progress
+
+The findings above describe the audited `v0.1.27` baseline. The following items
+have since been completed on `main`:
+
+- fail-closed backend routing and frontend view isolation for unsupported remote
+  features;
+- capability-aware dependency injection for Services and runtime modules;
+- an authoritative, versioned registry for implemented Agent capabilities, with
+  pre-dispatch enforcement;
+- remote enablement of Dashboard, Processes, Services, Firewall and Cron;
+- Agent/API version preservation from authenticated handshake and heartbeat;
+- typed offline, timeout and capability errors;
+- server-context propagation into detached module work;
+- ControlPlane reconnect cancellation, backpressure and duplicate-result
+  hardening.
+
+Still intentionally blocked until dedicated contracts are designed: Sites and
+general Modules orchestration, Certificates, Settings, Packages UI, Terminal,
+Network, and unification of module jobs with remote tasks/events/logs.
+
 ## Exact request path and root cause
 
 1. `web/src/api/client.js:42-46` adds `X-Server-ID`.

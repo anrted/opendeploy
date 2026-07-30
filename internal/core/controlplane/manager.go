@@ -95,11 +95,13 @@ func (s *session) close(err error) {
 	}
 	for id, waiter := range s.pending {
 		delete(s.pending, id)
-		waiter <- pendingResult{err: err}
+		select {
+		case waiter <- pendingResult{err: err}:
+		default:
+		}
 	}
-	for id, stream := range s.streams {
+	for id := range s.streams {
 		delete(s.streams, id)
-		close(stream)
 	}
 	s.mu.Unlock()
 }
@@ -118,24 +120,35 @@ func (m *Manager) Subscribe(ctx context.Context, serverID, kind string, payload 
 	chunks := make(chan *agentv1.StreamChunk, 64)
 	output := make(chan []byte, 64)
 	s.mu.Lock()
+	select {
+	case <-s.done:
+		s.mu.Unlock()
+		return nil, ErrConnectionClosed
+	default:
+	}
 	s.streams[id] = chunks
 	s.mu.Unlock()
+	removeStream := func() {
+		s.mu.Lock()
+		delete(s.streams, id)
+		s.mu.Unlock()
+	}
 	message := &agentv1.CoreMessage{Body: &agentv1.CoreMessage_Subscribe{Subscribe: &agentv1.StreamSubscription{
 		Id: id, Kind: kind, Payload: payload,
 	}}}
 	select {
 	case s.send <- message:
 	case <-s.done:
+		removeStream()
 		return nil, ErrConnectionClosed
 	case <-ctx.Done():
+		removeStream()
 		return nil, ctx.Err()
 	}
 	go func() {
 		defer close(output)
 		defer func() {
-			s.mu.Lock()
-			delete(s.streams, id)
-			s.mu.Unlock()
+			removeStream()
 			select {
 			case s.send <- &agentv1.CoreMessage{Body: &agentv1.CoreMessage_Cancel{Cancel: &agentv1.StreamCancel{Id: id}}}:
 			default:
@@ -147,7 +160,13 @@ func (m *Manager) Subscribe(ctx context.Context, serverID, kind string, payload 
 				if !ok || chunk.GetEof() {
 					return
 				}
-				output <- chunk.GetData()
+				select {
+				case output <- chunk.GetData():
+				case <-ctx.Done():
+					return
+				case <-s.done:
+					return
+				}
 			case <-ctx.Done():
 				return
 			case <-s.done:
@@ -165,7 +184,7 @@ func (s *session) resolveChunk(chunk *agentv1.StreamChunk) {
 	if stream != nil {
 		select {
 		case stream <- chunk:
-		default:
+		case <-s.done:
 		}
 	}
 }
@@ -268,6 +287,10 @@ func (s *session) resolve(result *agentv1.CommandResult) {
 	waiter := s.pending[result.GetId()]
 	s.mu.Unlock()
 	if waiter != nil {
-		waiter <- pendingResult{result: result}
+		select {
+		case waiter <- pendingResult{result: result}:
+		default:
+			// Duplicate/late results must not stall the shared receive loop.
+		}
 	}
 }

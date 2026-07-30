@@ -26,7 +26,7 @@ func scanServer(scanner interface{ Scan(...any) error }) (*Server, error) {
 	var lastHeartbeat sql.NullString
 	var createdAt, updatedAt string
 	err := scanner.Scan(&s.ID, &s.Name, &s.Hostname, &s.Description, &s.MachineID, &s.Status,
-		&s.AgentVersion, &s.OS, &s.Distribution, &s.OSVersion, &s.Kernel, &s.Architecture,
+		&s.AgentVersion, &s.APIVersion, &s.OS, &s.Distribution, &s.OSVersion, &s.Kernel, &s.Architecture,
 		&s.CPUModel, &s.CPUCores, &s.RAMTotal, &s.DiskTotal, &s.PublicIP, &s.PrivateIP,
 		&s.Uptime, &s.LatencyMS, &tags, &s.UpdateChannel, &s.HealthStatus, &maintenance,
 		&lastHeartbeat, &createdAt, &updatedAt)
@@ -58,15 +58,15 @@ func parseTime(value string) time.Time {
 	return time.Time{}
 }
 
-const serverColumns = `id,name,hostname,description,machine_id,status,agent_version,os,distribution,
+const serverColumns = `id,name,hostname,description,machine_id,status,agent_version,api_version,os,distribution,
 os_version,kernel,architecture,cpu_model,cpu_cores,ram_total,disk_total,public_ip,private_ip,
 uptime,latency_ms,tags,update_channel,health_status,maintenance,last_heartbeat,created_at,updated_at`
 
 func (r *Repository) Create(ctx context.Context, s *Server) error {
 	tags, _ := json.Marshal(s.Tags)
 	_, err := r.db.ExecContext(ctx, `INSERT INTO servers (`+serverColumns+`) VALUES
-		(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		s.ID, s.Name, s.Hostname, s.Description, s.MachineID, s.Status, s.AgentVersion,
+		(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		s.ID, s.Name, s.Hostname, s.Description, s.MachineID, s.Status, s.AgentVersion, s.APIVersion,
 		s.OS, s.Distribution, s.OSVersion, s.Kernel, s.Architecture, s.CPUModel, s.CPUCores,
 		s.RAMTotal, s.DiskTotal, s.PublicIP, s.PrivateIP, s.Uptime, s.LatencyMS, string(tags),
 		s.UpdateChannel, s.HealthStatus, s.Maintenance, s.LastHeartbeat, s.CreatedAt, s.UpdatedAt)
@@ -214,13 +214,14 @@ func (r *Repository) VerifyCertificate(ctx context.Context, serverID, fingerprin
 	return count == 1, err
 }
 
-func (r *Repository) UpdateConnectionMetadata(ctx context.Context, serverID, agentVersion, _ string, now time.Time) error {
+func (r *Repository) UpdateConnectionMetadata(ctx context.Context, serverID, agentVersion, apiVersion string, now time.Time) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE servers
 		SET status='online',
 		    agent_version=CASE WHEN ? <> '' THEN ? ELSE agent_version END,
+		    api_version=CASE WHEN ? <> '' THEN ? ELSE api_version END,
 		    health_status='healthy',last_heartbeat=?,updated_at=?
 		WHERE id=?`,
-		agentVersion, agentVersion, now, now, serverID)
+		agentVersion, agentVersion, apiVersion, apiVersion, now, now, serverID)
 	return err
 }
 

@@ -151,6 +151,8 @@ func recommendation(status int) string {
 		return "Check the OpenDeploy Agent and retry when it is healthy."
 	case http.StatusNotImplemented:
 		return "Select the local server or a feature supported by the remote Agent."
+	case http.StatusGatewayTimeout:
+		return "Check Agent connectivity and retry the operation."
 	default:
 		return "Retry once; if the problem persists, use the error ID to inspect server logs."
 	}
@@ -179,6 +181,10 @@ func Forbidden(msg string) *AppError {
 }
 
 func Internal(msg string, cause error) *AppError {
+	var existing *AppError
+	if errors.As(cause, &existing) {
+		return existing
+	}
 	return Wrap(http.StatusInternalServerError, CodeInternal, msg, cause)
 }
 

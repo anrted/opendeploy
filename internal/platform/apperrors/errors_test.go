@@ -32,6 +32,13 @@ func TestWriteHTTPUsesStructuredSafeEnvelope(t *testing.T) {
 	}
 }
 
+func TestInternalPreservesTypedOperationalError(t *testing.T) {
+	original := AgentUnavailable(errSensitive)
+	if got := Internal("service operation failed", original); got != original {
+		t.Fatalf("typed error was replaced: %#v", got)
+	}
+}
+
 var errSensitive = testError("database-password")
 
 type testError string

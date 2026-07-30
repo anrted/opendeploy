@@ -108,3 +108,25 @@ func TestRunRepairsDirtyMetadataLeftByLegacyConversion(t *testing.T) {
 		t.Fatalf("migration metadata = (%d, %t), want (6, false)", version, dirty)
 	}
 }
+
+func TestRunAddsRemoteAPIVersionColumn(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+
+	if err := Run(db); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('servers') WHERE name='api_version'
+	`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("api_version column count = %d", count)
+	}
+}

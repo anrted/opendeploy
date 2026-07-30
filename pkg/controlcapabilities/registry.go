@@ -4,6 +4,8 @@ package controlcapabilities
 
 import "strings"
 
+const APIVersion = "v1"
+
 var names = []string{
 	"dashboard",
 	"processes",

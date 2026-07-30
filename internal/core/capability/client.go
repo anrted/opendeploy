@@ -5,10 +5,13 @@ package capability
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/anrted/opendeploy/internal/core/controlplane"
 	"github.com/anrted/opendeploy/internal/core/servercontext"
+	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -21,6 +24,32 @@ func NewClient(local contract.AgentClient, remote *controlplane.Manager) *Client
 	return &Client{local: local, remote: remote}
 }
 
+func remoteError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, controlplane.ErrAgentOffline),
+		errors.Is(err, controlplane.ErrConnectionClosed):
+		return apperrors.AgentUnavailable(err)
+	case errors.Is(err, controlplane.ErrCapabilityAbsent):
+		return apperrors.Wrap(
+			http.StatusNotImplemented,
+			apperrors.CodeCapabilityUnavailable,
+			"the selected Agent does not support this capability",
+			err,
+		)
+	case errors.Is(err, context.DeadlineExceeded):
+		return apperrors.Wrap(
+			http.StatusGatewayTimeout,
+			apperrors.CodeAgentTimeout,
+			"the selected Agent did not respond before the deadline",
+			err,
+		)
+	default:
+		return err
+	}
+}
+
 func (c *Client) call(ctx context.Context, kind string, request, response any) error {
 	if servercontext.IsLocal(ctx) {
 		return fmt.Errorf("local capability %q must use its typed adapter", kind)
@@ -31,7 +60,7 @@ func (c *Client) call(ctx context.Context, kind string, request, response any) e
 	}
 	result, err := c.remote.Dispatch(ctx, servercontext.ID(ctx), kind, payload)
 	if err != nil {
-		return err
+		return remoteError(err)
 	}
 	if response == nil || len(result) == 0 {
 		return nil
@@ -117,7 +146,7 @@ func (c *Client) StreamLogs(ctx context.Context, path string) (<-chan string, er
 func (c *Client) stringStream(ctx context.Context, kind string, payload []byte) (<-chan string, error) {
 	chunks, err := c.remote.Subscribe(ctx, servercontext.ID(ctx), kind, payload)
 	if err != nil {
-		return nil, err
+		return nil, remoteError(err)
 	}
 	output := make(chan string, 64)
 	go func() {

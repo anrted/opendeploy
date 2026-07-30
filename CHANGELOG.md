@@ -16,6 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   writing them only to the controlling terminal.
 - Stabilized Ubuntu smoke provisioning by waiting for asynchronous module runtime
   detection.
+- Returned typed `503 AGENT_UNAVAILABLE`, `504 AGENT_TIMEOUT`, and
+  `501 CAPABILITY_UNAVAILABLE` errors instead of masking remote transport failures
+  as generic HTTP 500 responses.
+- Persisted the ControlPlane API version and hardened stream shutdown,
+  backpressure, duplicate-result, and reconnect behavior.
 
 ## [0.1.28] - 2026-07-30
 

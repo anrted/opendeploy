@@ -1,0 +1,1 @@
+ALTER TABLE servers ADD COLUMN api_version TEXT NOT NULL DEFAULT '';
