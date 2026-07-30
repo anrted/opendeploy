@@ -141,15 +141,13 @@ func startControlPlane(lc fx.Lifecycle, cfg *config.Config, pkiManager *pki.Mana
 	if err != nil {
 		return fmt.Errorf("load control-plane TLS identity: %w", err)
 	}
-	clientCAs, err := pkiManager.ClientCertPool()
-	if err != nil {
-		return fmt.Errorf("load control-plane client CA: %w", err)
-	}
 	creds := credentials.NewTLS(&tls.Config{
 		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{certificate},
-		ClientAuth:   tls.RequireAnyClientCert,
-		ClientCAs:    clientCAs,
+		// An empty acceptable-CA list lets legacy enrolled self-signed
+		// identities be presented. Connect pins the authenticated peer's
+		// fingerprint against the non-revoked enrollment database row.
+		ClientAuth: tls.RequireAnyClientCert,
 	})
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.ControlPlanePort))
 	if err != nil {
