@@ -109,6 +109,18 @@ api.interceptors.response.use(
 export default api
 
 export function apiErrorMessage(error, fallback = 'Request failed') {
-  return error?.response?.data?.error?.message || error?.message || fallback
+  const payload = error?.response?.data?.error
+  if (!payload) return error?.message || fallback
+  const parts = [payload.message || fallback]
+  if (payload.details && payload.details !== payload.message) parts.push(payload.details)
+  if (payload.recommendation) parts.push(payload.recommendation)
+  if (payload.context?.server_id || payload.context?.capability) {
+    parts.push([
+      payload.context.server_id && `server: ${payload.context.server_id}`,
+      payload.context.capability && `capability: ${payload.context.capability}`,
+    ].filter(Boolean).join(', '))
+  }
+  if (payload.error_id) parts.push(`Error ID: ${payload.error_id}`)
+  return parts.join(' ')
 }
 

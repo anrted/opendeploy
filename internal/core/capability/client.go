@@ -24,27 +24,41 @@ func NewClient(local contract.AgentClient, remote *controlplane.Manager) *Client
 	return &Client{local: local, remote: remote}
 }
 
-func remoteError(err error) error {
+func remoteError(err error, serverID, capability string) error {
+	contextFields := map[string]string{
+		"server_id":  serverID,
+		"capability": capability,
+		"transport":  "control_plane",
+	}
 	switch {
 	case err == nil:
 		return nil
 	case errors.Is(err, controlplane.ErrAgentOffline),
 		errors.Is(err, controlplane.ErrConnectionClosed):
-		return apperrors.AgentUnavailable(err)
+		appErr := apperrors.AgentUnavailable(err)
+		appErr.Details = fmt.Sprintf("Agent %s has no active Control Plane session for %s.", serverID, capability)
+		appErr.Recommendation = "Check the Agent service logs, TCP port 5889, and server diagnostics, then retry."
+		return appErr.WithContext(contextFields)
 	case errors.Is(err, controlplane.ErrCapabilityAbsent):
-		return apperrors.Wrap(
+		appErr := apperrors.Wrap(
 			http.StatusNotImplemented,
 			apperrors.CodeCapabilityUnavailable,
-			"the selected Agent does not support this capability",
+			fmt.Sprintf("the selected Agent does not advertise capability %q", capability),
 			err,
 		)
+		appErr.Details = fmt.Sprintf("Agent %s is connected, but its handshake did not advertise %s.", serverID, capability)
+		appErr.Recommendation = "Upgrade Agent and Core to the same release, restart the Agent, and inspect the server capability diagnostics."
+		return appErr.WithContext(contextFields)
 	case errors.Is(err, context.DeadlineExceeded):
-		return apperrors.Wrap(
+		appErr := apperrors.Wrap(
 			http.StatusGatewayTimeout,
 			apperrors.CodeAgentTimeout,
-			"the selected Agent did not respond before the deadline",
+			fmt.Sprintf("the selected Agent did not respond to %q before the deadline", capability),
 			err,
 		)
+		appErr.Details = fmt.Sprintf("Command %s timed out while dispatching to Agent %s.", capability, serverID)
+		appErr.Recommendation = "Check Agent load and logs, verify the Control Plane session is stable, and retry once."
+		return appErr.WithContext(contextFields)
 	default:
 		return err
 	}
@@ -58,9 +72,10 @@ func (c *Client) call(ctx context.Context, kind string, request, response any) e
 	if err != nil {
 		return err
 	}
-	result, err := c.remote.Dispatch(ctx, servercontext.ID(ctx), kind, payload)
+	serverID := servercontext.ID(ctx)
+	result, err := c.remote.Dispatch(ctx, serverID, kind, payload)
 	if err != nil {
-		return remoteError(err)
+		return remoteError(err, serverID, kind)
 	}
 	if response == nil || len(result) == 0 {
 		return nil
@@ -144,9 +159,10 @@ func (c *Client) StreamLogs(ctx context.Context, path string) (<-chan string, er
 }
 
 func (c *Client) stringStream(ctx context.Context, kind string, payload []byte) (<-chan string, error) {
-	chunks, err := c.remote.Subscribe(ctx, servercontext.ID(ctx), kind, payload)
+	serverID := servercontext.ID(ctx)
+	chunks, err := c.remote.Subscribe(ctx, serverID, kind, payload)
 	if err != nil {
-		return nil, remoteError(err)
+		return nil, remoteError(err, serverID, kind)
 	}
 	output := make(chan string, 64)
 	go func() {

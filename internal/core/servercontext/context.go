@@ -34,11 +34,20 @@ func RequireMigratedCapability(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		apperrors.WriteHTTP(w, apperrors.New(
+		appErr := apperrors.New(
 			http.StatusNotImplemented,
 			apperrors.CodeCapabilityUnavailable,
 			"this capability is not available through the remote control plane yet",
-		))
+		)
+		appErr.Details = "The selected remote server cannot safely execute this HTTP route."
+		appErr.Recommendation = "Select Localhost or use a route explicitly supported by the remote Agent."
+		appErr.WithContext(map[string]string{
+			"server_id": ID(r.Context()),
+			"method":    r.Method,
+			"path":      r.URL.Path,
+			"transport": "control_plane",
+		})
+		apperrors.WriteHTTP(w, appErr)
 	})
 }
 

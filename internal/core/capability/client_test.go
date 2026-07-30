@@ -26,7 +26,7 @@ func TestOfflineRemoteAgentReturnsTypedServiceUnavailable(t *testing.T) {
 }
 
 func TestRemoteDeadlineReturnsGatewayTimeout(t *testing.T) {
-	err := remoteError(context.DeadlineExceeded)
+	err := remoteError(context.DeadlineExceeded, "server-test", "system.stats")
 	var appErr *apperrors.AppError
 	if !errors.As(err, &appErr) {
 		t.Fatalf("error = %v, want AppError", err)

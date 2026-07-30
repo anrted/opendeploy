@@ -71,6 +71,8 @@ type AppError struct {
 	Recommendation string
 	// ErrorID is a unique identifier generated for this specific error instance.
 	ErrorID string
+	// Context contains explicitly allow-listed, non-secret diagnostic fields.
+	Context map[string]string
 }
 
 // Error implements the error interface.
@@ -107,6 +109,12 @@ func Wrap(status int, code ErrorCode, message string, cause error) *AppError {
 	return err
 }
 
+// WithContext adds safe operational context to both the API response and logs.
+func (e *AppError) WithContext(fields map[string]string) *AppError {
+	e.Context = fields
+	return e
+}
+
 // WriteHTTP writes the uniform public error envelope. Causes remain server-side
 // while every response receives a correlation ID suitable for logs/support.
 func WriteHTTP(w http.ResponseWriter, err error) {
@@ -115,6 +123,10 @@ func WriteHTTP(w http.ResponseWriter, err error) {
 	logFields := []any{
 		"error_id", appErr.ErrorID,
 		"code", appErr.Code,
+		"message", appErr.Message,
+		"details", appErr.Details,
+		"recommendation", appErr.Recommendation,
+		"context", appErr.Context,
 		"cause", appErr.Cause,
 	}
 
@@ -133,6 +145,7 @@ func WriteHTTP(w http.ResponseWriter, err error) {
 		"details":        appErr.Details,
 		"recommendation": appErr.Recommendation,
 		"error_id":       appErr.ErrorID,
+		"context":        appErr.Context,
 	}})
 }
 
