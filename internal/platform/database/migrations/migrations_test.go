@@ -159,7 +159,7 @@ func TestRunNormalizesNullableSiteProxyColumns(t *testing.T) {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	var enabled int
+	var enabled bool
 	var host string
 	var port int
 	if err := db.QueryRow(`
@@ -169,7 +169,7 @@ func TestRunNormalizesNullableSiteProxyColumns(t *testing.T) {
 	`).Scan(&enabled, &host, &port); err != nil {
 		t.Fatalf("read normalized proxy data: %v", err)
 	}
-	if enabled != 0 || host != "127.0.0.1" || port != 0 {
-		t.Fatalf("normalized proxy data = (%d, %q, %d), want (0, %q, 0)", enabled, host, port, "127.0.0.1")
+	if enabled || host != "127.0.0.1" || port != 0 {
+		t.Fatalf("normalized proxy data = (%t, %q, %d), want (false, %q, 0)", enabled, host, port, "127.0.0.1")
 	}
 }
