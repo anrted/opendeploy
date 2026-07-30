@@ -226,15 +226,12 @@ func safeTarget(root, name string) (string, error) {
 	if name == "" || filepath.IsAbs(name) || strings.HasPrefix(filepath.ToSlash(name), "/") || strings.ContainsRune(name, 0) {
 		return "", fmt.Errorf("archive: invalid entry path")
 	}
-	clean := filepath.Clean(filepath.FromSlash(name))
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+
+	target := filepath.Join(root, filepath.FromSlash(name))
+	if !strings.HasPrefix(target, filepath.Clean(root)+string(os.PathSeparator)) {
 		return "", fmt.Errorf("archive: entry escapes destination: %q", name)
 	}
-	target := filepath.Join(root, clean)
-	relative, err := filepath.Rel(root, target)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("archive: entry escapes destination: %q", name)
-	}
+
 	return target, nil
 }
 
