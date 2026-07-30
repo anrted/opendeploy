@@ -135,13 +135,13 @@ func (r *sqliteRepository) ListAll(ctx context.Context) ([]Site, error) {
 	for rows.Next() {
 		var s Site
 		var created, updated string
-		var proxyEnabled int
+		var proxyEnabled sql.NullInt64
 		var proxyHost sql.NullString
 		var proxyPort sql.NullInt64
 		if err := rows.Scan(&s.ID, &s.Name, &s.ModuleID, &s.RootPath, &s.State, &s.OwnerID, &proxyEnabled, &proxyHost, &proxyPort, &created, &updated); err != nil {
 			return nil, fmt.Errorf("scan site %s: %w", s.ID, err)
 		}
-		s.ProxyEnabled = proxyEnabled == 1
+		s.ProxyEnabled = proxyEnabled.Int64 == 1
 		s.ProxyHost = proxyHost.String
 		s.ProxyPort = int(proxyPort.Int64)
 		s.CreatedAt, _ = time.Parse(time.RFC3339, created)
@@ -220,7 +220,7 @@ func (r *sqliteRepository) Delete(ctx context.Context, id string) error {
 func (r *sqliteRepository) findSite(ctx context.Context, query string, args ...any) (*Site, error) {
 	var s Site
 	var created, updated string
-	var proxyEnabled int
+	var proxyEnabled sql.NullInt64
 	var proxyHost sql.NullString
 	var proxyPort sql.NullInt64
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(&s.ID, &s.Name, &s.ModuleID, &s.RootPath, &s.State, &s.OwnerID, &proxyEnabled, &proxyHost, &proxyPort, &created, &updated)
@@ -232,7 +232,7 @@ func (r *sqliteRepository) findSite(ctx context.Context, query string, args ...a
 	}
 	s.CreatedAt, _ = time.Parse(time.RFC3339, created)
 	s.UpdatedAt, _ = time.Parse(time.RFC3339, updated)
-	s.ProxyEnabled = proxyEnabled == 1
+	s.ProxyEnabled = proxyEnabled.Int64 == 1
 	s.ProxyHost = proxyHost.String
 	s.ProxyPort = int(proxyPort.Int64)
 	return &s, nil

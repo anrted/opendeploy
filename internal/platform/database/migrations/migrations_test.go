@@ -130,3 +130,46 @@ func TestRunAddsRemoteAPIVersionColumn(t *testing.T) {
 		t.Fatalf("api_version column count = %d", count)
 	}
 }
+
+func TestRunNormalizesNullableSiteProxyColumns(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+
+	_, err = db.Exec(`
+		CREATE TABLE schema_migrations (version uint64 NOT NULL PRIMARY KEY, dirty bool NOT NULL);
+		INSERT INTO schema_migrations (version, dirty) VALUES (13, 0);
+		CREATE TABLE sites (
+			id TEXT PRIMARY KEY,
+			proxy_enabled BOOLEAN,
+			proxy_host TEXT,
+			proxy_port INTEGER
+		);
+		INSERT INTO sites (id, proxy_enabled, proxy_host, proxy_port)
+		VALUES ('legacy-site', NULL, NULL, NULL);
+	`)
+	if err != nil {
+		t.Fatalf("create legacy proxy data: %v", err)
+	}
+
+	if err := Run(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	var enabled int
+	var host string
+	var port int
+	if err := db.QueryRow(`
+		SELECT proxy_enabled, proxy_host, proxy_port
+		FROM sites
+		WHERE id = 'legacy-site'
+	`).Scan(&enabled, &host, &port); err != nil {
+		t.Fatalf("read normalized proxy data: %v", err)
+	}
+	if enabled != 0 || host != "127.0.0.1" || port != 0 {
+		t.Fatalf("normalized proxy data = (%d, %q, %d), want (0, %q, 0)", enabled, host, port, "127.0.0.1")
+	}
+}
