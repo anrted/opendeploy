@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -19,6 +20,20 @@ type nginxTestAgent struct {
 	commandErr error
 	exitCode   int
 	reloads    int
+}
+
+type typedNginxTestAgent struct {
+	*nginxTestAgent
+	action  contract.SiteAction
+	domain  string
+	content []byte
+}
+
+func (a *typedNginxTestAgent) NginxSiteApply(_ context.Context, action contract.SiteAction, domain string, content []byte) error {
+	a.action = action
+	a.domain = domain
+	a.content = append([]byte(nil), content...)
+	return nil
 }
 
 func (a *nginxTestAgent) FileRead(_ context.Context, path string) ([]byte, error) {
@@ -132,6 +147,28 @@ func TestEnableSiteCopiesAvailableConfiguration(t *testing.T) {
 	}
 	if agent.reloads != 1 {
 		t.Fatalf("reload count = %d, want 1", agent.reloads)
+	}
+}
+
+func TestApplySiteUsesTypedAgentOperation(t *testing.T) {
+	agent := &typedNginxTestAgent{nginxTestAgent: &nginxTestAgent{files: make(map[string][]byte)}}
+	module := testNginxModule(agent)
+	ctx := servercontext.WithID(context.Background(), "remote-test")
+	if err := module.ApplySite(ctx, contract.SiteUpsert, contract.SiteSpec{
+		Name: "example", PrimaryDomain: "example.com", RootPath: "/var/www/example",
+		AppType: "proxy", ProxyTarget: "http://127.0.0.1:3000", ForceHTTPS: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if agent.action != contract.SiteUpsert || agent.domain != "example.com" {
+		t.Fatalf("typed operation = %q %q", agent.action, agent.domain)
+	}
+	config := string(agent.content)
+	if !strings.Contains(config, "proxy_pass http://127.0.0.1:3000") {
+		t.Fatalf("typed operation did not receive rendered proxy config:\n%s", config)
+	}
+	if len(agent.files) != 0 || agent.reloads != 0 {
+		t.Fatal("module used primitive file or service operations despite typed Agent support")
 	}
 }
 

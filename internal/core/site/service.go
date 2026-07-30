@@ -12,6 +12,7 @@ import (
 
 	"github.com/anrted/opendeploy/internal/core/audit"
 	"github.com/anrted/opendeploy/internal/core/module"
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/internal/platform/events"
 	"github.com/anrted/opendeploy/internal/platform/osprovider"
@@ -142,14 +143,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, userID, ip stri
 		}
 	}
 
-	if err := s.agent.DirCreate(ctx, site.RootPath, 0o755); err != nil {
+	if runtimeAgent, ok := s.agent.(contract.SiteRuntimeAgentClient); ok && !servercontext.IsLocal(ctx) {
+		err = runtimeAgent.SiteRootPrepare(ctx, site.RootPath)
+	} else {
+		err = s.agent.DirCreate(ctx, site.RootPath, 0o755)
+	}
+	if err != nil {
 		return nil, apperrors.Internal("failed to create site root directory", err)
 	}
 
 	// Resolve the OS web identity. There is deliberately no numeric fallback:
 	// UID/GID values are host-specific and a wrong chown is a privilege bug.
 	provider, err := osprovider.NewProvider()
-	if err == nil {
+	if _, remotePrepared := s.agent.(contract.SiteRuntimeAgentClient); remotePrepared && !servercontext.IsLocal(ctx) {
+		// The typed Agent resolved and applied ownership on the selected host.
+	} else if err == nil {
 		webAccount, lookupErr := user.Lookup(provider.WebUser())
 		if lookupErr != nil {
 			_ = s.agent.FileDelete(ctx, site.RootPath)

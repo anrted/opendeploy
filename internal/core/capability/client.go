@@ -180,6 +180,68 @@ func (c *Client) CommandExecute(ctx context.Context, command string, args ...str
 	err := c.call(ctx, "command.execute", map[string]any{"command": command, "args": args}, &result)
 	return result.ExitCode, result.Stdout, result.Stderr, err
 }
+func (c *Client) NginxSiteApply(ctx context.Context, action contract.SiteAction, domain string, content []byte) error {
+	if servercontext.IsLocal(ctx) {
+		if typed, ok := c.local.(contract.NginxSiteAgentClient); ok {
+			return typed.NginxSiteApply(ctx, action, domain, content)
+		}
+		return apperrors.Wrap(
+			http.StatusNotImplemented,
+			apperrors.CodeCapabilityUnavailable,
+			"the local Agent does not support typed Nginx site operations",
+			nil,
+		)
+	}
+	return c.call(ctx, "nginx.site.apply", map[string]any{
+		"action": action, "name": domain, "content": content,
+	}, nil)
+}
+func (c *Client) SiteRootPrepare(ctx context.Context, path string) error {
+	if servercontext.IsLocal(ctx) {
+		if typed, ok := c.local.(contract.SiteRuntimeAgentClient); ok {
+			return typed.SiteRootPrepare(ctx, path)
+		}
+		return fmt.Errorf("local Agent does not support typed site root preparation")
+	}
+	return c.call(ctx, "site.root.prepare", map[string]string{"path": path}, nil)
+}
+func (c *Client) UnixSocketExists(ctx context.Context, path string) (bool, error) {
+	if servercontext.IsLocal(ctx) {
+		if typed, ok := c.local.(contract.SiteRuntimeAgentClient); ok {
+			return typed.UnixSocketExists(ctx, path)
+		}
+		return false, fmt.Errorf("local Agent does not support typed socket inspection")
+	}
+	var result struct {
+		Exists bool `json:"exists"`
+	}
+	err := c.call(ctx, "site.socket.exists", map[string]string{"path": path}, &result)
+	return result.Exists, err
+}
+func (c *Client) SiteHTTPProbe(ctx context.Context, domain string) (int, error) {
+	if servercontext.IsLocal(ctx) {
+		if typed, ok := c.local.(contract.SiteRuntimeAgentClient); ok {
+			return typed.SiteHTTPProbe(ctx, domain)
+		}
+		return 0, fmt.Errorf("local Agent does not support typed site health probes")
+	}
+	var result struct {
+		StatusCode int `json:"status_code"`
+	}
+	err := c.call(ctx, "site.http.probe", map[string]string{"domain": domain}, &result)
+	return result.StatusCode, err
+}
+func (c *Client) CertificateObtain(ctx context.Context, domain, webroot, email string) error {
+	if servercontext.IsLocal(ctx) {
+		if typed, ok := c.local.(contract.SiteRuntimeAgentClient); ok {
+			return typed.CertificateObtain(ctx, domain, webroot, email)
+		}
+		return fmt.Errorf("local Agent does not support typed certificate issuance")
+	}
+	return c.call(ctx, "certificate.obtain", map[string]string{
+		"domain": domain, "webroot": webroot, "email": email,
+	}, nil)
+}
 func (c *Client) packageOperation(ctx context.Context, action, pkg string) (<-chan string, error) {
 	var result []string
 	err := c.call(ctx, "package."+action, map[string]string{"package": pkg}, &result)

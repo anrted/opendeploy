@@ -427,6 +427,22 @@ type AgentClient interface {
 	ProcessKill(ctx context.Context, pid int, force bool) error
 }
 
+// NginxSiteAgentClient is an optional typed extension for transactional site
+// configuration. The Agent owns validation, reload and rollback so remote
+// callers never need access to arbitrary command execution.
+type NginxSiteAgentClient interface {
+	NginxSiteApply(ctx context.Context, action SiteAction, domain string, content []byte) error
+}
+
+// SiteRuntimeAgentClient exposes the narrow runtime operations needed by site
+// provisioning without granting Core arbitrary shell access.
+type SiteRuntimeAgentClient interface {
+	SiteRootPrepare(ctx context.Context, path string) error
+	UnixSocketExists(ctx context.Context, path string) (bool, error)
+	SiteHTTPProbe(ctx context.Context, domain string) (int, error)
+	CertificateObtain(ctx context.Context, domain, webroot, email string) error
+}
+
 // CronAgentClient is an optional typed extension implemented by the real
 // Agent client. Keeping it separate preserves compatibility for external
 // modules and test doubles that implement AgentClient.

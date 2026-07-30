@@ -14,6 +14,9 @@ var names = []string{
 	"firewall",
 	"cron",
 	"packages",
+	"nginx_sites",
+	"site_runtime",
+	"certificates",
 }
 
 // Names returns the capabilities backed by concrete Agent command handlers.
@@ -41,6 +44,12 @@ func RequiredForCommand(kind string) (string, bool) {
 		return "cron", true
 	case strings.HasPrefix(kind, "package."):
 		return "packages", true
+	case strings.HasPrefix(kind, "nginx.site."):
+		return "nginx_sites", true
+	case strings.HasPrefix(kind, "site."):
+		return "site_runtime", true
+	case strings.HasPrefix(kind, "certificate."):
+		return "certificates", true
 	default:
 		return "", false
 	}

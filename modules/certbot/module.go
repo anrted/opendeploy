@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/internal/platform/apperrors"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
@@ -170,6 +171,13 @@ func (m *Module) ObtainCert(ctx context.Context, domain, webroot string) error {
 	}
 
 	email := m.deps.Config.Get("email", "")
+	if typed, ok := m.deps.Agent.(contract.SiteRuntimeAgentClient); ok && !servercontext.IsLocal(ctx) {
+		if err := typed.CertificateObtain(ctx, domain, webroot, email); err != nil {
+			m.logger.WarnContext(ctx, "certbot obtain failed", "domain", domain)
+			return apperrors.InvalidInput("Certbot failed to obtain the certificate; verify DNS and port 80 reachability")
+		}
+		return nil
+	}
 	args := []string{"certonly", "--webroot", "-w", webroot, "-d", domain, "--agree-tos", "-n"}
 	if email == "" {
 		args = append(args, "--register-unsafely-without-email")

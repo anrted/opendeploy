@@ -42,10 +42,17 @@ have since been completed on `main`:
 - server-context propagation into detached module work;
 - ControlPlane reconnect cancellation, backpressure and duplicate-result
   hardening.
+- typed remote Nginx site apply with Agent-owned validation, atomic rollback and
+  reload; generic `command.execute` remains unavailable remotely;
+- typed remote site-root ownership, PHP socket inspection, HTTP health probing
+  and Certbot issuance primitives.
 
 Still intentionally blocked until dedicated contracts are designed: Sites and
-general Modules orchestration, Certificates, Settings, Packages UI, Terminal,
-Network, and unification of module jobs with remote tasks/events/logs.
+general Modules orchestration, Settings, Packages UI, Terminal, Network, and
+unification of module jobs with remote tasks/events/logs. Site HTTP routes remain
+fail-closed while a remote pre-change backup contract is implemented; the
+runtime provisioning commands above are therefore not advertised as complete
+`sites` page support yet.
 
 ## Exact request path and root cause
 

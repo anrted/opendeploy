@@ -10,7 +10,7 @@ func TestAdvertisedCapabilitiesCoverRegisteredCommands(t *testing.T) {
 	for _, kind := range []string{
 		"system.stats", "process.list", "service.status", "file.read",
 		"directory.create", "archive.extract", "firewall.status",
-		"cron.list", "package.status",
+		"cron.list", "package.status", "nginx.site.apply",
 	} {
 		required, ok := RequiredForCommand(kind)
 		if !ok {

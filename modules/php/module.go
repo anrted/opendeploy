@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -71,26 +72,32 @@ func (m *Module) ApplyApp(ctx context.Context, action contract.SiteAction, site 
 	case contract.SiteUpsert, contract.SiteEnable:
 		cfg := PoolConfig{
 			Name: site.PrimaryDomain, User: "www-data", Group: "www-data",
-			Listen: fmt.Sprintf("/run/php/php%s-fpm-%s.sock", version, site.PrimaryDomain),
+			Listen:      fmt.Sprintf("/run/php/php%s-fpm-%s.sock", version, site.PrimaryDomain),
 			MaxChildren: 5, StartServers: 2, MinSpareServers: 1, MaxSpareServers: 3,
 		}
 		if err := m.CreatePool(ctx, version, cfg); err != nil {
 			return fmt.Errorf("failed to create php pool: %w", err)
 		}
-		
+
 		// Wait for socket to appear
 		timeout := time.After(5 * time.Second)
 		ticker := time.NewTicker(200 * time.Millisecond)
 		defer ticker.Stop()
 		socketReady := false
-		
+
 		for {
 			select {
 			case <-timeout:
 				return fmt.Errorf("php-fpm socket %s did not appear after 5 seconds", cfg.Listen)
 			case <-ticker.C:
-				exitCode, _, _, _ := m.deps.Agent.CommandExecute(ctx, "test", "-S", cfg.Listen)
-				if exitCode == 0 {
+				if typed, ok := m.deps.Agent.(contract.SiteRuntimeAgentClient); ok && !servercontext.IsLocal(ctx) {
+					exists, _ := typed.UnixSocketExists(ctx, cfg.Listen)
+					socketReady = exists
+				} else {
+					exitCode, _, _, _ := m.deps.Agent.CommandExecute(ctx, "test", "-S", cfg.Listen)
+					socketReady = exitCode == 0
+				}
+				if socketReady {
 					socketReady = true
 				}
 			case <-ctx.Done():

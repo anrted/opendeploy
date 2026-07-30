@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"text/template"
 
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -18,6 +19,17 @@ var parsedSiteTemplate = template.Must(template.New("site").Parse(siteConfigTemp
 func (m *Module) ApplySite(ctx context.Context, action contract.SiteAction, site contract.SiteSpec) error {
 	if !validManagedDomain(site.PrimaryDomain) {
 		return fmt.Errorf("nginx: invalid primary domain")
+	}
+	if typed, ok := m.deps.Agent.(contract.NginxSiteAgentClient); ok && !servercontext.IsLocal(ctx) {
+		var content []byte
+		var err error
+		if action == contract.SiteUpsert {
+			content, err = renderNginx(site)
+			if err != nil {
+				return err
+			}
+		}
+		return typed.NginxSiteApply(ctx, action, site.PrimaryDomain, content)
 	}
 	configPath := fmt.Sprintf("/etc/nginx/sites-available/opendeploy-%s.conf", site.PrimaryDomain)
 	enabledPath := fmt.Sprintf("/etc/nginx/sites-enabled/opendeploy-%s.conf", site.PrimaryDomain)

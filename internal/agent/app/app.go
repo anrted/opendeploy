@@ -20,9 +20,11 @@ import (
 	"github.com/anrted/opendeploy/internal/agent/executor"
 	"github.com/anrted/opendeploy/internal/agent/filesystem"
 	"github.com/anrted/opendeploy/internal/agent/firewall"
+	"github.com/anrted/opendeploy/internal/agent/nginxsite"
 	"github.com/anrted/opendeploy/internal/agent/packages"
 	agentRemote "github.com/anrted/opendeploy/internal/agent/remote"
 	agentServer "github.com/anrted/opendeploy/internal/agent/server"
+	"github.com/anrted/opendeploy/internal/agent/siteruntime"
 	"github.com/anrted/opendeploy/internal/agent/stats"
 	agentSystemd "github.com/anrted/opendeploy/internal/agent/systemd"
 	"github.com/anrted/opendeploy/internal/platform/config"
@@ -49,6 +51,8 @@ type Agent struct {
 	fw      *firewall.UFWManager
 	cron    *agentCron.Manager
 	stats   *stats.Collector
+	nginx   *nginxsite.Manager
+	sites   *siteruntime.Manager
 }
 
 // New wires the Agent dependency graph.
@@ -81,6 +85,8 @@ func New(cfg *config.Config) (*Agent, error) {
 		cron:    cronMgr,
 		stats:   stats.NewCollector(),
 	}
+	agent.nginx = nginxsite.New(fsMgr, shell, systemdMgr)
+	agent.sites = siteruntime.New(fsMgr, shell, systemdMgr)
 	if cfg.Agent.ControlPlaneAddress != "" {
 		streamClient, streamErr := agentRemote.NewStream(cfg.Agent, log, agent.executeStreamCommand, agent.executeStreamSubscription)
 		if streamErr != nil {
@@ -204,6 +210,9 @@ func (a *Agent) executeStreamCommand(ctx context.Context, kind string, payload [
 		Content []byte   `json:"content"`
 		Paths   []string `json:"paths"`
 		Args    []string `json:"args"`
+		Domain  string   `json:"domain"`
+		Webroot string   `json:"webroot"`
+		Email   string   `json:"email"`
 	}
 	if len(payload) > 0 {
 		if err := json.Unmarshal(payload, &request); err != nil {
@@ -242,6 +251,21 @@ func (a *Agent) executeStreamCommand(ctx context.Context, kind string, payload [
 		result = map[string]bool{"success": err == nil}
 	case "service.logs":
 		result, err = a.systemd.Logs(ctx, request.Name, request.Lines)
+	case "nginx.site.apply":
+		err = a.nginx.Apply(ctx, contract.SiteAction(request.Action), request.Name, request.Content)
+		result = map[string]bool{"success": err == nil}
+	case "site.root.prepare":
+		err = a.sites.PrepareRoot(request.Path)
+	case "site.socket.exists":
+		var exists bool
+		exists, err = a.sites.SocketExists(request.Path)
+		result = map[string]bool{"exists": exists}
+	case "site.http.probe":
+		var statusCode int
+		statusCode, err = a.sites.HTTPProbe(ctx, request.Domain)
+		result = map[string]int{"status_code": statusCode}
+	case "certificate.obtain":
+		err = a.sites.ObtainCertificate(ctx, request.Domain, request.Webroot, request.Email)
 	case "file.read":
 		result, err = a.fs.Read(request.Path)
 	case "file.write":

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anrted/opendeploy/internal/core/audit"
+	"github.com/anrted/opendeploy/internal/core/servercontext"
 	"github.com/anrted/opendeploy/pkg/contract"
 )
 
@@ -52,14 +53,31 @@ func (s *Service) verifySiteHealth(ctx context.Context, site *Site) error {
 			break
 		}
 	}
-	
+
 	// We use curl with Host header targeting localhost to check if the site responds.
 	// Since we are running in an agent, we can execute this directly.
 	if site.SSL != nil && site.SSL.ForceHTTPS {
 		// If forced HTTPS, it should return a 301. We check if 301 is returned.
 		// Alternatively, we can just allow 301, 200, 302, 403. Basically any valid HTTP response from Nginx.
 	}
-	
+
+	if typed, ok := s.agent.(contract.SiteRuntimeAgentClient); ok && !servercontext.IsLocal(ctx) {
+		var lastStatus int
+		var lastErr error
+		for i := 0; i < 10; i++ {
+			lastStatus, lastErr = typed.SiteHTTPProbe(ctx, primaryDomain)
+			if lastErr == nil && acceptedHealthStatus(lastStatus) {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+		return fmt.Errorf("health check failed for %s: received HTTP %d: %w", primaryDomain, lastStatus, lastErr)
+	}
+
 	var exitCode int
 	var stdout, stderr string
 	var err error
@@ -85,4 +103,8 @@ func (s *Service) verifySiteHealth(ctx context.Context, site *Site) error {
 		return fmt.Errorf("health check execution failed: %w", err)
 	}
 	return fmt.Errorf("health check failed for %s: received HTTP %s. Error: %s", primaryDomain, stdout, stderr)
+}
+
+func acceptedHealthStatus(status int) bool {
+	return status == 200 || status == 301 || status == 302 || status == 403 || status == 404
 }
