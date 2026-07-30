@@ -79,9 +79,6 @@
             <input id="site-root" v-model="form.root_path" class="input opacity-75 cursor-not-allowed" placeholder="/var/www/example" required disabled />
           </div>
           <div>
-            <input id="site-root" v-model="form.root_path" class="input opacity-75 cursor-not-allowed" placeholder="/var/www/example" required disabled />
-          </div>
-          <div>
             <label class="label">{{ t('sitesPage.webServer') }}</label>
             <select v-model="form.module_id" class="input" required :disabled="isEditing">
               <option value="nginx">Nginx</option>
@@ -300,6 +297,9 @@ async function submitSite() {
     await loadSites()
   } catch (e) {
     submitError.value = apiErrorMessage(e, isEditing.value ? t('sitesPage.updateFailed') : t('sitesPage.createFailed'))
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function enableSite(id) {
