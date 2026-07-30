@@ -82,10 +82,20 @@
         <LanguageSwitcher />
       </header>
       <div class="p-4 sm:p-6 lg:p-8">
-        <div v-if="unsupportedCapability" class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-          This feature is not supported by the selected server.
+        <div v-if="serverStore.capabilitiesLoading && selectedRouteCapability" class="mb-5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-sm text-indigo-200">
+          Loading capabilities from the selected Agent…
         </div>
-        <router-view v-if="!unsupportedCapability" :key="serverStore.currentServerId" />
+        <div v-else-if="capabilityConnectionError" class="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          <div class="font-semibold">Selected Agent capabilities are unavailable.</div>
+          <div class="mt-1 text-red-200/80">{{ serverStore.capabilitiesError }}</div>
+          <button class="mt-3 rounded-lg border border-red-400/30 px-3 py-1.5 text-xs font-semibold hover:bg-red-500/10" @click="serverStore.loadCapabilities()">
+            Retry
+          </button>
+        </div>
+        <div v-else-if="unsupportedCapability" class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          This feature is not supported by the selected server. Required capability: <code>{{ selectedRouteCapability }}</code>.
+        </div>
+        <router-view v-if="!serverStore.capabilitiesLoading && !capabilityConnectionError && !unsupportedCapability" :key="serverStore.currentServerId" />
       </div>
     </main>
   </div>
@@ -166,9 +176,15 @@ const routeCapability = {
   module_details: 'modules', module_firewall: 'firewall', cron: 'cron',
   processes: 'processes', logs: 'logs', tasks: 'tasks', settings: 'settings',
 }
+const selectedRouteCapability = computed(() => routeCapability[router.currentRoute.value.name] || '')
+const capabilityConnectionError = computed(() =>
+  selectedRouteCapability.value && serverStore.currentServerId !== 'local' && !!serverStore.capabilitiesError,
+)
 const unsupportedCapability = computed(() => {
-  const capability = routeCapability[router.currentRoute.value.name]
-  return capability && !serverStore.supports(capability)
+  return selectedRouteCapability.value &&
+    !serverStore.capabilitiesLoading &&
+    !serverStore.capabilitiesError &&
+    !serverStore.supports(selectedRouteCapability.value)
 })
 watch(() => router.currentRoute.value.fullPath, () => { mobileOpen.value = false })
 
